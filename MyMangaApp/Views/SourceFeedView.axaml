@@ -1,0 +1,384 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:MyMangaApp.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+             x:Class="MyMangaApp.Views.SourceFeedView"
+             x:DataType="vm:SourceFeedViewModel"
+             Background="{DynamicResource PrimaryBackground}">
+             
+    <UserControl.Styles>
+        <Style Selector="Button.BackBtn">
+            <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.2"/>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.2"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.BackBtn:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#0078D7"/>
+            <Setter Property="Foreground" Value="#1E1E2E"/>
+        </Style>
+        <Style Selector="Button.BackBtn:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.05)"/>
+        </Style>
+        
+        <!-- Card Style same as Library -->
+        <Style Selector="Border.MangaCard">
+            <Setter Property="ZIndex" Value="1"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                    <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.2"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.MangaCard:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.02) translateY(-4px)"/>
+            <Setter Property="ZIndex" Value="10"/>
+            <Setter Property="BoxShadow" Value="0 10 20 0 #60000000"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        
+        <!-- Pagination Button Style -->
+        <Style Selector="Button.PageBtn">
+            <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="15,8"/>
+        </Style>
+         <Style Selector="Button.PageBtn:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style Selector="Button.PageBtn:disabled /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+             <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto, *, Auto">
+        <!-- Header / Search Bar -->
+        <Border Grid.Row="0" Padding="20" Background="{DynamicResource PrimaryBackground}">
+            <StackPanel>
+                 <!-- Title Row -->
+                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,15">
+                    <Button Command="{Binding BackCommand}" Classes="BackBtn"
+                            ToolTip.Tip="Go Back">
+                         <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Back" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
+                        </StackPanel>
+                    </Button>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Browse Source" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
+                        <TextBlock Text="-" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SourceName}" FontSize="28" FontWeight="Bold" Foreground="#0078D7" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+
+                 <!-- Search & Filter Row (Similar to Library) -->
+                <Grid ColumnDefinitions="*, Auto, Auto">
+                    <!-- Modern Enhanced Search Bar (Library Style) -->
+                    <TextBox Grid.Column="0" Width="350" HorizontalAlignment="Left"
+                             x:Name="SearchBox"
+                             Watermark="Cari manga..." CornerRadius="20"
+                             Text="{Binding SearchText}"
+                             Background="{DynamicResource SidebarBackground}" Foreground="{DynamicResource PrimaryText}" BorderThickness="0"
+                             Padding="15,10" VerticalContentAlignment="Center">
+                        <TextBox.KeyBindings>
+                            <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}"/>
+                        </TextBox.KeyBindings>
+                        <TextBox.Styles>
+                            <!-- Match Library View Focus Styles -->
+                            <Style Selector="TextBox:focus">
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                                <Setter Property="CaretBrush" Value="{DynamicResource PrimaryText}"/>
+                            </Style>
+                            <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+                                <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                            </Style>
+                            <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+                                <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                            </Style>
+                             <Style Selector="TextBox:pointerover">
+                                 <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                             </Style>
+                             
+                             <!-- Watermark -->
+                             <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
+                                 <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                             </Style>
+                             <Style Selector="TextBox:focus /template/ TextBlock#PART_Watermark">
+                                 <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                             </Style>
+                             <Style Selector="TextBox:pointerover /template/ TextBlock#PART_Watermark">
+                                 <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                             </Style>
+                        </TextBox.Styles>
+                        
+                        <TextBox.InnerRightContent>
+                            <Button Command="{Binding SearchCommand}" 
+                                    Background="Transparent" BorderThickness="0" 
+                                    Padding="0" Margin="0,0,10,0" Cursor="Hand">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                </Button.Styles>
+                                <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" 
+                                           VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            </Button>
+                        </TextBox.InnerRightContent>
+                    </TextBox>
+                    
+                    <!-- Buttons -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="10,0,0,0">
+                        <!-- Refresh Button -->
+                        <Button Command="{Binding RefreshCommand}" 
+                                Background="{DynamicResource SidebarBackground}" Foreground="{DynamicResource PrimaryText}" CornerRadius="8" Padding="12,8"
+                                ToolTip.Tip="Refresh (Bypass Cache)">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Language Toggle (EN/ID) - MangaDex Only -->
+                        <Button Command="{Binding ToggleLanguageCommand}" 
+                                IsVisible="{Binding IsMangaDex}"
+                                CornerRadius="8" Padding="10,8"
+                                ToolTip.Tip="Toggle Language: English / Indonesian">
+                            <Button.Styles>
+                                <Style Selector="Button">
+                                    <Setter Property="Background" Value="#1E4620"/>
+                                    <Setter Property="Foreground" Value="#A6E3A1"/>
+                                </Style>
+                                <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="#2A5A2A"/>
+                                </Style>
+                            </Button.Styles>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{Binding LanguageFlag}" FontSize="14" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding LanguageCode}" Foreground="#A6E3A1" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Latest Updates Toggle -->
+                        <Button Command="{Binding LatestModeCommand}" 
+                                Background="{DynamicResource SidebarBackground}" Foreground="#0078D7" CornerRadius="8" Padding="12,8"
+                                ToolTip.Tip="Toggle Latest Updates">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="&#xE823;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                                <TextBlock Text="Latest" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        
+                        <!-- Filter Button -->
+                        <Button Command="{Binding FilterCommand}" 
+                                Background="{DynamicResource SidebarBackground}" Foreground="{DynamicResource PrimaryText}" CornerRadius="8" Padding="12,8"
+                                ToolTip.Tip="Filter">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="&#xE71C;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                                <TextBlock Text="Filter" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>   
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Content -->
+        <Panel Grid.Row="1">
+            <ScrollViewer x:Name="MainScrollViewer" Padding="40,0,40,20" IsVisible="{Binding !IsMangaDexBlocked}">
+                <StackPanel>
+                     <!-- Loading Bar -->
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" HorizontalAlignment="Stretch" Height="2" Foreground="#0078D7" Margin="0,0,0,10"/>
+                    
+                    <!-- Error Message (Only show if NOT blocked, to avoid duplicate) -->
+                    <Border Background="#453132" BorderBrush="#F38BA8" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,20">
+                        <Border.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="HasError"/>
+                                <Binding Path="IsMangaDexBlocked" Converter="{x:Static BoolConverters.Not}"/>
+                            </MultiBinding>
+                        </Border.IsVisible>
+                        <StackPanel Spacing="5">
+                             <TextBlock Text="Error Loading Source" FontWeight="Bold" Foreground="#F38BA8"/>
+                             <TextBlock Text="{Binding ErrorMessage}" Foreground="#CDD6F4" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Manga Grid -->
+                    <ItemsControl ItemsSource="{Binding MangaList}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                 <Button Background="Transparent" Padding="0" Margin="0,0,25,30"
+                                         Command="{Binding $parent[UserControl].((vm:SourceFeedViewModel)DataContext).OpenMangaCommand}"
+                                         CommandParameter="{Binding}">
+                                     <Button.Styles>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                        </Style>
+                                     </Button.Styles>
+                                     
+                                    <StackPanel Width="150" Spacing="10">
+                                        <!-- Cover Image -->
+                                        <Border Classes="MangaCard" Height="225" CornerRadius="12" 
+                                                Background="{DynamicResource SidebarBackground}" ClipToBounds="True"
+                                                BoxShadow="0 4 10 0 #40000000">
+                                            <Grid>
+                                                <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill"/>
+                                                
+                                                <!-- Time Overlay (Bottom) -->
+                                                <Panel VerticalAlignment="Bottom" IsVisible="{Binding LastUpdateString, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                    <!-- Gradient Shadow for readability -->
+                                                    <Border Height="60" VerticalAlignment="Bottom">
+                                                        <Border.Background>
+                                                            <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+                                                                <GradientStop Offset="0" Color="#00000000"/>
+                                                                <GradientStop Offset="1" Color="#D0000000"/>
+                                                            </LinearGradientBrush>
+                                                        </Border.Background>
+                                                    </Border>
+                                                    
+                                                    <!-- Text -->
+                                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="10,0,10,10" VerticalAlignment="Bottom">
+                                                        <TextBlock Text="&#xE916;" FontFamily="Segoe Fluent Icons" FontSize="10" Foreground="#0078D7" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="{Binding LastUpdateString}" Foreground="#0078D7" 
+                                                                   FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Panel>
+                                            </Grid>
+                                        </Border>
+                                        
+                                        <!-- Title Below Image -->
+                                        <TextBlock Text="{Binding Title}" Foreground="{DynamicResource PrimaryText}" 
+                                                   TextAlignment="Left" TextTrimming="CharacterEllipsis"
+                                                   FontSize="14" FontWeight="Medium" MaxLines="2" Height="40"/>
+                                    </StackPanel>
+                                 </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+            
+            <!-- Blocked/No Internet View Overlay -->
+            <Grid IsVisible="{Binding IsMangaDexBlocked}" 
+                  HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Spacing="20" HorizontalAlignment="Center">
+                    <!-- Icon Container -->
+                     <Border Width="80" Height="80" CornerRadius="20" 
+                             BorderBrush="#F38BA8" BorderThickness="2"
+                             HorizontalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                             <!-- Combining Router + X icons for visual style similar to No Internet -->
+                             <Grid>
+                                <TextBlock Text="&#xE705;" FontFamily="Segoe Fluent Icons" FontSize="48" Foreground="#F38BA8" 
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" Margin="-10,0,0,0"/>
+                                <Border Background="#1E1E2E" CornerRadius="10" Margin="25,25,0,0" Padding="2">
+                                     <TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="24" Foreground="#F38BA8"/>
+                                </Border>
+                             </Grid>
+                        </StackPanel>
+                    </Border>
+                    
+                    <TextBlock Text="MangaDex Blocked?" FontSize="24" FontWeight="Bold" Foreground="#CDD6F4" HorizontalAlignment="Center"/>
+                    
+                    <TextBlock Text="Connection failed. This is likely due to ISP blocking.&#x0a;Try enabling VPN or DNS in Settings." 
+                               Foreground="#A6ADC8" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="400" LineHeight="24"/>
+                    
+                    <!-- Debugging/Error Details -->
+                    <TextBlock Text="{Binding ErrorMessage}" 
+                               IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Foreground="#E78284" FontSize="12" TextWrapping="Wrap" MaxWidth="450" 
+                               HorizontalAlignment="Center" TextAlignment="Center" Margin="0,5,0,0"/>
+                               
+                    <Button Command="{Binding OpenSettingsCommand}" 
+                            Background="#F38BA8" Foreground="#1E1E2E" CornerRadius="8" Padding="25,12" 
+                            HorizontalAlignment="Center" FontWeight="Bold" Margin="0,15,0,0" Cursor="Hand">
+                         <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center" FontSize="16"/>
+                            <TextBlock Text="Open Settings &amp; Enable VPN" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding RefreshCommand}" 
+                            Background="Transparent" BorderBrush="#0078D7" BorderThickness="1" Foreground="#0078D7" 
+                            CornerRadius="8" Padding="25,12" 
+                            HorizontalAlignment="Center" FontWeight="SemiBold" Margin="0,10,0,0" Cursor="Hand">
+                         <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center" FontSize="16"/>
+                            <TextBlock Text="Coba Lagi (Retry)" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Panel>
+
+        <!-- Pagination Controls -->
+        <Border Grid.Row="2" 
+                IsVisible="{Binding !IsMangaDexBlocked}"
+                Background="{DynamicResource SidebarBackground}" 
+                Padding="15,10" >
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <!-- Prev Button -->
+                <Button Grid.Column="0" 
+                        Command="{Binding PrevPageCommand}" 
+                        Classes="PageBtn"
+                        IsEnabled="{Binding HasPrevPage}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="&#xE892;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
+                        <TextBlock Text="Sebelumnya" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- Page Info -->
+                <TextBlock Grid.Column="1" 
+                           Text="{Binding PageInfo}" 
+                           Foreground="#89B4FA" 
+                           FontWeight="Bold" 
+                           FontSize="14"
+                           HorizontalAlignment="Center" 
+                           VerticalAlignment="Center"/>
+
+                <!-- Next Button -->
+                <Button Grid.Column="2" 
+                        Command="{Binding NextPageCommand}" 
+                        Classes="PageBtn"
+                        IsEnabled="{Binding HasNextPage}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Selanjutnya" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="&#xE893;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+        
+        <!-- Filter Dialog Overlay -->
+        <Border Grid.RowSpan="3" Background="#80000000" IsVisible="{Binding IsFilterOpen}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+             <!-- Center the dialog better -->
+             <Border Background="#1E1E2E" CornerRadius="12" Padding="20" 
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     BorderBrush="#45475A" BorderThickness="1"
+                     BoxShadow="0 10 30 0 #50000000" MinWidth="300">
+                <ContentControl Content="{Binding FilterVM}"/>
+             </Border>
+        </Border>
+    </Grid>
+</UserControl>

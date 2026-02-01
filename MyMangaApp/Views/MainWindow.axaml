@@ -1,0 +1,149 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MyMangaApp.ViewModels"
+        xmlns:components="using:MyMangaApp.Views.Components"
+        x:Class="MyMangaApp.Views.MainWindow"
+        Title="Mihon Desktop"
+        Background="Transparent"
+        TransparencyLevelHint="Mica"
+        ExtendClientAreaToDecorationsHint="True"
+        x:DataType="vm:MainWindowViewModel"
+        x:Name="MainShell"
+        Height="720" Width="1080">
+
+    <Window.Styles>
+        <Style Selector="Button.NavBtn">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="12, 10"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Margin" Value="0,2"/>
+        </Style>
+        <Style Selector="Button.NavBtn:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style Selector="Window[WindowState=Maximized]">
+            <Setter Property="Padding" Value="8"/>
+        </Style>
+        
+        <!-- Smooth Text Reveal Animation -->
+        <Style Selector="TextBlock.NavLabel">
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="SplitView[IsPaneOpen=True] TextBlock.NavLabel">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+    </Window.Styles>
+
+    <Panel>
+        <!-- Mica Tint (Dark Overlay for better contrast) -->
+        <Border Background="{DynamicResource OverlayBackground}" IsHitTestVisible="False"/>
+
+        <!-- Custom Title Bar Visuals -->
+        <Grid Height="30" VerticalAlignment="Top" IsHitTestVisible="False">
+             <StackPanel Orientation="Horizontal" Spacing="10" Margin="15,0,0,0" VerticalAlignment="Center">
+
+                 <Image Source="/Assets/app.ico" Height="20" Width="20" VerticalAlignment="Center" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+                 <TextBlock Text="Yomic" FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+             </StackPanel>
+        </Grid>
+
+        <SplitView Margin="0,30,0,0"
+                   DisplayMode="CompactInline"
+                   IsPaneOpen="{Binding IsPaneOpen}"
+                   OpenPaneLength="260"
+                   CompactPaneLength="64"
+                   PaneBackground="{DynamicResource SidebarBackground}">
+            
+            <SplitView.Pane>
+                <Border Padding="10,20" Background="Transparent">
+                    <Grid RowDefinitions="Auto, *, Auto">
+                        <!-- Hamburger -->
+                        <Button Grid.Row="0" Classes="NavBtn" Margin="0,0,0,15" 
+                                Command="{Binding TogglePaneCommand}"
+                                HorizontalAlignment="Left">
+                             <TextBlock Text="&#xE700;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center"/>
+                        </Button>
+
+                        <!-- Main Navigation -->
+                        <StackPanel Grid.Row="1" Spacing="4">
+                            <Button Classes="NavBtn" Click="OnLibraryClick">
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Library" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="NavBtn" Click="OnUpdatesClick">
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Updates" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="NavBtn" Click="OnHistoryClick">
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock Text="History" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="NavBtn" Click="OnDownloadsClick">
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Downloads" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Button>
+                            
+                            <Separator Background="{DynamicResource SeparatorBrush}" Height="1" Margin="10,15" Opacity="0.5"/>
+                            
+                            <Button Classes="NavBtn" Click="OnBrowseClick">
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <TextBlock Text="&#xE774;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Browse Sources" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Classes="NavBtn" Click="OnExtensionsClick">
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <TextBlock Text="&#xE74C;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Extensions" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        
+                        <!-- Settings -->
+                        <Button Grid.Row="2" Classes="NavBtn" Click="OnSettingsClick" VerticalAlignment="Bottom">
+                            <StackPanel Orientation="Horizontal" Spacing="16">
+                                <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Text="Settings" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </Border>
+            </SplitView.Pane>
+
+            <SplitView.Content>
+                <Grid>
+                    <Border ClipToBounds="True" Background="{DynamicResource PrimaryBackground}">
+                        <TransitioningContentControl Content="{Binding CurrentPage}" Padding="0">
+                            <TransitioningContentControl.PageTransition>
+                                <CrossFade Duration="0:0:0.25" />
+                            </TransitioningContentControl.PageTransition>
+                        </TransitioningContentControl>
+                    </Border>
+                     <!-- Notification Overlay -->
+                     <components:NotificationOverlay DataContext="{Binding NotificationVM}"
+                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                 Margin="0,20,20,0"/>
+                </Grid>
+            </SplitView.Content>
+        </SplitView>
+    </Panel>
+</Window>

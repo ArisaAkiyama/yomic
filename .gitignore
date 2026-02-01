@@ -1,0 +1,24 @@
+# Excluded Folders (User Request)
+MyMangaApp/Extensions/
+mihon-main/
+
+# Build Results
+[Bb]in/
+[Oo]bj/
+.vs/
+.vscode/
+
+# User Specific
+*.user
+*.suo
+*.userprefs
+
+# OS Generated
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary
+debug_*.html
+*.log
+*.tmp

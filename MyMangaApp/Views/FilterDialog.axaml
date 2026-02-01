@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MyMangaApp.ViewModels"
+             x:Class="MyMangaApp.Views.FilterDialog"
+             x:DataType="vm:FilterDialogViewModel">
+    
+    <UserControl.Styles>
+        <Style Selector="ComboBox">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="TextBlock.Label">
+            <Setter Property="Foreground" Value="#A6ADC8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+        <Style Selector="Button.FilterBtn">
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </UserControl.Styles>
+    
+    <Border Background="#1E1E2E" Width="380" CornerRadius="12" Padding="24">
+        <StackPanel Spacing="20">
+            <!-- Header -->
+            <Grid ColumnDefinitions="*, Auto">
+                <TextBlock Text="Filter" Foreground="White" FontSize="22" FontWeight="Bold"/>
+                <Button Grid.Column="1" Content="✕" Background="Transparent" Foreground="#6C7086" 
+                        FontSize="18" Padding="8,4" Command="{Binding CloseCommand}"/>
+            </Grid>
+            
+            <Separator Background="#313244" Height="1"/>
+            
+            <!-- Status Filter -->
+            <StackPanel>
+                <TextBlock Text="STATUS" Classes="Label"/>
+                <ComboBox ItemsSource="{Binding StatusOptions}" 
+                          SelectedIndex="{Binding SelectedStatusIndex}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+            
+            <!-- Sort By -->
+            <StackPanel>
+                <TextBlock Text="SORT BY" Classes="Label"/>
+                <ComboBox ItemsSource="{Binding SortOptions}" 
+                          SelectedIndex="{Binding SelectedSortIndex}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+            
+            <!-- Type Filter -->
+            <StackPanel>
+                <TextBlock Text="TYPE" Classes="Label"/>
+                <ComboBox ItemsSource="{Binding TypeOptions}" 
+                          SelectedIndex="{Binding SelectedTypeIndex}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+            
+            <!-- Minimum Chapters -->
+            <StackPanel>
+                <TextBlock Text="MINIMUM CHAPTERS" Classes="Label"/>
+                <Border Background="#313244" CornerRadius="8" ClipToBounds="True">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Slider Minimum="0" Maximum="100" Value="{Binding MinChapters}" 
+                                Foreground="#0078D7" Margin="12,0"/>
+                        <Border Grid.Column="1" Background="#252535" 
+                                Padding="16,10" MinWidth="60">
+                            <TextBlock Text="{Binding MinChapters, StringFormat={}{0}+}" 
+                                       Foreground="White" HorizontalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </Border>
+            </StackPanel>
+            
+            <Separator Background="#313244" Height="1"/>
+            
+            <!-- Action Buttons -->
+            <Grid ColumnDefinitions="*, 10, *">
+                <Button Classes="FilterBtn" Background="#313244" Foreground="#CDD6F4" 
+                        Content="Reset" Command="{Binding ResetCommand}" HorizontalAlignment="Stretch"/>
+                <Button Grid.Column="2" Classes="FilterBtn" Background="#0078D7" Foreground="#1E1E2E" 
+                        Content="Apply Filter" Command="{Binding ApplyCommand}" HorizontalAlignment="Stretch"/>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

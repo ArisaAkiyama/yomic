@@ -1,0 +1,212 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MyMangaApp.ViewModels"
+             x:Class="MyMangaApp.Views.ReaderView"
+             x:DataType="vm:ReaderViewModel"
+             Background="Black"
+             Focusable="True">
+    
+    <UserControl.Styles>
+        <Style Selector="Button.NavBtn">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#CDD6F4"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="CornerRadius" Value="8"/>
+        </Style>
+        <Style Selector="Button.NavBtn:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#333"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="TextBlock.Active">
+             <Setter Property="Foreground" Value="#0078D7"/>
+        </Style>
+        
+        <!-- Image Animation Styles -->
+        <Style Selector="Image.PageImage">
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="RenderTransform" Value="translateY(20px)"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.5" Easing="CubicEaseOut"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.5" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Image.PageImage.Loaded">
+            <Setter Property="Opacity" Value="1"/>
+            <Setter Property="RenderTransform" Value="translateY(0px)"/>
+        </Style>
+        <Style Selector="Button.ActionBtn">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="20,8"/>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.2"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.ActionBtn:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#0078D7"/>
+            <Setter Property="Foreground" Value="#1E1E2E"/>
+        </Style>
+        <Style Selector="Button.ActionBtn:pointerover">
+             <Setter Property="RenderTransform" Value="scale(1.05)"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Panel Background="Transparent" 
+           PointerPressed="OnReaderPointerPressed" 
+           PointerReleased="OnReaderPointerReleased"
+           PointerMoved="OnRootPointerMoved">
+        <!-- Layer 0: Image Render -->
+        <Panel>
+            <!-- Webtoon Mode -->
+            <ScrollViewer x:Name="MainScroll" IsVisible="{Binding IsWebtoon}"
+                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                          ScrollChanged="OnScrollChanged">
+                 <ItemsControl ItemsSource="{Binding Pages}" MaxWidth="800" HorizontalAlignment="Center">
+                     <ItemsControl.ItemsPanel>
+                         <ItemsPanelTemplate>
+                             <StackPanel Spacing="0" HorizontalAlignment="Center"/>
+                         </ItemsPanelTemplate>
+                     </ItemsControl.ItemsPanel>
+                     <ItemsControl.ItemTemplate>
+                         <DataTemplate x:DataType="vm:PageViewModel">
+                             <Panel Margin="0"> <!-- Seamless: No Margin -->
+                                 <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" 
+                                            IsVisible="{Binding IsLoading}"/>
+                                 <Image Classes="PageImage"
+                                        Classes.Loaded="{Binding !IsLoading}"
+                                        Source="{Binding Image}" 
+                                        Stretch="Uniform" 
+                                        HorizontalAlignment="Center"
+                                        IsVisible="{Binding !IsLoading}"/>
+                                 <TextBlock Text="{Binding Error}" Foreground="Red" HorizontalAlignment="Center"
+                                            IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                             </Panel>
+                         </DataTemplate>
+                     </ItemsControl.ItemTemplate>
+                 </ItemsControl>
+            </ScrollViewer>
+
+            <!-- Paged Mode -->
+            <Grid IsVisible="{Binding IsPaged}" Background="Black">
+                <ContentControl Content="{Binding CurrentPage}">
+                    <ContentControl.ContentTemplate>
+                        <DataTemplate x:DataType="vm:PageViewModel">
+                             <Panel>
+                                 <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            IsVisible="{Binding IsLoading}"/>
+                                 <Image Source="{Binding Image}" Stretch="Uniform" Margin="10"
+                                        IsVisible="{Binding !IsLoading}"/>
+                                 <TextBlock Text="{Binding Error}" Foreground="Red" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                             </Panel>
+                        </DataTemplate>
+                    </ContentControl.ContentTemplate>
+                </ContentControl>
+            </Grid>
+        </Panel>
+
+
+
+        <!-- Layer 2: HUD (Head Up Display) -->
+        <Grid RowDefinitions="Auto, *, Auto" IsVisible="{Binding IsMenuVisible}">
+            
+            <!-- Top Menu -->
+            <Border Grid.Row="0" Background="#CC11111B" Padding="20,15">
+                <Grid ColumnDefinitions="Auto, *, Auto">
+                    <Button Grid.Column="0" Classes="ActionBtn" Command="{Binding BackCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Back" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
+                        </StackPanel>
+                    </Button>
+                    
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                        <TextBlock Text="{Binding Title}" Foreground="#CDD6F4" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding ChapterTitle}" Foreground="#A6ADC8" FontSize="12" HorizontalAlignment="Center"/>
+                        <!-- Offline Mode Badge -->
+                        <Border Background="#F38BA8" CornerRadius="4" Padding="8,2" Margin="0,5,0,0"
+                                HorizontalAlignment="Center"
+                                IsVisible="{Binding !IsOnline}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="&#xEA8F;" FontFamily="Segoe Fluent Icons" Foreground="#1E1E2E" FontSize="12"/>
+                                <TextBlock Text="OFFLINE - Requires Internet" Foreground="#1E1E2E" FontWeight="Bold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Spacer -->
+            <Border Grid.Row="1" IsHitTestVisible="False"/>
+
+            <!-- Bottom Menu (Floating) -->
+            <Border Grid.Row="2" Background="Transparent" 
+                    HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                    Padding="0,0,0,40">
+                <Border Background="#F21E1E2E" CornerRadius="24" Padding="30,20" 
+                        BoxShadow="0 8 32 0 #66000000" MinWidth="600">
+                    <StackPanel Spacing="10">
+                        <!-- Slider Row -->
+                        <Grid ColumnDefinitions="Auto, *, Auto">
+                            <TextBlock Foreground="#0078D7" FontWeight="Bold" Margin="0,0,15,0" VerticalAlignment="Center">
+                                <TextBlock.Text>
+                                    <MultiBinding StringFormat="{}{0}">
+                                        <Binding Path="CurrentPageIndex" Converter="{x:Static vm:MathConverters.AddOne}"/>
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
+                            
+                            <Slider Grid.Column="1" 
+                                    Name="ProgressSlider"
+                                    Minimum="0" 
+                                    Maximum="{Binding Pages.Count}" 
+                                    Value="{Binding CurrentPageIndex, Mode=TwoWay}"
+                                    ValueChanged="OnSliderValueChanged"
+                                    VerticalAlignment="Center"
+                                    Margin="0,2,0,0"/>
+                            
+                            <TextBlock Text="{Binding Pages.Count}" Grid.Column="2" Foreground="#6C7086" Margin="15,0,0,0" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <!-- Controls Row -->
+                        <Grid ColumnDefinitions="*, Auto, *" Margin="0,5,0,0">
+                            <!-- Prev -->
+                            <Button Grid.Column="0" Classes="ActionBtn" HorizontalAlignment="Left"
+                                    Command="{Binding PrevChapterCommand}"
+                                    IsEnabled="{Binding HasPrevChapter}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Prev" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            
+
+
+                            <!-- Next -->
+                            <Button Grid.Column="2" Classes="ActionBtn" HorizontalAlignment="Right"
+                                    Command="{Binding NextChapterCommand}"
+                                    IsEnabled="{Binding HasNextChapter}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Next" VerticalAlignment="Center"/>
+                                    <TextBlock Text="&#xE72A;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </Border>
+        </Grid>
+
+        <!-- Loading Overlay -->
+        <Border Background="#80000000" IsVisible="False">
+            <TextBlock Text="Loading..." Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+    </Panel>
+</UserControl>
