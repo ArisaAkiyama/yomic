@@ -1,0 +1,7 @@
+# Exclude non-C# files from language statistics
+*.axaml linguist-vendored
+*.html linguist-vendored
+*.css linguist-vendored
+*.js linguist-vendored
+*.xml linguist-vendored
+*.json linguist-vendored
