@@ -37,6 +37,10 @@ Discover and read manga, webtoons, comics, and more – easier than ever on your
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for a distinct history of changes to this project.
+
 ## Disclaimer
 
 The developer(s) of this application does not have any affiliation with the content providers available, and this application hosts zero content. All content is retrieved via extensions from third-party sources.
