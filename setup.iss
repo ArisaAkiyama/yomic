@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Yomic"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.4"
 #define MyAppPublisher "ArisaAkiyama"
 #define MyAppURL "https://github.com/ArisaAkiyama/yomic"
 #define MyAppExeName "Yomic.exe"
@@ -26,7 +26,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 OutputDir=Output
 OutputBaseFilename=Yomic_Setup_v{#MyAppVersion}
-SetupIconFile=d:\Project\DesktopKomik\MyMangaApp\Assets\app.ico
+SetupIconFile=d:\Project\DesktopKomik\Yomic\Assets\app.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -40,13 +40,19 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
+[Dirs]
+Name: "{app}\Plugins"; Permissions: users-modify
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\Plugins"
+
 [Files]
 ; Main Application Files (from Publish folder)
-Source: "d:\Project\DesktopKomik\MyMangaApp\bin\Publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "d:\Project\DesktopKomik\bin\Publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Bundled Plugins (from Plugins folder)
-Source: "d:\Project\DesktopKomik\MyMangaApp\Plugins\*"; DestDir: "{app}\Plugins"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "d:\Project\DesktopKomik\Yomic\Plugins\*"; DestDir: "{app}\Plugins"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 ; Bundled Tools (Sing-box)
-Source: "d:\Project\DesktopKomik\MyMangaApp\bin_tool\*"; DestDir: "{app}\bin_tool"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "d:\Project\DesktopKomik\Yomic\bin_tool\*"; DestDir: "{app}\bin_tool"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
@@ -58,6 +64,59 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Filename: "netsh"; Parameters: "advfirewall firewall add rule name=""Yomic VPN (sing-box)"" dir=in action=allow program=""{app}\bin_tool\sing-box.exe"" enable=yes"; Flags: runhidden
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
 
+; Auto-launch when running in silent mode (Update Update)
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait skipifnotsilent
+
 [UninstallRun]
 ; Remove Firewall Exception
-Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""Yomic VPN (sing-box)"""; Flags: runhidden
+Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=""Yomic VPN (sing-box)"""; Flags: runhidden; RunOnceId: "RemoveFirewallRule"
+
+[Code]
+// Helper function to check and remove legacy AppData install
+procedure CheckAndRemoveLegacyInstall();
+var
+  LegacyPath: String;
+  ResultCode: Integer;
+begin
+  // Check for User-Local install (e.g., from v1.0.1 or single-file publish)
+  LegacyPath := ExpandConstant('{localappdata}\Programs\Yomic');
+  if DirExists(LegacyPath) then
+  begin
+    if MsgBox('A previous version of Yomic was found in your local AppData folder. It is recommended to remove it to avoid conflicts with this new administration-level installation.' + #13#10 + #13#10 + 'Do you want to cleanup the old version now?', mbConfirmation, MB_YESNO) = IDYES then
+    begin
+        // Attempt to run uninstaller if exists, otherwise brute force delete
+        if FileExists(LegacyPath + '\unins000.exe') then
+        begin
+             Exec(LegacyPath + '\unins000.exe', '/VERYSILENT /SUPPRESSMSGBOXES', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+        end
+        else
+        begin
+             DelTree(LegacyPath, True, True, True);
+        end;
+    end;
+  end;
+  
+  // Also check standard AppData/Yomic location
+  LegacyPath := ExpandConstant('{localappdata}\Yomic');
+  // Only delete if it looks like an install dir (has .exe), not just config data
+  if FileExists(LegacyPath + '\Yomic.exe') then
+  begin
+     if MsgBox('Old version detected in ' + LegacyPath + '. Remove it?', mbConfirmation, MB_YESNO) = IDYES then
+     begin
+         DelTree(LegacyPath, True, True, True);
+     end;
+  end;
+end;
+
+procedure InitializeWizard();
+begin
+  CheckAndRemoveLegacyInstall();
+end;
+
+procedure InitializeUninstallProgressForm();
+var
+  ErrorCode: Integer;
+begin
+  // Force close the application before uninstallation begins
+  Exec('taskkill.exe', '/F /IM {#MyAppExeName}', '', SW_HIDE, ewNoWait, ErrorCode);
+end;

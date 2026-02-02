@@ -1,0 +1,12 @@
+# Release Notes
+
+## v1.0.3
+- **Fixed**: "Install Now" button is now hidden during download process.
+- **Fixed**: Version Mismatch issue (Fresh Build).
+- **Core**: All changes from v1.0.2 included.
+
+## v1.0.2
+- **Refactor**: Renamed project from `MyMangaApp` to `Yomic`.
+- **Fix**: Komiku extension now uses API endpoint to fix "Parsed 0 items" issue.
+- **Tools**: Separated Extensions to [ArisaAkiyama/extension-yomic](https://github.com/ArisaAkiyama/extension-yomic).
+- **Console**: Restored Console Window in Debug mode for better diagnostics.

@@ -1,7 +1,7 @@
 @echo off
-echo Running MyMangaApp (Console Only)...
+echo Running Yomic (Console Only)...
 
 REM Run the app
-cd MyMangaApp
+cd Yomic
 dotnet run
 pause

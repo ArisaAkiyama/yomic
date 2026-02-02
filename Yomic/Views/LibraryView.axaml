@@ -1,0 +1,225 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Yomic.ViewModels"
+             xmlns:views="using:Yomic.Views"
+             x:Class="Yomic.Views.LibraryView"
+             x:DataType="vm:LibraryViewModel"
+             Background="{DynamicResource PrimaryBackground}">
+    
+    <UserControl.Styles>
+        <Style Selector="Border.MangaCard">
+            <Setter Property="ZIndex" Value="1"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                    <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.2"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.MangaCard:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.02) translateY(-4px)"/>
+            <Setter Property="ZIndex" Value="10"/>
+            <Setter Property="BoxShadow" Value="0 10 20 0 #60000000"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        
+        <!-- TextBox style: black text on focus (when background becomes white) -->
+        <!-- TextBox style: keep dark on focus and hover -->
+        <Style Selector="TextBox:focus">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+             <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+        </Style>
+        <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+             <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+        </Style>
+        <Style Selector="TextBox:focus /template/ TextBlock#PART_Watermark">
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+        </Style>
+
+
+        <!-- Refresh Animation Style -->
+        <Style Selector="Button.refreshing TextBlock">
+             <Style.Animations>
+                <Animation Duration="0:0:1" IterationCount="Infinite">
+                    <KeyFrame KeyTime="0:0:0">
+                        <Setter Property="RotateTransform.Angle" Value="0"/>
+                    </KeyFrame>
+                    <KeyFrame KeyTime="0:0:1">
+                        <Setter Property="RotateTransform.Angle" Value="360"/>
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+    </UserControl.Styles>
+    
+    <Panel>
+        <ScrollViewer Padding="40">
+            <StackPanel>
+                <!-- API: Header -->
+                <StackPanel Margin="0,0,0,30">
+                    <StackPanel Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
+                        <!-- Header Icon -->
+                        <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="28" 
+                                   Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
+                                   RenderOptions.TextRenderingMode="Antialias"/>
+                                   
+                        <TextBlock Text="Library" FontSize="32" FontWeight="Bold" 
+                                   Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
+                        
+                        <!-- Count Badge -->
+                         <Border Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="12,4" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding LibraryItems.Count, StringFormat='{}{0} Series'}" 
+                                       Foreground="{DynamicResource SecondaryText}" FontSize="12" VerticalAlignment="Center"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Text="Your digital manga collection" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" FontSize="14"/>
+
+                    <!-- Search and Filter Row -->
+                    <Grid ColumnDefinitions="*, Auto" Margin="0,25,0,0">
+                        <TextBox Width="350" HorizontalAlignment="Left"
+                                 Watermark="Search library..." CornerRadius="20"
+                                 Text="{Binding SearchText}"
+                                 Background="{DynamicResource SidebarBackground}" Foreground="{DynamicResource PrimaryText}" BorderThickness="0"
+                                 Padding="15,10" VerticalContentAlignment="Center">
+                            <TextBox.InnerRightContent>
+                                 <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" 
+                                            VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            </TextBox.InnerRightContent>
+                        </TextBox>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                            <!-- Filter Button -->
+                            <Button Command="{Binding OpenFilterCommand}" 
+                                    Background="Transparent" BorderBrush="{DynamicResource HoverBackground}" BorderThickness="1"
+                                    Foreground="{DynamicResource SecondaryText}" CornerRadius="20" Padding="20,8">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="&#xE71C;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Filter" VerticalAlignment="Center" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Button>
+                            
+                            <!-- Refresh Button -->
+                            <Button Command="{Binding RefreshCommand}"
+                                    IsEnabled="{Binding IsOnline}"
+                                    Background="{DynamicResource SidebarBackground}" Foreground="#FF9900" 
+                                    CornerRadius="20" Width="40" Height="40" Padding="0"
+                                    ToolTip.Tip="Sync Library">
+                                    <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
+                                               FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <ItemsControl ItemsSource="{Binding LibraryItems}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel /> 
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+    
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:MangaItem">
+                             <Button Background="Transparent" Padding="0" Margin="0,0,25,30"
+                                     Command="{Binding $parent[UserControl].((vm:LibraryViewModel)DataContext).OpenMangaCommand}"
+                                     CommandParameter="{Binding}">
+                                 <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                 </Button.Styles>
+                                 
+                                <StackPanel Width="150" Spacing="10">
+                                    <!-- Cover Image -->
+                                    <Border Classes="MangaCard" Height="225" CornerRadius="12" 
+                                            Background="{DynamicResource SidebarBackground}" ClipToBounds="True"
+                                            BoxShadow="0 4 10 0 #40000000">
+                                        
+                                        <Border.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Mark as Read"
+                                                          Command="{Binding $parent[UserControl].((vm:LibraryViewModel)DataContext).MarkAsReadCommand}"
+                                                          CommandParameter="{Binding}"/>
+                                                <Separator/>
+                                                <MenuItem Header="Remove from Library (Keep Files)"
+                                                          Command="{Binding $parent[UserControl].((vm:LibraryViewModel)DataContext).RemoveMangaCommand}"
+                                                          CommandParameter="{Binding}"/>
+                                                <MenuItem Header="Delete from Disk" Foreground="#FF5555"
+                                                          Command="{Binding $parent[UserControl].((vm:LibraryViewModel)DataContext).DeleteMangaCommand}"
+                                                          CommandParameter="{Binding}"/>
+                                            </ContextMenu>
+                                        </Border.ContextMenu>
+                                    
+                                        <Grid>
+                                            <Image Source="{Binding CoverBitmap}" 
+                                                   Stretch="UniformToFill"/>
+                                            
+                                            <!-- Unread Badge -->
+                                            <Border Background="#FF9900" CornerRadius="6" 
+                                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                    Margin="8" Padding="6,2"
+                                                    IsVisible="{Binding UnreadCount, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                                <TextBlock Text="{Binding UnreadCount}" Foreground="#1E1E2E" 
+                                                           FontSize="11" FontWeight="Bold"/>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                    
+                                    <!-- Title Below Image -->
+                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource PrimaryText}" 
+                                               TextAlignment="Left" TextTrimming="CharacterEllipsis"
+                                               FontSize="14" FontWeight="Medium" MaxLines="2" Height="40"/>
+                                </StackPanel>
+                             </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Empty State -->
+        <!-- Loading State -->
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" IsVisible="{Binding IsLoading}">
+            <ProgressBar IsIndeterminate="True" Width="200" Height="2" Foreground="#FF9900" Background="{DynamicResource HoverBackground}"/>
+            <TextBlock Text="Loading Library..." FontSize="16" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Empty State (Only if NOT loading and IS empty) -->
+        <!-- Case 1: Library Empty (No Items) -->
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20">
+             <StackPanel.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                    <Binding Path="IsLibraryEmpty"/>
+                    <Binding Path="!IsLoading"/>
+                </MultiBinding>
+             </StackPanel.IsVisible>
+
+            <TextBlock Text="&#xE7BC;" FontFamily="Segoe Fluent Icons" FontSize="48" Foreground="{DynamicResource HoverBackground}" HorizontalAlignment="Center"/>
+            <TextBlock Text="Your library is empty." FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+            <TextBlock Text="Add manga from Browse section to start reading." FontSize="16" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
+            
+            <Button Content="Browse Sources" Classes="NavBtn" Background="#FF9900" Foreground="#1E1E2E" Padding="20,10" CornerRadius="8"
+                    Command="{Binding GoToBrowseCommand}" 
+                    HorizontalAlignment="Center" Margin="0,10,0,0"/>
+        </StackPanel>
+
+        <!-- Case 2: No Search Results -->
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20">
+             <StackPanel.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                    <Binding Path="HasNoResults"/>
+                    <Binding Path="!IsLoading"/>
+                </MultiBinding>
+             </StackPanel.IsVisible>
+
+            <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons" FontSize="48" Foreground="#45475A" HorizontalAlignment="Center"/>
+            <TextBlock Text="No results found" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+            <TextBlock Text="Try searching for something else." FontSize="16" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Filter Overlay REMOVED for debugging -->
+    </Panel>
+</UserControl>

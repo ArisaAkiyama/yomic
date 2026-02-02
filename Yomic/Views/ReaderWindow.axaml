@@ -1,0 +1,12 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Yomic.ViewModels"
+        xmlns:views="using:Yomic.Views"
+        x:Class="Yomic.Views.ReaderWindow"
+        x:DataType="vm:ReaderViewModel"
+        Title="{Binding Title}"
+        Background="Black"
+        Width="1000" Height="700">
+    
+    <views:ReaderView/>
+</Window>

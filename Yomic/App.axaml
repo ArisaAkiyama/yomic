@@ -1,0 +1,155 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:Yomic"
+             xmlns:vm="using:Yomic.ViewModels"
+             xmlns:views="using:Yomic.Views"
+             xmlns:components="using:Yomic.Views.Components"
+             x:Class="Yomic.App">
+             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+
+    <Application.DataTemplates>
+        <DataTemplate DataType="{x:Type vm:LibraryViewModel}">
+            <views:LibraryView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:MangaDetailViewModel}">
+            <views:MangaDetailView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ReaderViewModel}">
+            <views:ReaderView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:BrowseViewModel}">
+            <views:BrowseView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+            <views:SettingsView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DownloadsViewModel}">
+            <views:DownloadsView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:FilterDialogViewModel}">
+            <views:FilterDialog/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ErrorViewModel}">
+            <components:ErrorView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:WelcomeViewModel}">
+            <views:WelcomeView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SourceFeedViewModel}">
+            <views:SourceFeedView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ExtensionsViewModel}">
+            <views:ExtensionsView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:HistoryViewModel}">
+            <views:HistoryView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:UpdatesViewModel}">
+            <views:UpdatesView/>
+        </DataTemplate>
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="PrimaryBackground" Color="#1E1E2E"/>
+                    <SolidColorBrush x:Key="SidebarBackground" Color="#F2181825"/>
+                    <SolidColorBrush x:Key="OverlayBackground" Color="#E61E1E2E"/>
+                    <SolidColorBrush x:Key="HoverBackground" Color="#45475A"/>
+                    <SolidColorBrush x:Key="SeparatorBrush" Color="#313244"/>
+                    <SolidColorBrush x:Key="PrimaryText" Color="#FFFFFF"/>
+                    <SolidColorBrush x:Key="SecondaryText" Color="#A0A0A0"/>
+                    <SolidColorBrush x:Key="PrimaryAccent" Color="#FF9900"/>
+
+                    <!-- Global Control Overrides (Dark) -->
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF9900"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FFAD33"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#E68A00"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="PrimaryBackground" Color="#F2F2F7"/>
+                    <SolidColorBrush x:Key="SidebarBackground" Color="#F2FFFFFF"/>
+                    <SolidColorBrush x:Key="OverlayBackground" Color="#E6F2F2F7"/>
+                    <SolidColorBrush x:Key="HoverBackground" Color="#E5E5EA"/>
+                    <SolidColorBrush x:Key="SeparatorBrush" Color="#D1D1D6"/>
+                    <SolidColorBrush x:Key="PrimaryText" Color="#000000"/>
+                    <SolidColorBrush x:Key="SecondaryText" Color="#666666"/>
+                    <SolidColorBrush x:Key="PrimaryAccent" Color="#FF9900"/>
+
+                     <!-- Global Control Overrides (Light) -->
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF9900"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FFAD33"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#E68A00"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+        
+        <!-- Global Typography -->
+        <!-- Global Typography & Transitions -->
+        <Style Selector="Window">
+            <Setter Property="FontFamily" Value="avares://Yomic/Assets/Fonts#M PLUS Rounded 1c, Inter, Segoe UI, Sans-Serif"/>
+             <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.3" Easing="CubicEaseOut"/>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.3" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        
+         <Style Selector="UserControl">
+            <Setter Property="FontFamily" Value="avares://Yomic/Assets/Fonts#M PLUS Rounded 1c, Inter, Segoe UI, Sans-Serif"/>
+             <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.3" Easing="CubicEaseOut"/>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.3" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!-- Smooth transitions for common containers -->
+        <Style Selector="Border">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.3" Easing="CubicEaseOut"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.3" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="TextBlock">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.3" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <!-- Global Button Polish -->
+        <Style Selector="Button:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#45475A"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+        </Style>
+        
+        <Style Selector="Button:pressed /template/ ContentPresenter">
+             <Setter Property="Background" Value="#313244"/>
+        </Style>
+
+        <Style Selector="Border.Skeleton">
+             <Style.Animations>
+                <Animation Duration="0:0:1" IterationCount="Infinite" PlaybackDirection="Alternate">
+                    <KeyFrame KeyTime="0:0:0">
+                        <Setter Property="Opacity" Value="0.3"/>
+                    </KeyFrame>
+                    <KeyFrame KeyTime="0:0:1">
+                        <Setter Property="Opacity" Value="0.7"/>
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+    </Application.Styles>
+</Application>

@@ -38,6 +38,11 @@ Discover and read manga, webtoons, comics, and more – easier than ever on your
 Additional sources and extensions are maintained in a separate repository.
 [**Yomic Extensions Repository**](https://github.com/ArisaAkiyama/extension-yomic)
 
+## Troubleshooting
+
+### ⚠️ MangaDex Slow Loading
+If you experience slow loading times or failing images when using **MangaDex**, please enable **VPN Bypass** (Sing-box) in the **Settings** menu. This is often required to bypass ISP restrictions or regional blocks.
+
 ## Contributing
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
