@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./MyMangaApp/Assets/app.ico" alt="Yomic logo" title="Yomic logo" width="80"/>
+<img src="./Yomic/Assets/app.ico" alt="Yomic logo" title="Yomic logo" width="80"/>
 
 # Yomic
 
