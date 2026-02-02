@@ -44,10 +44,20 @@
                                HorizontalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Loading Bar -->
+                <!-- Loading Bar (Indeterminate) -->
                 <ProgressBar IsIndeterminate="True" Width="150" Height="4" 
                              Foreground="{Binding StatusColor}" Background="#313244"
                              IsVisible="{Binding IsLoading}" HorizontalAlignment="Center"/>
+
+                <!-- Download Progress Bar -->
+                <StackPanel Spacing="5" IsVisible="{Binding IsDownloading}">
+                    <ProgressBar Value="{Binding DownloadProgress}" Maximum="100" 
+                                 Width="200" Height="6" 
+                                 Foreground="{Binding StatusColor}" Background="#313244"
+                                 HorizontalAlignment="Center" ShowProgressText="False"/>
+                    <TextBlock Text="{Binding DownloadProgress, StringFormat='{} {0:0}%'}" 
+                               Foreground="#A6ADC8" FontSize="12" HorizontalAlignment="Center"/>
+                </StackPanel>
 
                 <!-- Release Notes (Subtle) -->
                  <ScrollViewer VerticalScrollBarVisibility="Hidden" Height="60" IsVisible="{Binding !IsLoading}">

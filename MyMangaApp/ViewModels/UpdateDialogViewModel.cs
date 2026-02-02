@@ -2,6 +2,7 @@ using ReactiveUI;
 using System.Reactive;
 using System;
 using System.Threading.Tasks;
+using Avalonia; // Added for Application.Current
 
 namespace MyMangaApp.ViewModels
 {
@@ -126,20 +127,103 @@ namespace MyMangaApp.ViewModels
             }
         }
 
-        private void DownloadUpdate()
+        private bool _isDownloading;
+        public bool IsDownloading
         {
-            if (!string.IsNullOrEmpty(_downloadUrl))
+            get => _isDownloading;
+            set => this.RaiseAndSetIfChanged(ref _isDownloading, value);
+        }
+
+        private double _downloadProgress;
+        public double DownloadProgress
+        {
+            get => _downloadProgress;
+            set => this.RaiseAndSetIfChanged(ref _downloadProgress, value);
+        }
+
+        private async void DownloadUpdate()
+        {
+            if (string.IsNullOrEmpty(_downloadUrl) || IsDownloading) return;
+
+            // If it's just a web link (fallback), open browser
+            if (!_downloadUrl.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             {
-                try
+                 try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = _downloadUrl, UseShellExecute = true }); } catch { }
+                 CloseAction?.Invoke();
+                 return;
+            }
+
+            IsDownloading = true;
+            StatusText = "Downloading Update...";
+            StatusIcon = "\uE896"; // Download
+            StatusColor = "#FF9900";
+
+            try
+            {
+                var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Yomic_Update.exe");
+                
+                using (var client = new System.Net.Http.HttpClient())
                 {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    using (var response = await client.GetAsync(_downloadUrl, System.Net.Http.HttpCompletionOption.ResponseHeadersRead))
                     {
-                        FileName = _downloadUrl,
-                        UseShellExecute = true
-                    });
-                    CloseAction?.Invoke();
+                        response.EnsureSuccessStatusCode();
+                        var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+                        var canValidProgress = totalBytes != -1L;
+
+                        using (var contentStream = await response.Content.ReadAsStreamAsync())
+                        {
+                            using (var fileStream = new System.IO.FileStream(tempPath, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None, 8192, true))
+                            {
+                                var totalRead = 0L;
+                                var buffer = new byte[8192];
+                                var isMoreToRead = true;
+
+                                do
+                                {
+                                    var read = await contentStream.ReadAsync(buffer, 0, buffer.Length);
+                                    if (read == 0)
+                                    {
+                                        isMoreToRead = false;
+                                    }
+                                    else
+                                    {
+                                        await fileStream.WriteAsync(buffer, 0, read);
+                                        totalRead += read;
+                                        if (canValidProgress)
+                                        {
+                                            DownloadProgress = (double)totalRead / totalBytes * 100;
+                                        }
+                                    }
+                                }
+                                while (isMoreToRead);
+                            }
+                        }
+                    }
                 }
-                catch { }
+
+                // Launch Installer
+                StatusText = "Launching Installer...";
+                await Task.Delay(500); // Brief delay for UX
+
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = tempPath,
+                    UseShellExecute = true,
+                    Arguments = "/SILENT" // Optional: run silently if supported, or let user click through
+                });
+
+                // Close App
+                if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+                {
+                    desktop.Shutdown();
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText = "Download Failed";
+                StatusColor = "#FF5555";
+                ReleaseNotes = $"Error: {ex.Message}";
+                IsDownloading = false;
             }
         }
     }

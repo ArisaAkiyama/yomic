@@ -31,8 +31,26 @@ namespace MyMangaApp.Core.Services
                 var json = JObject.Parse(response);
 
                 string latestVersionTag = json["tag_name"]?.ToString() ?? string.Empty;
-                string downloadUrl = json["html_url"]?.ToString() ?? string.Empty;
+                string downloadUrl = json["html_url"]?.ToString() ?? string.Empty; // Fallback
                 string body = json["body"]?.ToString() ?? string.Empty;
+
+                // extensive asset parsing
+                var assets = json["assets"] as JArray;
+                if (assets != null)
+                {
+                    foreach (var asset in assets)
+                    {
+                        var url = asset["browser_download_url"]?.ToString();
+                        var name = asset["name"]?.ToString();
+                        if (!string.IsNullOrEmpty(url) && 
+                            !string.IsNullOrEmpty(name) && 
+                            name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            downloadUrl = url;
+                            break;
+                        }
+                    }
+                }
 
                 // Clean up version string (remove 'v' prefix if present)
                 string cleanLatest = latestVersionTag.TrimStart('v');
