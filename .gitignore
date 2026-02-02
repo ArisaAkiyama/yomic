@@ -29,3 +29,8 @@ Output/
 MyMangaApp/Plugins/
 MyMangaApp/bin_tool/
 *.db
+
+# Dev Scripts and Build Configs
+rename_content.py
+run_app.bat
+setup.iss
