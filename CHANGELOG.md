@@ -2,6 +2,14 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [1.0.1] - 2026-02-02
+
+### Changed
+- **UI Refinement**: Standardized circular "Back" buttons with orange hover effect across all views.
+- **Installer**: Fixed execution error ("File not found") and updated to use correct executable name.
+- **About Page**: Dynamic version display binding to assembly version.
+- **Architecture**: Separated Extensions into a dedicated repository ([ArisaAkiyama/extension-yomic](https://github.com/ArisaAkiyama/extension-yomic)).
+
 ## [1.0.0] - 2026-02-01
 
 ### Added
