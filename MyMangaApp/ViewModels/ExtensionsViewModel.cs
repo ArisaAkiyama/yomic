@@ -19,7 +19,7 @@ namespace MyMangaApp.ViewModels
         public string Version { get; set; } = "1.0";
         public string Language { get; set; } = "EN";
         public string IconText { get; set; } = "E";
-        public string IconColor { get; set; } = "#0078D7";
+        public string IconColor { get; set; } = "#FF9900";
         public string IconBackground { get; set; } = "#313244";
         public string Description { get; set; } = "";
         public string? FilePath { get; set; } // Path for uninstalled extensions
@@ -137,7 +137,7 @@ namespace MyMangaApp.ViewModels
                 
                 // Branding Logic
                 string iconBg = "#313244";
-                string iconFg = "#0078D7";
+                string iconFg = "#FF9900";
                 string iconTxt = source.Name.Substring(0, 1);
 
                 if (source.Name.Contains("Komiku", StringComparison.OrdinalIgnoreCase))
@@ -246,7 +246,7 @@ namespace MyMangaApp.ViewModels
 
                     // Branding Logic
                     string iconBg = "#313244";
-                    string iconFg = "#0078D7";
+                    string iconFg = "#FF9900";
                     string iconTxt = source.Name.Substring(0, 1);
 
                     if (source.Name.Contains("Komiku", StringComparison.OrdinalIgnoreCase))
@@ -320,14 +320,15 @@ namespace MyMangaApp.ViewModels
         {
             if (item.IsInstalled)
             {
-                // Uninstall - instant
+                // Uninstall
+                item.IsInstalling = true;
+                await System.Threading.Tasks.Task.Delay(1000); // Simulate uninstall time
+
                 item.IsInstalled = false;
+                item.IsInstalling = false;
+                
                 _sourceManager.RemoveSource(item.Id);
-                _allExtensionsCache.Remove(item); // Remove from list completely? Or keep as "Available to install" if it came from DLL? 
-                // Logic: If it's a DLL-loaded extension, removing it means unloading. 
-                // But for now, let's remove from list to be consistent with "Delete" action behavior in current context.
-                // However, user might want to re-install. But typically "Uninstall" from list removes it.
-                // Re-adding requires "Add" button.
+                _allExtensionsCache.Remove(item); 
             }
             else
             {

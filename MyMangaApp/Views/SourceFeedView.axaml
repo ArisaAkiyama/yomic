@@ -10,9 +10,9 @@
              
     <UserControl.Styles>
         <Style Selector="Button.BackBtn">
-            <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="Padding" Value="10"/>
             <Setter Property="CornerRadius" Value="20"/>
             <Setter Property="Transitions">
                 <Transitions>
@@ -23,7 +23,7 @@
             </Setter>
         </Style>
         <Style Selector="Button.BackBtn:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#0078D7"/>
+            <Setter Property="Background" Value="#FF9900"/>
             <Setter Property="Foreground" Value="#1E1E2E"/>
         </Style>
         <Style Selector="Button.BackBtn:pointerover">
@@ -70,17 +70,13 @@
             <StackPanel>
                  <!-- Title Row -->
                 <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,15">
-                    <Button Command="{Binding BackCommand}" Classes="BackBtn"
-                            ToolTip.Tip="Go Back">
-                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
-                            <TextBlock Text="Back" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
-                        </StackPanel>
+                    <Button Command="{Binding BackCommand}" Classes="BackBtn">
+                        <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="20" VerticalAlignment="Center"/>
                     </Button>
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="Browse Source" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
                         <TextBlock Text="-" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding SourceName}" FontSize="28" FontWeight="Bold" Foreground="#0078D7" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SourceName}" FontSize="28" FontWeight="Bold" Foreground="#FF9900" VerticalAlignment="Center"/>
                     </StackPanel>
                 </StackPanel>
 
@@ -174,7 +170,7 @@
 
                         <!-- Latest Updates Toggle -->
                         <Button Command="{Binding LatestModeCommand}" 
-                                Background="{DynamicResource SidebarBackground}" Foreground="#0078D7" CornerRadius="8" Padding="12,8"
+                                Background="{DynamicResource SidebarBackground}" Foreground="#FF9900" CornerRadius="8" Padding="12,8"
                                 ToolTip.Tip="Toggle Latest Updates">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Text="&#xE823;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
@@ -201,7 +197,7 @@
             <ScrollViewer x:Name="MainScrollViewer" Padding="40,0,40,20" IsVisible="{Binding !IsMangaDexBlocked}">
                 <StackPanel>
                      <!-- Loading Bar -->
-                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" HorizontalAlignment="Stretch" Height="2" Foreground="#0078D7" Margin="0,0,0,10"/>
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" HorizontalAlignment="Stretch" Height="2" Foreground="#FF9900" Margin="0,0,0,10"/>
                     
                     <!-- Error Message (Only show if NOT blocked, to avoid duplicate) -->
                     <Border Background="#453132" BorderBrush="#F38BA8" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,20">
@@ -257,8 +253,8 @@
                                                     
                                                     <!-- Text -->
                                                     <StackPanel Orientation="Horizontal" Spacing="4" Margin="10,0,10,10" VerticalAlignment="Bottom">
-                                                        <TextBlock Text="&#xE916;" FontFamily="Segoe Fluent Icons" FontSize="10" Foreground="#0078D7" VerticalAlignment="Center"/>
-                                                        <TextBlock Text="{Binding LastUpdateString}" Foreground="#0078D7" 
+                                                        <TextBlock Text="&#xE916;" FontFamily="Segoe Fluent Icons" FontSize="10" Foreground="#FF9900" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="{Binding LastUpdateString}" Foreground="#FF9900" 
                                                                    FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
                                                     </StackPanel>
                                                 </Panel>
@@ -318,7 +314,7 @@
                     </Button>
 
                     <Button Command="{Binding RefreshCommand}" 
-                            Background="Transparent" BorderBrush="#0078D7" BorderThickness="1" Foreground="#0078D7" 
+                            Background="Transparent" BorderBrush="#FF9900" BorderThickness="1" Foreground="#FF9900" 
                             CornerRadius="8" Padding="25,12" 
                             HorizontalAlignment="Center" FontWeight="SemiBold" Margin="0,10,0,0" Cursor="Hand">
                          <StackPanel Orientation="Horizontal" Spacing="10">
@@ -332,7 +328,7 @@
 
         <!-- Pagination Controls -->
         <Border Grid.Row="2" 
-                IsVisible="{Binding !IsMangaDexBlocked}"
+                IsVisible="{Binding IsPaginationVisible}"
                 Background="{DynamicResource SidebarBackground}" 
                 Padding="15,10" >
             <Grid ColumnDefinitions="Auto, *, Auto">
@@ -350,7 +346,7 @@
                 <!-- Page Info -->
                 <TextBlock Grid.Column="1" 
                            Text="{Binding PageInfo}" 
-                           Foreground="#89B4FA" 
+                           Foreground="#FF9900" 
                            FontWeight="Bold" 
                            FontSize="14"
                            HorizontalAlignment="Center" 

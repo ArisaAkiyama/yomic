@@ -11,6 +11,9 @@ namespace MyMangaApp.ViewModels
     {
         public static Avalonia.Data.Converters.IValueConverter AddOne { get; } = 
             new Avalonia.Data.Converters.FuncValueConverter<int, string>(val => (val + 1).ToString());
+            
+        public static Avalonia.Data.Converters.IValueConverter SubtractOne { get; } = 
+            new Avalonia.Data.Converters.FuncValueConverter<int, int>(val => Math.Max(0, val - 1));
     }
 
     public enum ReaderMode
@@ -46,14 +49,31 @@ namespace MyMangaApp.ViewModels
             set => this.RaiseAndSetIfChanged(ref _error, value);
         }
 
-        public PageViewModel(string url, Core.Services.NetworkService networkService)
+        private double _blurRadius;
+        public double BlurRadius
+        {
+            get => _blurRadius;
+            set => this.RaiseAndSetIfChanged(ref _blurRadius, value);
+        }
+
+        private bool _isLoaded = false;
+
+        public PageViewModel(string url, Core.Services.NetworkService networkService, bool shouldBlur = false)
         {
             Url = url;
             _networkService = networkService;
-            _ = LoadImage();
+            if (shouldBlur) BlurRadius = 40; // Strong Blur
+            // Lazy Loading: Do not call Load() here.
         }
 
-        private async System.Threading.Tasks.Task LoadImage()
+        public async void Load()
+        {
+            if (_isLoaded) return;
+            _isLoaded = true;
+            await LoadImageAsync();
+        }
+
+        private async System.Threading.Tasks.Task LoadImageAsync()
         {
             try
             {
@@ -229,12 +249,13 @@ namespace MyMangaApp.ViewModels
         private readonly long _sourceId;
         private readonly string _mangaTitle;
         private readonly string _mangaUrl;
+        private readonly bool _isNsfwContent;
 
         public ReaderViewModel(MainWindowViewModel mainViewModel, Core.Services.SourceManager? sourceManager, 
                                ChapterItem? chapter, System.Collections.Generic.List<ChapterItem>? allChapters, 
                                Core.Services.NetworkService? networkService,
                                Core.Services.LibraryService? libraryService = null,
-                               long sourceId = 3, string mangaTitle = "", string mangaUrl = "")
+                               long sourceId = 3, string mangaTitle = "", string mangaUrl = "", bool isNsfw = false)
         {
             _mainViewModel = mainViewModel;
             _sourceManager = sourceManager;
@@ -245,6 +266,7 @@ namespace MyMangaApp.ViewModels
             _sourceId = sourceId;
             _mangaTitle = mangaTitle;
             _mangaUrl = mangaUrl;
+            _isNsfwContent = isNsfw;
 
             // Find current chapter index in the list
             if (_allChapters != null && chapter != null)
@@ -282,7 +304,11 @@ namespace MyMangaApp.ViewModels
                  if (CurrentPageIndex > 0) CurrentPageIndex--;
                  else if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1);
             });
-            ToggleMenuCommand = ReactiveCommand.Create(() => { IsMenuVisible = !IsMenuVisible; });
+            ToggleMenuCommand = ReactiveCommand.Create(() => 
+            { 
+                bool newState = !IsMenuVisible; // If any is visible, hide all. If none, show all.
+                IsMenuVisible = newState;
+            });
             
             SetModeCommand = ReactiveCommand.Create<ReaderMode>(mode => 
             {
@@ -310,8 +336,23 @@ namespace MyMangaApp.ViewModels
         public ReactiveCommand<Unit, Unit> NextChapterCommand { get; }
         public ReactiveCommand<Unit, Unit> PrevChapterCommand { get; }
 
-        private bool _isMenuVisible = true;
-        public bool IsMenuVisible { get => _isMenuVisible; set => this.RaiseAndSetIfChanged(ref _isMenuVisible, value); }
+        private bool _isHeaderVisible = true;
+        public bool IsHeaderVisible { get => _isHeaderVisible; set => this.RaiseAndSetIfChanged(ref _isHeaderVisible, value); }
+
+        private bool _isFooterVisible = true;
+        public bool IsFooterVisible { get => _isFooterVisible; set => this.RaiseAndSetIfChanged(ref _isFooterVisible, value); }
+        
+        // Backward compatibility / Master Toggle
+        public bool IsMenuVisible
+        {
+            get => _isHeaderVisible || _isFooterVisible;
+            set
+            {
+                IsHeaderVisible = value;
+                IsFooterVisible = value;
+                this.RaisePropertyChanged(nameof(IsMenuVisible));
+            }
+        }
 
         private bool _isWebtoon = true;
         public bool IsWebtoon 
@@ -361,6 +402,10 @@ namespace MyMangaApp.ViewModels
         {
             if (_sourceManager == null || _currentChapter == null) return;
             
+            // Calculate Blur Status
+            // Helper logic: If NsfwMode (SecureScreen) is ON and Content is NSFW -> Blur
+            bool shouldBlur = _mainViewModel.SettingsService.SecureScreen && _isNsfwContent;
+            
             // Check if Downloaded
             if (_currentChapter.IsDownloaded)
             {
@@ -385,7 +430,7 @@ namespace MyMangaApp.ViewModels
                                 Pages.Clear();
                                 foreach(var file in files)
                                 {
-                                    Pages.Add(new PageViewModel(file, _networkService));
+                                    Pages.Add(new PageViewModel(file, _networkService, shouldBlur));
                                 }
                                 CurrentPageIndex = 0;
                             });
@@ -425,7 +470,7 @@ namespace MyMangaApp.ViewModels
                         {
                             foreach(var url in urls)
                             {
-                                Pages.Add(new PageViewModel(url, _networkService));
+                                Pages.Add(new PageViewModel(url, _networkService, shouldBlur));
                             }
                             // Reset index
                             CurrentPageIndex = 0;

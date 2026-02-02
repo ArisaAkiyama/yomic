@@ -38,7 +38,7 @@ namespace MyMangaApp.Views
                     sourceId = detailVm.SourceId;
                     title = detailVm.Title;
                     // Pass URL to enable online persistence
-                    vm.GoToReader(chapter, chapters, sourceId, title, detailVm.Url);
+                    vm.GoToReader(chapter, chapters, sourceId, title, detailVm.Url, detailVm.IsExplicitContent);
                 } else {
                      vm.GoToReader(chapter, chapters, sourceId, title);
                 }
@@ -64,14 +64,16 @@ namespace MyMangaApp.Views
                 System.Collections.Generic.List<ChapterItem>? chapters = null;
                 long sourceId = 3;
                 string title = "";
+                bool isNsfw = false;
                 if (this.DataContext is MangaDetailViewModel detailVm)
                 {
                     chapters = detailVm.Chapters;
                     sourceId = detailVm.SourceId;
                     title = detailVm.Title;
+                    isNsfw = detailVm.IsExplicitContent;
                 }
 
-                var readerVM = new ReaderViewModel(vm, vm.SourceManager, chapter, chapters, vm.NetworkService, vm.LibraryService, sourceId, title);
+                var readerVM = new ReaderViewModel(vm, vm.SourceManager, chapter, chapters, vm.NetworkService, vm.LibraryService, sourceId, title, "", isNsfw);
                 var readerWindow = new ReaderWindow
                 {
                     DataContext = readerVM

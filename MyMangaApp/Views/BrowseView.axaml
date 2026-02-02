@@ -49,7 +49,7 @@
                                  
                                  <!-- Checked State -->
                                  <Style Selector="RadioButton.Toggle:checked">
-                                     <Setter Property="Background" Value="#0078D7"/>
+                                     <Setter Property="Background" Value="#FF9900"/>
                                      <Setter Property="Foreground" Value="#1E1E2E"/>
                                      <Setter Property="FontWeight" Value="Bold"/>
                                  </Style>
@@ -65,7 +65,7 @@
 
                                  <!-- Checked Hover -->
                                  <Style Selector="RadioButton.Toggle:checked:pointerover /template/ Border#RootBorder">
-                                     <Setter Property="Background" Value="#0078D7"/>
+                                     <Setter Property="Background" Value="#FF9900"/>
                                  </Style>
                                  <Style Selector="RadioButton.Toggle:checked:pointerover /template/ ContentPresenter">
                                      <Setter Property="TextElement.Foreground" Value="#1E1E2E"/>
@@ -157,7 +157,7 @@
                                             <!-- Action Badge -->
                                             <Panel Grid.Column="2" VerticalAlignment="Center">
                                                 <!-- Install Button or Status -->
-                                                <Border Background="#0078D7" CornerRadius="20" Padding="12,6" IsVisible="{Binding !IsInstalled}">
+                                                <Border Background="#FF9900" CornerRadius="20" Padding="12,6" IsVisible="{Binding !IsInstalled}">
                                                     <TextBlock Text="Install" Foreground="#1E1E2E" FontWeight="Bold" FontSize="12"/>
                                                 </Border>
                                                 <!-- Installed Icon? -->

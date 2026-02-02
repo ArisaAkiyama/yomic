@@ -25,7 +25,7 @@
                         
                         <TextBlock Grid.Column="1" Text="MyAnimeList" Foreground="White" FontWeight="SemiBold"/>
                         <TextBlock Grid.Row="1" Grid.Column="1" Text="Score: 0/10" Foreground="#A6ADC8" FontSize="12"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Status: Reading" Foreground="#0078D7" FontSize="12" Margin="0,5,0,0"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Status: Reading" Foreground="#FF9900" FontSize="12" Margin="0,5,0,0"/>
                         
                         <Button Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Top" 
                                 Content="&#xE70F;" FontFamily="Segoe Fluent Icons" Background="Transparent" Foreground="White"/>
@@ -47,7 +47,7 @@
                     </Grid>
                 </Border>
                 
-                <Button Content="Add Service" HorizontalAlignment="Center" Background="Transparent" Foreground="#0078D7" Margin="0,10,0,0"/>
+                <Button Content="Add Service" HorizontalAlignment="Center" Background="Transparent" Foreground="#FF9900" Margin="0,10,0,0"/>
 
             </StackPanel>
         </Grid>

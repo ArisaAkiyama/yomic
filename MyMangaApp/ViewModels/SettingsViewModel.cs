@@ -8,6 +8,8 @@ namespace MyMangaApp.ViewModels
 {
     public class SettingsViewModel : ViewModelBase
     {
+        public string AppVersion => $"v{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3)}";
+
         private readonly MainWindowViewModel _mainViewModel;
 
         // General
@@ -97,10 +99,37 @@ namespace MyMangaApp.ViewModels
         public ReactiveCommand<Unit, Unit> OpenGitHubCommand { get; }
         public ReactiveCommand<Unit, Unit> ToggleVpnCommand { get; }
 
-        private void CheckForUpdates()
+        private readonly Core.Services.UpdateService _updateService;
+
+        private async void CheckForUpdates()
         {
-             // Placeholder: In a real app, check GitHub release or API
-             _mainViewModel.ShowNotification("You are using version v1.0.0.");
+             _mainViewModel.ShowNotification("Checking for updates...", NotificationType.Info);
+             try
+             {
+                 var updateInfo = await _updateService.CheckForUpdatesAsync();
+                 if (updateInfo.IsUpdateAvailable)
+                 {
+                     _mainViewModel.ShowNotification($"Update Available: {updateInfo.LatestVersion}", NotificationType.Success);
+                     // Optional: Open download link
+                     try
+                     {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo 
+                        { 
+                            FileName = updateInfo.DownloadUrl, 
+                            UseShellExecute = true 
+                        });
+                     }
+                     catch {}
+                 }
+                 else
+                 {
+                     _mainViewModel.ShowNotification("You are using the latest version.", NotificationType.Success);
+                 }
+             }
+             catch (Exception ex)
+             {
+                 _mainViewModel.ShowNotification($"Update check failed: {ex.Message}", NotificationType.Error);
+             }
         }
 
         private void VisitWebsite()
@@ -150,6 +179,7 @@ namespace MyMangaApp.ViewModels
             _libraryService = libraryService;
             _settingsService = settingsService;
             _sourceManager = sourceManager;
+            _updateService = new Core.Services.UpdateService();
             
             // Load settings
             _isDarkMode = _settingsService.IsDarkMode;

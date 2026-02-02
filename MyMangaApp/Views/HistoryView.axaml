@@ -45,7 +45,7 @@
                                          </StackPanel>
                                  </Button>
                                  <Button Command="{Binding RefreshCommand}"
-                                         Background="{DynamicResource SidebarBackground}" Foreground="#0078D7" 
+                                         Background="{DynamicResource SidebarBackground}" Foreground="#FF9900" 
                                          CornerRadius="20" Width="40" Height="40" Padding="0"
                                          ToolTip.Tip="Refresh History">
                                          <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
@@ -73,6 +73,19 @@
                                             <Setter Property="Background" Value="Transparent"/>
                                         </Style>
                                      </Button.Styles>
+
+                                     <Button.ContextMenu>
+                                         <ContextMenu>
+                                             <MenuItem Header="Remove from History" 
+                                                       Command="{Binding $parent[UserControl].((vm:HistoryViewModel)DataContext).RemoveHistoryItemCommand}"
+                                                       CommandParameter="{Binding}"
+                                                       Foreground="#FF5555">
+                                                 <MenuItem.Icon>
+                                                     <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons"/>
+                                                 </MenuItem.Icon>
+                                             </MenuItem>
+                                         </ContextMenu>
+                                     </Button.ContextMenu>
                                      
                                     <StackPanel Width="150" Spacing="10">
                                         <!-- Cover Image -->

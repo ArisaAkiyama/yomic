@@ -8,5 +8,18 @@ namespace MyMangaApp.Views
         {
             InitializeComponent();
         }
+
+        private void OnCheckUpdatesClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            var dialog = new UpdateDialog
+            {
+                DataContext = new MyMangaApp.ViewModels.UpdateDialogViewModel()
+            };
+            
+            if (this.VisualRoot is Window parentWindow)
+            {
+                dialog.ShowDialog(parentWindow);
+            }
+        }
     }
 }

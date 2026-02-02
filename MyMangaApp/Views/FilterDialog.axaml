@@ -82,7 +82,7 @@
                 <Border Background="#313244" CornerRadius="8" ClipToBounds="True">
                     <Grid ColumnDefinitions="*, Auto">
                         <Slider Minimum="0" Maximum="100" Value="{Binding MinChapters}" 
-                                Foreground="#0078D7" Margin="12,0"/>
+                                Foreground="#FF9900" Margin="12,0"/>
                         <Border Grid.Column="1" Background="#252535" 
                                 Padding="16,10" MinWidth="60">
                             <TextBlock Text="{Binding MinChapters, StringFormat={}{0}+}" 
@@ -98,7 +98,7 @@
             <Grid ColumnDefinitions="*, 10, *">
                 <Button Classes="FilterBtn" Background="#313244" Foreground="#CDD6F4" 
                         Content="Reset" Command="{Binding ResetCommand}" HorizontalAlignment="Stretch"/>
-                <Button Grid.Column="2" Classes="FilterBtn" Background="#0078D7" Foreground="#1E1E2E" 
+                <Button Grid.Column="2" Classes="FilterBtn" Background="#FF9900" Foreground="#1E1E2E" 
                         Content="Apply Filter" Command="{Binding ApplyCommand}" HorizontalAlignment="Stretch"/>
             </Grid>
         </StackPanel>

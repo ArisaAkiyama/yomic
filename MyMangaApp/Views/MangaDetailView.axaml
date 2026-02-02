@@ -7,9 +7,9 @@
 
     <UserControl.Styles>
         <Style Selector="Button.BackBtn">
-            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="Padding" Value="10"/>
             <Setter Property="CornerRadius" Value="20"/>
             <Setter Property="Transitions">
                 <Transitions>
@@ -20,7 +20,7 @@
             </Setter>
         </Style>
         <Style Selector="Button.BackBtn:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#0078D7"/>
+            <Setter Property="Background" Value="#FF9900"/>
             <Setter Property="Foreground" Value="#1E1E2E"/>
         </Style>
         <Style Selector="Button.BackBtn:pointerover">
@@ -112,16 +112,13 @@
                     <!-- Back Button and Actions -->
                     <Grid ColumnDefinitions="Auto, *, Auto, Auto">
                         <Button Classes="BackBtn" Click="OnBackClick">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
-                                <TextBlock Text="Back" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
-                            </StackPanel>
+                            <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="20" VerticalAlignment="Center"/>
                         </Button>
                                 
                         <!-- Refresh Button -->
                         <Button Grid.Column="2" 
                                 Command="{Binding ViewModel.RefreshCommand}"
-                                Background="#313244" Foreground="#0078D7" 
+                                Background="#313244" Foreground="#FF9900" 
                                 Padding="10" CornerRadius="20" Margin="0,0,10,0"
                                 ToolTip.Tip="Refresh Details">
                             <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
@@ -167,7 +164,7 @@
                                 <TextBlock Text="{Binding ViewModel.Status}" Foreground="#A6E3A1" FontSize="14" VerticalAlignment="Center"/>
                                 
                                 <!-- OFFLINE Badge -->
-                                <Border CornerRadius="4" Background="#0078D7" Padding="8,4" 
+                                <Border CornerRadius="4" Background="#FF9900" Padding="8,4" 
                                         IsVisible="{Binding !ViewModel.IsOnline}">
                                     <StackPanel Orientation="Horizontal" Spacing="5">
                                         <TextBlock Text="&#xEA8F;" FontFamily="Segoe Fluent Icons" Foreground="#1E1E2E" FontSize="12" VerticalAlignment="Center"/>
@@ -221,7 +218,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border CornerRadius="15" Background="#313244" Padding="12,6" Margin="0,0,8,8">
-                                            <TextBlock Text="{Binding}" Foreground="#0078D7" FontSize="12"/>
+                                            <TextBlock Text="{Binding}" Foreground="#FF9900" FontSize="12"/>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -236,9 +233,9 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border CornerRadius="15" BorderBrush="#0078D7" 
-                                                BorderThickness="1" Padding="12,4">
-                                            <TextBlock Text="{Binding}" Foreground="#0078D7" FontSize="12"/>
+                                        <Border CornerRadius="15" BorderBrush="#FF9900" 
+                                                BorderThickness="1" Padding="12,5" Margin="0,0,5,5">
+                                            <TextBlock Text="{Binding}" Foreground="#FF9900" FontSize="12"/>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -282,7 +279,7 @@
                 <Border Background="Transparent" BorderBrush="#313244" BorderThickness="0,0,0,1" Margin="40,0,40,0">
                     <Grid>
                         <!-- Last Read Indicator -->
-                        <Border Width="4" HorizontalAlignment="Left" Background="#0078D7"
+                        <Border Width="4" HorizontalAlignment="Left" Background="#FF9900"
                                 IsVisible="{Binding IsLastRead}" Margin="0,10"/>
                                 
                         <Grid ColumnDefinitions="*, Auto" Margin="15,16,10,16">
@@ -318,7 +315,7 @@
                                                    IsVisible="{Binding IsDownloaded}" Foreground="#A6E3A1"/>
                                         
                                         <!-- Animated Arrow for Downloading -->
-                                        <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" Foreground="#0078D7" FontSize="18"
+                                        <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" Foreground="#FF9900" FontSize="18"
                                                    IsVisible="{Binding IsDownloading}"
                                                    RenderTransformOrigin="50%,50%">
                                              <TextBlock.Styles>
@@ -357,12 +354,13 @@
                                 
                                 <!-- Read Button -->
                                 <Button Content="Read" Background="#313244" 
-                                        Foreground="#0078D7" CornerRadius="18" Padding="20,8" 
-                                        FontWeight="SemiBold" FontSize="13"
+                                        Foreground="#FF9900" CornerRadius="18" Padding="20,8" 
+                                        BorderThickness="0" FontWeight="Bold" Cursor="Hand"
+                                        HorizontalAlignment="Left"
                                         Click="OnReadClick">
                                     <Button.Styles>
                                         <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="#0078D7"/>
+                                            <Setter Property="Background" Value="#FF9900"/>
                                             <Setter Property="Foreground" Value="#1E1E2E"/>
                                         </Style>
                                     </Button.Styles>

@@ -22,3 +22,10 @@ Desktop.ini
 debug_*.html
 *.log
 *.tmp
+Debug*/
+
+# Binaries & Artifacts
+Output/
+MyMangaApp/Plugins/
+MyMangaApp/bin_tool/
+*.db

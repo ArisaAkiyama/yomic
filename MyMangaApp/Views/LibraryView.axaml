@@ -104,7 +104,7 @@
                             <!-- Refresh Button -->
                             <Button Command="{Binding RefreshCommand}"
                                     IsEnabled="{Binding IsOnline}"
-                                    Background="{DynamicResource SidebarBackground}" Foreground="#0078D7" 
+                                    Background="{DynamicResource SidebarBackground}" Foreground="#FF9900" 
                                     CornerRadius="20" Width="40" Height="40" Padding="0"
                                     ToolTip.Tip="Sync Library">
                                     <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
@@ -158,7 +158,7 @@
                                                    Stretch="UniformToFill"/>
                                             
                                             <!-- Unread Badge -->
-                                            <Border Background="#0078D7" CornerRadius="6" 
+                                            <Border Background="#FF9900" CornerRadius="6" 
                                                     HorizontalAlignment="Right" VerticalAlignment="Top"
                                                     Margin="8" Padding="6,2"
                                                     IsVisible="{Binding UnreadCount, Converter={x:Static ObjectConverters.IsNotNull}}">
@@ -183,7 +183,7 @@
         <!-- Empty State -->
         <!-- Loading State -->
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" IsVisible="{Binding IsLoading}">
-            <ProgressBar IsIndeterminate="True" Width="200" Height="2" Foreground="#0078D7" Background="{DynamicResource HoverBackground}"/>
+            <ProgressBar IsIndeterminate="True" Width="200" Height="2" Foreground="#FF9900" Background="{DynamicResource HoverBackground}"/>
             <TextBlock Text="Loading Library..." FontSize="16" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
         </StackPanel>
 
@@ -201,7 +201,7 @@
             <TextBlock Text="Your library is empty." FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
             <TextBlock Text="Add manga from Browse section to start reading." FontSize="16" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
             
-            <Button Content="Browse Sources" Classes="NavBtn" Background="#0078D7" Foreground="#1E1E2E" Padding="20,10" CornerRadius="8"
+            <Button Content="Browse Sources" Classes="NavBtn" Background="#FF9900" Foreground="#1E1E2E" Padding="20,10" CornerRadius="8"
                     Command="{Binding GoToBrowseCommand}" 
                     HorizontalAlignment="Center" Margin="0,10,0,0"/>
         </StackPanel>

@@ -16,7 +16,7 @@ namespace MyMangaApp.ViewModels
                 return status switch
                 {
                     "Ongoing" => new SolidColorBrush(Color.Parse("#22C55E")),    // Green
-                    "Completed" => new SolidColorBrush(Color.Parse("#0078D7")),  // Blue
+                    "Completed" => new SolidColorBrush(Color.Parse("#FF9900")),  // Orange
                     "Hiatus" => new SolidColorBrush(Color.Parse("#F59E0B")),     // Orange
                     "Cancelled" => new SolidColorBrush(Color.Parse("#EF4444")),  // Red
                     _ => new SolidColorBrush(Color.Parse("#6B7280"))              // Gray for Unknown

@@ -51,8 +51,8 @@
                     </Border>
                     
                     <!-- Info Icon -->
-                    <Border Background="#2089B4FA" Width="32" Height="32" CornerRadius="16" IsVisible="{Binding IsInfo}">
-                         <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons" Foreground="#0078D7" FontSize="16" 
+                    <Border Background="#20FF9900" Width="32" Height="32" CornerRadius="16" IsVisible="{Binding IsInfo}">
+                         <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons" Foreground="#FF9900" FontSize="16" 
                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                 </Panel>

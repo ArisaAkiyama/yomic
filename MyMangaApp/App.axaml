@@ -60,6 +60,12 @@
                     <SolidColorBrush x:Key="SeparatorBrush" Color="#313244"/>
                     <SolidColorBrush x:Key="PrimaryText" Color="#FFFFFF"/>
                     <SolidColorBrush x:Key="SecondaryText" Color="#A0A0A0"/>
+                    <SolidColorBrush x:Key="PrimaryAccent" Color="#FF9900"/>
+
+                    <!-- Global Control Overrides (Dark) -->
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF9900"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FFAD33"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#E68A00"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="PrimaryBackground" Color="#F2F2F7"/>
@@ -69,6 +75,12 @@
                     <SolidColorBrush x:Key="SeparatorBrush" Color="#D1D1D6"/>
                     <SolidColorBrush x:Key="PrimaryText" Color="#000000"/>
                     <SolidColorBrush x:Key="SecondaryText" Color="#666666"/>
+                    <SolidColorBrush x:Key="PrimaryAccent" Color="#FF9900"/>
+
+                     <!-- Global Control Overrides (Light) -->
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF9900"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FFAD33"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#E68A00"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>

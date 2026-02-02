@@ -21,6 +21,7 @@ namespace MyMangaApp.Core.Services
         private readonly object _sourcesLock = new();
         private readonly string _extensionsFilePath;
         private readonly string _pluginsDir;
+        private readonly string _localPluginsDir;
         
         // Track loaded paths to avoid duplicates and for saving
         private readonly HashSet<string> _loadedExtensionPaths = new();
@@ -46,6 +47,8 @@ namespace MyMangaApp.Core.Services
             _extensionsFilePath = System.IO.Path.Combine(appDir, "extensions.json");
             _pluginsDir = System.IO.Path.Combine(appDir, "Plugins");
             if (!System.IO.Directory.Exists(_pluginsDir)) System.IO.Directory.CreateDirectory(_pluginsDir);
+            
+            _localPluginsDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Plugins");
         }
 
         #region Core Management (Thread Safe)
@@ -158,10 +161,20 @@ namespace MyMangaApp.Core.Services
                     }
                 }
                 
-                // 2. Scan Plugins Directory
+                // 2. Scan Plugins Directory (User)
                 if (System.IO.Directory.Exists(_pluginsDir))
                 {
                     var dlls = System.IO.Directory.GetFiles(_pluginsDir, "*.dll");
+                    foreach (var dll in dlls)
+                    {
+                        LoadExtensionAssembly(dll, saveAfter: false);
+                    }
+                }
+
+                // 3. Scan Bundled Plugins
+                if (System.IO.Directory.Exists(_localPluginsDir))
+                {
+                    var dlls = System.IO.Directory.GetFiles(_localPluginsDir, "*.dll");
                     foreach (var dll in dlls)
                     {
                         LoadExtensionAssembly(dll, saveAfter: false);
@@ -242,10 +255,11 @@ namespace MyMangaApp.Core.Services
                             // Track path explicitly since Location is empty for Stream loaded assemblies
                             _sourceIdToPath[source.Id] = path;
                         
-                            // Only add to persistence list if it's NOT in the Plugins folder
-                            bool isPlugin = System.IO.Path.GetFullPath(path).StartsWith(System.IO.Path.GetFullPath(_pluginsDir), StringComparison.OrdinalIgnoreCase);
+                            // Only add to persistence list if it's NOT in the Plugins folder (User or Bundled)
+                            bool isUserPlugin = System.IO.Path.GetFullPath(path).StartsWith(System.IO.Path.GetFullPath(_pluginsDir), StringComparison.OrdinalIgnoreCase);
+                            bool isBundledPlugin = System.IO.Path.GetFullPath(path).StartsWith(System.IO.Path.GetFullPath(_localPluginsDir), StringComparison.OrdinalIgnoreCase);
                             
-                            if (!isPlugin)
+                            if (!isUserPlugin && !isBundledPlugin)
                             {
                                 _loadedExtensionPaths.Add(path);
                             }

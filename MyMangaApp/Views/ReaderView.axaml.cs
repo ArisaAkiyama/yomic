@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia; // Added for VisualTreeAttachmentEventArgs
 using MyMangaApp.ViewModels;
 using System;
 
@@ -22,6 +23,32 @@ namespace MyMangaApp.Views
 
             // Focusable needs to be true for KeyDown to work
             this.AttachedToVisualTree += (s, e) => this.Focus();
+
+            // Fix for "Jumping to top":
+            // We use AddHandler with handledEventsToo: true to ensure we capture events.
+            this.AddHandler(PointerMovedEvent, OnRootPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+            
+            // Custom Scroll Speed Handler
+            // ScrollViewer consumes the event by default, so we need handledEventsToo: true
+            this.AddHandler(PointerWheelChangedEvent, OnReaderPointerWheelChanged, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        }
+
+        private void OnReaderPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+        {
+            if (DataContext is ReaderViewModel vm && vm.IsWebtoon && MainScroll != null)
+            {
+                // Multiplier for faster scrolling (Adjust custom speed here)
+                double speedMultiplier = 3.0;
+                
+                // e.Delta.Y is usually 1.0 or -1.0 per tick
+                double offsetChange = -e.Delta.Y * 50 * speedMultiplier; 
+                
+                // Apply new offset
+                MainScroll.Offset = new Avalonia.Vector(MainScroll.Offset.X, MainScroll.Offset.Y + offsetChange);
+                
+                // Mark event as handled to prevent default slow scrolling
+                e.Handled = true;
+            }
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -44,45 +71,6 @@ namespace MyMangaApp.Views
                 {
                     vm.ToggleMenuCommand.Execute().Subscribe(_ => { });
                     e.Handled = true;
-                }
-            }
-        }
-
-        private Avalonia.Point _startPoint;
-
-        private void OnReaderPointerPressed(object? sender, PointerPressedEventArgs e)
-        {
-            _startPoint = e.GetPosition(this);
-        }
-
-        private void OnReaderPointerReleased(object? sender, PointerReleasedEventArgs e)
-        {
-            var endPoint = e.GetPosition(this);
-            var deltaX = Math.Abs(endPoint.X - _startPoint.X);
-            var deltaY = Math.Abs(endPoint.Y - _startPoint.Y);
-
-            // If moved significantly, treat as Drag/Scroll and ignore click
-            if (deltaX > 10 || deltaY > 10) return;
-
-            if (DataContext is ReaderViewModel vm)
-            {
-                var width = this.Bounds.Width;
-                var x = endPoint.X;
-
-                if (x < width * 0.3)
-                {
-                    // Left 30% -> Prev Page
-                    vm.PrevPageCommand.Execute().Subscribe(_ => { });
-                }
-                else if (x > width * 0.7)
-                {
-                    // Right 30% -> Next Page
-                    vm.NextPageCommand.Execute().Subscribe(_ => { });
-                }
-                else
-                {
-                    // Center 40% -> Toggle Menu
-                    vm.ToggleMenuCommand.Execute().Subscribe(_ => { });
                 }
             }
         }
@@ -118,10 +106,17 @@ namespace MyMangaApp.Views
             if (DataContext is ReaderViewModel vm && vm.IsWebtoon && _isDraggingSlider)
             {
                 // User dragged slider -> Scroll to position
-                // Value is Page Index
-                var percent = e.NewValue / Math.Max(1, vm.Pages.Count);
-                var offset = percent * MainScroll.Extent.Height;
-                MainScroll.Offset = new Avalonia.Vector(MainScroll.Offset.X, offset);
+                // Mapping: 0 to (Count-1)  ->  0 to MaxScroll
+                
+                int maxIndex = Math.Max(1, vm.Pages.Count - 1);
+                var percent = e.NewValue / maxIndex;
+                
+                if (MainScroll != null)
+                {
+                    double maxScroll = Math.Max(0, MainScroll.Extent.Height - MainScroll.Viewport.Height);
+                    var offset = percent * maxScroll;
+                    MainScroll.Offset = new Avalonia.Vector(MainScroll.Offset.X, offset);
+                }
             }
         }
 
@@ -131,14 +126,20 @@ namespace MyMangaApp.Views
 
             if (DataContext is ReaderViewModel vm && vm.IsWebtoon)
             {
-                if (MainScroll.Extent.Height <= 0) return;
+                if (MainScroll == null || MainScroll.Extent.Height <= 0) return;
 
-                // Simple Approximation: Viewport Center determines page?
-                // Or Top? Let's use Top.
-                var percent = MainScroll.Offset.Y / MainScroll.Extent.Height;
-                var estimatedIndex = (int)(percent * vm.Pages.Count);
+                // Sync Scroll -> Slider Index
+                // Mapping: 0 to MaxScroll -> 0 to (Count-1)
                 
-                // Clamp
+                double maxScroll = Math.Max(1, MainScroll.Extent.Height - MainScroll.Viewport.Height);
+                var percent = MainScroll.Offset.Y / maxScroll;
+                
+                // Clamp percent (can be slightly >1 or <0 due to rubber banding or rounding)
+                percent = Math.Clamp(percent, 0.0, 1.0);
+                
+                var estimatedIndex = (int)(percent * (vm.Pages.Count - 1));
+                
+                // Clamp Index
                 if (vm.Pages.Count > 0)
                 {
                     estimatedIndex = Math.Clamp(estimatedIndex, 0, vm.Pages.Count - 1);
@@ -151,24 +152,42 @@ namespace MyMangaApp.Views
             }
         }
 
-
-
         private void OnRootPointerMoved(object? sender, PointerEventArgs e)
         {
             if (DataContext is ReaderViewModel vm)
             {
                 var point = e.GetPosition(this);
                 var height = this.Bounds.Height;
-                // Footer is taller (~120px+), so we need a larger threshold at bottom
-                var topThreshold = 100.0;
-                var bottomThreshold = 200.0; 
-
-                bool shouldShow = (point.Y < topThreshold) || (point.Y > height - bottomThreshold);
-
-                if (vm.IsMenuVisible != shouldShow)
+                
+                // --- Footer Logic ---
+                // Strict trigger (50px from bottom) to show
+                // Relaxed threshold (150px from bottom) to keep open
+                double bottomThresh = vm.IsFooterVisible ? 150.0 : 50.0;
+                bool showFooter = (point.Y > height - bottomThresh);
+                
+                if (vm.IsFooterVisible != showFooter)
                 {
-                    vm.IsMenuVisible = shouldShow;
+                    vm.IsFooterVisible = showFooter;
                 }
+
+                // --- Header Logic ---
+                // Strict trigger (50px from top) to show
+                // Relaxed threshold (80px from top) to keep open
+                double topThresh = vm.IsHeaderVisible ? 80.0 : 50.0;
+                bool showHeader = (point.Y < topThresh);
+
+                if (vm.IsHeaderVisible != showHeader)
+                {
+                    vm.IsHeaderVisible = showHeader;
+                }
+            }
+        }
+        private void OnPageAttached(object? sender, VisualTreeAttachmentEventArgs e)
+        {
+            if (sender is Control control && control.DataContext is PageViewModel page)
+            {
+                // Lazy Load when attached to visual tree (scrolled into view)
+                page.Load();
             }
         }
     }

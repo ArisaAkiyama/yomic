@@ -44,6 +44,15 @@ namespace MyMangaApp.Core.Services
                 return true;
             }
 
+            // Check bundled
+            var bundledPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "bin_tool", "sing-box.exe");
+            if (File.Exists(bundledPath))
+            {
+                 Console.WriteLine("[SingboxService] Found bundled sing-box, copying...");
+                 File.Copy(bundledPath, _singboxExePath, true);
+                 return true;
+            }
+
             Console.WriteLine("[SingboxService] Downloading sing-box...");
             
             // sing-box releases URL (Windows AMD64)
@@ -122,17 +131,26 @@ namespace MyMangaApp.Core.Services
             
             try
             {
-                // Step 1: Download wgcf if not exists
+                // Step 1: Download wgcf if not exists (or copy from bundled)
                 if (!File.Exists(wgcfPath))
                 {
-                    Console.WriteLine("[SingboxService] Downloading wgcf...");
-                    string wgcfUrl = "https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_windows_amd64.exe";
-                    
-                    using var httpClient = new HttpClient();
-                    httpClient.Timeout = TimeSpan.FromMinutes(5);
-                    var wgcfBytes = await httpClient.GetByteArrayAsync(wgcfUrl);
-                    await File.WriteAllBytesAsync(wgcfPath, wgcfBytes);
-                    Console.WriteLine("[SingboxService] wgcf downloaded.");
+                    var bundledWgcf = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "bin_tool", "wgcf.exe");
+                    if (File.Exists(bundledWgcf))
+                    {
+                        File.Copy(bundledWgcf, wgcfPath, true);
+                        Console.WriteLine("[SingboxService] Bundled wgcf copied.");
+                    }
+                    else
+                    {
+                        Console.WriteLine("[SingboxService] Downloading wgcf...");
+                        string wgcfUrl = "https://github.com/ViRb3/wgcf/releases/download/v2.2.22/wgcf_2.2.22_windows_amd64.exe";
+                        
+                        using var httpClient = new HttpClient();
+                        httpClient.Timeout = TimeSpan.FromMinutes(5);
+                        var wgcfBytes = await httpClient.GetByteArrayAsync(wgcfUrl);
+                        await File.WriteAllBytesAsync(wgcfPath, wgcfBytes);
+                        Console.WriteLine("[SingboxService] wgcf downloaded.");
+                    }
                 }
                 
                 // Step 2: Register WARP account if not exists

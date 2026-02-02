@@ -13,6 +13,7 @@ namespace MyMangaApp.ViewModels
         public string? UnreadCount { get; set; }
         public string? LastReadTime { get; set; }
         public int Status { get; set; } // 1=Ongoing, 2=Completed, 5=Hiatus, 6=Cancelled
+        public System.Collections.Generic.List<string> Genres { get; set; } = new();
         
         public string StatusString => Status switch
         {
@@ -64,7 +65,9 @@ namespace MyMangaApp.ViewModels
                 CoverUrl = m.ThumbnailUrl,
                 SourceId = m.Source,
                 MangaUrl = m.Url,
+
                 Status = m.Status,
+                Genres = m.Genre ?? new(),
                 LastUpdate = m.LastUpdate
             };
         }
@@ -205,10 +208,10 @@ namespace MyMangaApp.ViewModels
             _ = LibraryVM.RefreshLibrary();
         }
 
-        public void GoToReader(ChapterItem? chapter = null, System.Collections.Generic.List<ChapterItem>? allChapters = null, long sourceId = 3, string mangaTitle = "", string mangaUrl = "")
+        public void GoToReader(ChapterItem? chapter = null, System.Collections.Generic.List<ChapterItem>? allChapters = null, long sourceId = 3, string mangaTitle = "", string mangaUrl = "", bool isNsfw = false)
         {
             if (CurrentPage != null) _navigationStack.Push(CurrentPage);
-            CurrentPage = new ReaderViewModel(this, _sourceManager, chapter, allChapters, _networkService, _libraryService, sourceId, mangaTitle, mangaUrl);
+            CurrentPage = new ReaderViewModel(this, _sourceManager, chapter, allChapters, _networkService, _libraryService, sourceId, mangaTitle, mangaUrl, isNsfw);
         }
 
         private BrowseViewModel? _browseVM;
@@ -338,13 +341,20 @@ namespace MyMangaApp.ViewModels
             {
                 CurrentPage = LibraryVM;
                 
-                // App Update Check
-                if (_settingsService.CheckAppUpdateOnStart)
-                {
-                     // Placeholder check
-                     // In future: Use an UpdateService
-                     // For now, silent unless we want to show "Checked"
-                }
+                     // App Update Check
+                     if (_settingsService.CheckAppUpdateOnStart)
+                     {
+                         var updateService = new Core.Services.UpdateService();
+                         try
+                         {
+                             var updateInfo = await updateService.CheckForUpdatesAsync();
+                             if (updateInfo.IsUpdateAvailable)
+                             {
+                                 ShowNotification($"New version available: {updateInfo.LatestVersion}!", NotificationType.Success);
+                             }
+                         }
+                         catch {}
+                     }
 
                 // Check if we need to update library on startup
                 if (_settingsService.UpdateOnStart)

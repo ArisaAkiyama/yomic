@@ -60,7 +60,7 @@
                          <!-- Use Grid to push button to right, similar to LibraryView search row -->
                         <Grid ColumnDefinitions="*, Auto" Margin="0,20,0,0">
                              <Button Grid.Column="1" Command="{Binding RefreshCommand}"
-                                     Background="{DynamicResource SidebarBackground}" Foreground="#0078D7" 
+                                     Background="{DynamicResource SidebarBackground}" Foreground="#FF9900" 
                                      CornerRadius="20" Width="40" Height="40" Padding="0"
                                      ToolTip.Tip="Sync Library">
                                  <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
@@ -76,7 +76,7 @@
                                 <StackPanel Margin="0,0,0,25">
                                     <!-- Group Header -->
                                     <Border BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1" Margin="0,0,0,10" Padding="0,0,0,5">
-                                         <TextBlock Text="{Binding Header}" FontSize="16" FontWeight="Bold" Foreground="#0078D7"/>
+                                         <TextBlock Text="{Binding Header}" FontSize="16" FontWeight="Bold" Foreground="#FF9900"/>
                                     </Border>
                                     
                                     <!-- Items in Group -->
@@ -133,7 +133,7 @@
                                                                            IsVisible="{Binding IsDownloaded}" 
                                                                            ToolTip.Tip="Downloaded" VerticalAlignment="Center"/>
                                                                            
-                                                                <TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" Foreground="#89B4FA" FontSize="16"
+                                                                <TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" Foreground="#FF9900" FontSize="16"
                                                                            IsVisible="{Binding !IsRead}" 
                                                                            ToolTip.Tip="New Chapter" VerticalAlignment="Center"/>
                                                             </StackPanel>
@@ -157,7 +157,7 @@
                        <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="#45475A" HorizontalAlignment="Center"/>
                        <TextBlock Text="Updates is Empty" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
                        <TextBlock Text="Add manga to your library to see updates here." Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
-                       <Button Command="{Binding GoToLibraryCommand}" Content="Go to Library" HorizontalAlignment="Center" Background="#89B4FA" Foreground="#1E1E2E" Padding="20,10" CornerRadius="8" Margin="0,15,0,0"/>
+                       <Button Command="{Binding GoToLibraryCommand}" Content="Go to Library" HorizontalAlignment="Center" Background="#FF9900" Foreground="#1E1E2E" Padding="20,10" CornerRadius="8" Margin="0,15,0,0"/>
                    </StackPanel>
 
                   <!-- Case 2: Library Has Items but No Updates -->
@@ -165,7 +165,7 @@
                        <TextBlock Text="&#xE9D5;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="#45475A" HorizontalAlignment="Center"/>
                        <TextBlock Text="No Recent Updates" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
                        <TextBlock Text="New chapters from your library will appear here." Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
-                       <Button Command="{Binding RefreshCommand}" Content="Check Now" HorizontalAlignment="Center" Background="#89B4FA" Foreground="#1E1E2E" Padding="20,10" CornerRadius="8" Margin="0,15,0,0"/>
+                       <Button Command="{Binding RefreshCommand}" Content="Check Now" HorizontalAlignment="Center" Background="#FF9900" Foreground="#1E1E2E" Padding="20,10" CornerRadius="8" Margin="0,15,0,0"/>
                   </StackPanel>
             </StackPanel>
         </Panel>

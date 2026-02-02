@@ -13,3 +13,5 @@ All notable changes to **Yomic** will be documented in this file.
 - Integrated VPN bypass for restricted sources.
 - Modern Fluent UI with Dark/Light mode.
 - Settings for customization (Secure Screen, Auto-Update).
+- **Auto Update Checker**: Check for new releases directly from the app.
+- **Smart Installer**: Supports auto-updates, firewall configuration, and clean uninstalls.

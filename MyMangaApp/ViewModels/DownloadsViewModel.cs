@@ -21,7 +21,7 @@ namespace MyMangaApp.ViewModels
         
         public string StatusColor => _request.Status switch 
         {
-            "Downloading" => "#0078D7",
+            "Downloading" => "#FF9900",
             "Completed" => "#A6E3A1",
             "Error" => "#F38BA8",
             "Paused" => "#F9E2AF",

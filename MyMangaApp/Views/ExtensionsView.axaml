@@ -120,7 +120,7 @@
                 </TextBox>
                 
                 <Button Grid.Column="2" Classes="ExtBtn" Margin="10,0,0,0"
-                        Background="#0078D7" Foreground="#FFFFFF" FontWeight="Bold"
+                        Background="#FF9900" Foreground="#FFFFFF" FontWeight="Bold"
                         Command="{Binding AddExtensionCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
@@ -159,7 +159,7 @@
                                             </Border>
                                             
                                             <!-- Installed Badge -->
-                                            <Border CornerRadius="4" Background="#89B4FA" Padding="6,2" IsVisible="{Binding IsInstalled}">
+                                            <Border CornerRadius="4" Background="#FF9900" Padding="6,2" IsVisible="{Binding IsInstalled}">
                                                 <TextBlock Text="INSTALLED" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold"/>
                                             </Border>
                                         </StackPanel>
@@ -176,15 +176,25 @@
                                                 CommandParameter="{Binding}"
                                                 Margin="0,0,8,0"/>
 
-                                        <!-- Uninstall Button (Visible if Installed) -->
-                                        <Button Classes="ExtBtn" Background="{DynamicResource HoverBackground}" Foreground="#F38BA8" Content="Uninstall"
-                                                IsVisible="{Binding IsInstalled}"
-                                                Command="{Binding $parent[UserControl].((vm:ExtensionsViewModel)DataContext).ToggleInstallCommand}"
-                                                CommandParameter="{Binding}"/>
+                                        <!-- Uninstall Action Group -->
+                                        <Panel IsVisible="{Binding IsInstalled}">
+                                            <Button Classes="ExtBtn" Background="{DynamicResource HoverBackground}" Foreground="#F38BA8" Content="Uninstall"
+                                                    IsVisible="{Binding !IsInstalling}"
+                                                    Command="{Binding $parent[UserControl].((vm:ExtensionsViewModel)DataContext).ToggleInstallCommand}"
+                                                    CommandParameter="{Binding}"/>
+
+                                            <Button Classes="ExtBtn" Background="{DynamicResource HoverBackground}" Foreground="{DynamicResource SecondaryText}" 
+                                                    IsVisible="{Binding IsInstalling}" IsHitTestVisible="False">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <Border Classes="Loader" Width="16" Height="16" BorderThickness="2" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Uninstalling..." VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </Panel>
 
                                         <!-- Install Action Group -->
                                         <Panel IsVisible="{Binding IsInstalled, Converter={x:Static BoolConverters.Not}}">
-                                            <Button Classes="ExtBtn" Background="#89B4FA" Foreground="#FFFFFF" Content="Install"
+                                            <Button Classes="ExtBtn" Background="#FF9900" Foreground="#FFFFFF" Content="Install"
                                                     IsVisible="{Binding !IsInstalling}"
                                                     Command="{Binding $parent[UserControl].((vm:ExtensionsViewModel)DataContext).ToggleInstallCommand}"
                                                     CommandParameter="{Binding}"/>

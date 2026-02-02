@@ -11,14 +11,14 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#CDD6F4"/>
             <Setter Property="Padding" Value="10"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="50"/>
         </Style>
         <Style Selector="Button.NavBtn:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#333"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#FF9900"/>
+            <Setter Property="Foreground" Value="#1E1E2E"/>
         </Style>
         <Style Selector="TextBlock.Active">
-             <Setter Property="Foreground" Value="#0078D7"/>
+             <Setter Property="Foreground" Value="#FF9900"/>
         </Style>
         
         <!-- Image Animation Styles -->
@@ -50,7 +50,7 @@
             </Setter>
         </Style>
         <Style Selector="Button.ActionBtn:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#0078D7"/>
+            <Setter Property="Background" Value="#FF9900"/>
             <Setter Property="Foreground" Value="#1E1E2E"/>
         </Style>
         <Style Selector="Button.ActionBtn:pointerover">
@@ -58,25 +58,58 @@
         </Style>
     </UserControl.Styles>
 
-    <Panel Background="Transparent" 
-           PointerPressed="OnReaderPointerPressed" 
-           PointerReleased="OnReaderPointerReleased"
-           PointerMoved="OnRootPointerMoved">
+    <Panel Background="Transparent">
         <!-- Layer 0: Image Render -->
         <Panel>
             <!-- Webtoon Mode -->
             <ScrollViewer x:Name="MainScroll" IsVisible="{Binding IsWebtoon}"
-                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden"
                           ScrollChanged="OnScrollChanged">
-                 <ItemsControl ItemsSource="{Binding Pages}" MaxWidth="800" HorizontalAlignment="Center">
-                     <ItemsControl.ItemsPanel>
+                 <!-- Virtualizing ListBox for Webtoon Mode -->
+                 <ListBox ItemsSource="{Binding Pages}" 
+                          MaxWidth="800" 
+                          HorizontalAlignment="Center"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                          SelectionMode="Single">
+                     <ListBox.Styles>
+                         <!-- Remove ListBoxItem default padding/margin/hover -->
+                         <Style Selector="ListBoxItem">
+                             <Setter Property="Padding" Value="0"/>
+                             <Setter Property="Margin" Value="0"/>
+                             <Setter Property="MinHeight" Value="100"/> <!-- Hint for virtualization -->
+                             <Setter Property="Template">
+                                 <ControlTemplate>
+                                     <ContentPresenter Name="PART_ContentPresenter"
+                                                       Background="{TemplateBinding Background}"
+                                                       BorderBrush="{TemplateBinding BorderBrush}"
+                                                       BorderThickness="{TemplateBinding BorderThickness}"
+                                                       ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                       Content="{TemplateBinding Content}"
+                                                       Padding="{TemplateBinding Padding}"
+                                                       VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                       HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                                 </ControlTemplate>
+                             </Setter>
+                         </Style>
+                         <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                             <Setter Property="Background" Value="Transparent"/>
+                         </Style>
+                         <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                             <Setter Property="Background" Value="Transparent"/>
+                         </Style>
+                     </ListBox.Styles>
+                     
+                     <ListBox.ItemsPanel>
                          <ItemsPanelTemplate>
-                             <StackPanel Spacing="0" HorizontalAlignment="Center"/>
+                             <VirtualizingStackPanel Orientation="Vertical"/>
                          </ItemsPanelTemplate>
-                     </ItemsControl.ItemsPanel>
-                     <ItemsControl.ItemTemplate>
+                     </ListBox.ItemsPanel>
+                     
+                     <ListBox.ItemTemplate>
                          <DataTemplate x:DataType="vm:PageViewModel">
-                             <Panel Margin="0"> <!-- Seamless: No Margin -->
+                             <!-- AttachedToVisualTree triggers Lazy Load -->
+                             <Panel Margin="0" AttachedToVisualTree="OnPageAttached"> 
                                  <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" 
                                             IsVisible="{Binding IsLoading}"/>
                                  <Image Classes="PageImage"
@@ -84,13 +117,17 @@
                                         Source="{Binding Image}" 
                                         Stretch="Uniform" 
                                         HorizontalAlignment="Center"
-                                        IsVisible="{Binding !IsLoading}"/>
+                                        IsVisible="{Binding !IsLoading}">
+                                     <Image.Effect>
+                                         <BlurEffect Radius="{Binding BlurRadius}"/>
+                                     </Image.Effect>
+                                 </Image>
                                  <TextBlock Text="{Binding Error}" Foreground="Red" HorizontalAlignment="Center"
                                             IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                              </Panel>
                          </DataTemplate>
-                     </ItemsControl.ItemTemplate>
-                 </ItemsControl>
+                     </ListBox.ItemTemplate>
+                 </ListBox>
             </ScrollViewer>
 
             <!-- Paged Mode -->
@@ -102,7 +139,11 @@
                                  <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" VerticalAlignment="Center"
                                             IsVisible="{Binding IsLoading}"/>
                                  <Image Source="{Binding Image}" Stretch="Uniform" Margin="10"
-                                        IsVisible="{Binding !IsLoading}"/>
+                                        IsVisible="{Binding !IsLoading}">
+                                     <Image.Effect>
+                                         <BlurEffect Radius="{Binding BlurRadius}"/>
+                                     </Image.Effect>
+                                 </Image>
                                  <TextBlock Text="{Binding Error}" Foreground="Red" HorizontalAlignment="Center" VerticalAlignment="Center"
                                             IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                              </Panel>
@@ -115,92 +156,80 @@
 
 
         <!-- Layer 2: HUD (Head Up Display) -->
-        <Grid RowDefinitions="Auto, *, Auto" IsVisible="{Binding IsMenuVisible}">
+        <Grid RowDefinitions="Auto, *, Auto">
             
-            <!-- Top Menu -->
-            <Border Grid.Row="0" Background="#CC11111B" Padding="20,15">
-                <Grid ColumnDefinitions="Auto, *, Auto">
-                    <Button Grid.Column="0" Classes="ActionBtn" Command="{Binding BackCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
-                            <TextBlock Text="Back" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
-                        </StackPanel>
+            <!-- Top Menu (Header) - Restored & Styled -->
+            <Border Grid.Row="0" Background="#F21E1E2E" 
+                    IsVisible="{Binding IsHeaderVisible}"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                    Padding="20,10">
+
+                <Grid>
+                    <!-- Back Button (Left) -->
+                    <Button Classes="NavBtn" 
+                            Command="{Binding BackCommand}"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center" FontSize="18"/>
                     </Button>
-                    
-                    <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                        <TextBlock Text="{Binding Title}" Foreground="#CDD6F4" FontWeight="Bold" HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding ChapterTitle}" Foreground="#A6ADC8" FontSize="12" HorizontalAlignment="Center"/>
-                        <!-- Offline Mode Badge -->
-                        <Border Background="#F38BA8" CornerRadius="4" Padding="8,2" Margin="0,5,0,0"
-                                HorizontalAlignment="Center"
-                                IsVisible="{Binding !IsOnline}">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="&#xEA8F;" FontFamily="Segoe Fluent Icons" Foreground="#1E1E2E" FontSize="12"/>
-                                <TextBlock Text="OFFLINE - Requires Internet" Foreground="#1E1E2E" FontWeight="Bold" FontSize="11"/>
-                            </StackPanel>
-                        </Border>
+
+                    <!-- Title Info (Center) -->
+                    <StackPanel Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                         <TextBlock Text="{Binding Title}" Foreground="#CDD6F4" FontWeight="Bold" HorizontalAlignment="Center" FontSize="16"/>
+                         <TextBlock Text="{Binding ChapterTitle}" Foreground="#A6ADC8" FontSize="12" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- Spacer -->
-            <Border Grid.Row="1" IsHitTestVisible="False"/>
+            <!-- Bottom Menu (Fixed Bottom Bar) -->
+            <Border Grid.Row="2" Background="#F21E1E2E" 
+                    IsVisible="{Binding IsFooterVisible}"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
+                    Padding="30,15">
 
-            <!-- Bottom Menu (Floating) -->
-            <Border Grid.Row="2" Background="Transparent" 
-                    HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                    Padding="0,0,0,40">
-                <Border Background="#F21E1E2E" CornerRadius="24" Padding="30,20" 
-                        BoxShadow="0 8 32 0 #66000000" MinWidth="600">
-                    <StackPanel Spacing="10">
-                        <!-- Slider Row -->
-                        <Grid ColumnDefinitions="Auto, *, Auto">
-                            <TextBlock Foreground="#0078D7" FontWeight="Bold" Margin="0,0,15,0" VerticalAlignment="Center">
-                                <TextBlock.Text>
-                                    <MultiBinding StringFormat="{}{0}">
-                                        <Binding Path="CurrentPageIndex" Converter="{x:Static vm:MathConverters.AddOne}"/>
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
-                            
-                            <Slider Grid.Column="1" 
-                                    Name="ProgressSlider"
-                                    Minimum="0" 
-                                    Maximum="{Binding Pages.Count}" 
-                                    Value="{Binding CurrentPageIndex, Mode=TwoWay}"
-                                    ValueChanged="OnSliderValueChanged"
-                                    VerticalAlignment="Center"
-                                    Margin="0,2,0,0"/>
-                            
-                            <TextBlock Text="{Binding Pages.Count}" Grid.Column="2" Foreground="#6C7086" Margin="15,0,0,0" VerticalAlignment="Center"/>
-                        </Grid>
+                <StackPanel Spacing="10" MaxWidth="1200" HorizontalAlignment="Stretch">
+                    
+                    <!-- Single Row: Prev | Slider | Next -->
+                    <Grid ColumnDefinitions="Auto, *, Auto" VerticalAlignment="Center">
+                        
+                        <!-- Prev (Icon Only) -->
+                        <Button Grid.Column="0" Classes="NavBtn" 
+                                Command="{Binding PrevChapterCommand}"
+                                IsEnabled="{Binding HasPrevChapter}"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Background="Transparent"
+                                Padding="10"
+                                CornerRadius="20"
+                                ToolTip.Tip="Chapter Sebelumnya">
+                            <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center" FontSize="20"/>
+                        </Button>
 
-                        <!-- Controls Row -->
-                        <Grid ColumnDefinitions="*, Auto, *" Margin="0,5,0,0">
-                            <!-- Prev -->
-                            <Button Grid.Column="0" Classes="ActionBtn" HorizontalAlignment="Left"
-                                    Command="{Binding PrevChapterCommand}"
-                                    IsEnabled="{Binding HasPrevChapter}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Prev" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            
+                        <!-- Slider (Center) -->
+                        <Slider Grid.Column="1" 
+                                Name="ProgressSlider"
+                                Minimum="0" 
+                                Maximum="{Binding Pages.Count, Converter={x:Static vm:MathConverters.SubtractOne}}" 
+                                Value="{Binding CurrentPageIndex, Mode=TwoWay}"
+                                ValueChanged="OnSliderValueChanged"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Center"
+                                Margin="15,0"/>
 
-
-                            <!-- Next -->
-                            <Button Grid.Column="2" Classes="ActionBtn" HorizontalAlignment="Right"
-                                    Command="{Binding NextChapterCommand}"
-                                    IsEnabled="{Binding HasNextChapter}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="Next" VerticalAlignment="Center"/>
-                                    <TextBlock Text="&#xE72A;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                        </Grid>
-                    </StackPanel>
-                </Border>
+                        <!-- Next (Icon Only) -->
+                        <Button Grid.Column="2" Classes="NavBtn" 
+                                Command="{Binding NextChapterCommand}"
+                                IsEnabled="{Binding HasNextChapter}"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Background="Transparent" 
+                                CornerRadius="20"
+                                Padding="10"
+                                ToolTip.Tip="Chapter Selanjutnya"> 
+                            <TextBlock Text="&#xE72A;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center" FontSize="20"/>
+                        </Button>
+                    </Grid>
+                </StackPanel>
             </Border>
         </Grid>
 

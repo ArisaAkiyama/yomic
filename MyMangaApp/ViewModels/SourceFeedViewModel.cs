@@ -50,7 +50,11 @@ namespace MyMangaApp.ViewModels
         public bool IsMangaDexBlocked
         {
             get => _isMangaDexBlocked;
-            set => this.RaiseAndSetIfChanged(ref _isMangaDexBlocked, value);
+            set 
+            {
+                this.RaiseAndSetIfChanged(ref _isMangaDexBlocked, value);
+                this.RaisePropertyChanged(nameof(IsPaginationVisible));
+            }
         }
 
         public ReactiveCommand<Unit, Unit> OpenSettingsCommand { get; }
@@ -113,7 +117,7 @@ namespace MyMangaApp.ViewModels
             get => _isLatestMode; 
             set => this.RaiseAndSetIfChanged(ref _isLatestMode, value); 
         }
-        public bool IsPaginationVisible => !_isLatestMode;
+        public bool IsPaginationVisible => !_isLatestMode && !IsMangaDexBlocked;
 
         // Filter Dialog
         private FilterDialogViewModel? _filterVM;

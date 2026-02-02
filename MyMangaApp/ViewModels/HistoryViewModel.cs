@@ -61,6 +61,7 @@ namespace MyMangaApp.ViewModels
 
         public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
         public ReactiveCommand<Unit, Unit> ClearHistoryCommand { get; }
+        public ReactiveCommand<MangaItem, Unit> RemoveHistoryItemCommand { get; }
         public ReactiveCommand<MangaItem, Unit> OpenMangaCommand { get; }
 
         private readonly MainWindowViewModel _mainVM;
@@ -83,6 +84,7 @@ namespace MyMangaApp.ViewModels
 
             RefreshCommand = ReactiveCommand.CreateFromTask(LoadHistory);
             ClearHistoryCommand = ReactiveCommand.CreateFromTask(ClearHistoryAsync);
+            RemoveHistoryItemCommand = ReactiveCommand.CreateFromTask<MangaItem>(RemoveHistoryItemAsync);
             
             OpenMangaCommand = ReactiveCommand.CreateFromTask<MangaItem>(async item => 
             {
@@ -115,6 +117,26 @@ namespace MyMangaApp.ViewModels
             
             // Initial load
             _ = LoadHistory();
+        }
+
+        public async Task RemoveHistoryItemAsync(MangaItem item)
+        {
+            if (item == null) return;
+            
+            try 
+            {
+                 // 1. Remove from local list immediatey
+                 HistoryItems.Remove(item);
+                 HasItems = HistoryItems.Count > 0;
+                 
+                 // 2. Update DB
+                 using var context = new MyMangaApp.Core.Data.MangaDbContext();
+                 await context.Database.ExecuteSqlRawAsync("UPDATE Mangas SET LastViewed = 0 WHERE Url = {0}", item.MangaUrl);
+            }
+            catch (Exception ex)
+            {
+                 System.Diagnostics.Debug.WriteLine($"[HistoryVM] Error removing item: {ex}");
+            }
         }
 
         public async Task ClearHistoryAsync()
