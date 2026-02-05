@@ -119,14 +119,23 @@
                     </TextBox.InnerRightContent>
                 </TextBox>
                 
-                <Button Grid.Column="2" Classes="ExtBtn" Margin="10,0,0,0"
-                        Background="#FF9900" Foreground="#FFFFFF" FontWeight="Bold"
-                        Command="{Binding AddExtensionCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
-                        <TextBlock Text="Add" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
+                    <Button Classes="ExtBtn" Background="{DynamicResource SidebarBackground}" Foreground="{DynamicResource PrimaryText}" 
+                            Command="{Binding OpenRepoCommand}" ToolTip.Tip="Download All Extensions (GitHub)">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
+                            <TextBlock Text="Download" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="ExtBtn" Margin="0,0,0,0"
+                            Background="#FF9900" Foreground="#FFFFFF" FontWeight="Bold"
+                            Command="{Binding AddExtensionCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
+                            <TextBlock Text="Add" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
             </Grid>
 
             <!-- Status Message -->
@@ -170,17 +179,17 @@
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                         
                                         <!-- Verify Button (Visible if Installed AND Supports Verification e.g. Mangabats) -->
-                                        <Button Classes="ExtBtn" Background="#FAB387" Foreground="#1E1E2E" Content="Verify"
+                                        <Button x:CompileBindings="False" Classes="ExtBtn" Background="#FAB387" Foreground="#1E1E2E" Content="Verify"
                                                 IsVisible="{Binding CanVerify}"
-                                                Command="{Binding $parent[UserControl].((vm:ExtensionsViewModel)DataContext).VerifyExtensionCommand}"
+                                                Command="{Binding DataContext.VerifyExtensionCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 Margin="0,0,8,0"/>
 
                                         <!-- Uninstall Action Group -->
                                         <Panel IsVisible="{Binding IsInstalled}">
-                                            <Button Classes="ExtBtn" Background="{DynamicResource HoverBackground}" Foreground="#F38BA8" Content="Uninstall"
+                                            <Button x:CompileBindings="False" Classes="ExtBtn" Background="{DynamicResource HoverBackground}" Foreground="#F38BA8" Content="Uninstall"
                                                     IsVisible="{Binding !IsInstalling}"
-                                                    Command="{Binding $parent[UserControl].((vm:ExtensionsViewModel)DataContext).ToggleInstallCommand}"
+                                                    Command="{Binding DataContext.ToggleInstallCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}"/>
 
                                             <Button Classes="ExtBtn" Background="{DynamicResource HoverBackground}" Foreground="{DynamicResource SecondaryText}" 
@@ -194,9 +203,9 @@
 
                                         <!-- Install Action Group -->
                                         <Panel IsVisible="{Binding IsInstalled, Converter={x:Static BoolConverters.Not}}">
-                                            <Button Classes="ExtBtn" Background="#FF9900" Foreground="#FFFFFF" Content="Install"
+                                            <Button x:CompileBindings="False" Classes="ExtBtn" Background="#FF9900" Foreground="#FFFFFF" Content="Install"
                                                     IsVisible="{Binding !IsInstalling}"
-                                                    Command="{Binding $parent[UserControl].((vm:ExtensionsViewModel)DataContext).ToggleInstallCommand}"
+                                                    Command="{Binding DataContext.ToggleInstallCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}"/>
                                             
                                             <Button Classes="ExtBtn" Background="{DynamicResource HoverBackground}" Foreground="{DynamicResource SecondaryText}" 

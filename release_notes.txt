@@ -1,12 +1,20 @@
-# Release Notes
+# **Yomic v1.0.5** 🚀
 
-## v1.0.3
-- **Fixed**: "Install Now" button is now hidden during download process.
-- **Fixed**: Version Mismatch issue (Fresh Build).
-- **Core**: All changes from v1.0.2 included.
+### **What's New**
+#### **✨ New Chapter Badge**
+- Added a visual **"NEW"** badge next to chapters that haven't been seen before.
+- **Smart Detection**: automatically detects new releases by comparing chapter numbers.
+- **Auto-Clear**: The badge disappears automatically when you read the chapter or mark it as read.
 
-## v1.0.2
-- **Refactor**: Renamed project from `MyMangaApp` to `Yomic`.
-- **Fix**: Komiku extension now uses API endpoint to fix "Parsed 0 items" issue.
-- **Tools**: Separated Extensions to [ArisaAkiyama/extension-yomic](https://github.com/ArisaAkiyama/extension-yomic).
-- **Console**: Restored Console Window in Debug mode for better diagnostics.
+#### **🖱️ Context Menu (Right-Click)**
+You can now right-click on any chapter for quick actions:
+- **Mark as Read**: Instantly marks the chapter as read.
+- **Mark as Unread**: Reverts status to unread.
+- **Mark Previous as Read**: A powerful tool to quickly mark all older chapters as read in one go.
+
+### **🛠️ Improvements & Fixes**
+- **Installer Update**: The installer is now **Self-Contained**.
+  - It includes the .NET Runtime inside the installer (~100MB).
+  - **No need to install .NET manually anymore!** Just install and run.
+- **UI Responsiveness**: "Read" status updates are now instant and don't require a list refresh.
+- Refactored command architecture for better stability.

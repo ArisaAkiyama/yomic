@@ -8,7 +8,8 @@ namespace Yomic.ViewModels
     {
         Info,
         Success,
-        Error
+        Error,
+        Warning
     }
 
     public class NotificationViewModel : ViewModelBase
@@ -38,6 +39,7 @@ namespace Yomic.ViewModels
         public bool IsSuccess => Type == NotificationType.Success;
         public bool IsError => Type == NotificationType.Error;
         public bool IsInfo => Type == NotificationType.Info;
+        public bool IsWarning => Type == NotificationType.Warning;
 
         public async void Show(string message, NotificationType type = NotificationType.Info)
         {
@@ -47,6 +49,7 @@ namespace Yomic.ViewModels
             this.RaisePropertyChanged(nameof(IsSuccess));
             this.RaisePropertyChanged(nameof(IsError));
             this.RaisePropertyChanged(nameof(IsInfo));
+            this.RaisePropertyChanged(nameof(IsWarning));
 
             IsVisible = true;
             await Task.Delay(3000);

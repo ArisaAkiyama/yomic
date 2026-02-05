@@ -103,8 +103,8 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Button Background="Transparent" Padding="0" Margin="0,0,20,20"
-                                        Command="{Binding $parent[UserControl].((vm:BrowseViewModel)DataContext).OpenSourceCommand}"
+                                <Button x:CompileBindings="False" Background="Transparent" Padding="0" Margin="0,0,20,20"
+                                        Command="{Binding DataContext.OpenSourceCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
                                         CommandParameter="{Binding}">
                                     <Button.Styles>
                                         <Style Selector="Button:pointerover /template/ ContentPresenter">

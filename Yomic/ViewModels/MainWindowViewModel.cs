@@ -94,7 +94,7 @@ namespace Yomic.ViewModels
         private LibraryViewModel? _libraryVM;
         public LibraryViewModel LibraryVM 
         { 
-            get => _libraryVM ??= new LibraryViewModel(this, _libraryService, _networkService, _imageCacheService);
+            get => _libraryVM ??= new LibraryViewModel(this, _libraryService, _networkService, _imageCacheService, _settingsService);
         }
 
         private readonly Core.Services.SourceManager _sourceManager;
@@ -182,6 +182,12 @@ namespace Yomic.ViewModels
                 {
                     _ = LibraryVM.RefreshLibrary();
                 }
+                
+                // Refresh read state when returning to manga detail
+                if (CurrentPage is MangaDetailViewModel detailVM)
+                {
+                    detailVM.RefreshReadState();
+                }
             }
             else
             {
@@ -248,7 +254,7 @@ namespace Yomic.ViewModels
         private UpdatesViewModel? _updatesVM;
         public UpdatesViewModel UpdatesVM
         {
-            get => _updatesVM ??= new UpdatesViewModel(_libraryService, _networkService, _sourceManager, _downloadService, this);
+            get => _updatesVM ??= new UpdatesViewModel(_libraryService, _networkService, _sourceManager, _downloadService, _imageCacheService, this);
         }
 
         public void GoToUpdates()

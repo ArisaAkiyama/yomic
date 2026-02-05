@@ -76,7 +76,7 @@
                         </Button>
 
                         <!-- Main Navigation -->
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,-12,0" Padding="0,0,12,0">
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <StackPanel Spacing="4">
                                 <Button Classes="NavBtn" Click="OnLibraryClick">
                                     <StackPanel Orientation="Horizontal" Spacing="16">

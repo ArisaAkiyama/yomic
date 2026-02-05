@@ -19,26 +19,52 @@ namespace Yomic.Core.Services
         {
             if (_browser != null) return;
 
-            // Determine if we need to download browser
-            var browserFetcher = new BrowserFetcher();
-            await browserFetcher.DownloadAsync(); // Downloads default revision
-
-            _browser = await Puppeteer.LaunchAsync(new LaunchOptions
+            try 
             {
-                Headless = true, // Set to false to see it in action (debug)
-                Args = new[] 
-                { 
-                    "--no-sandbox", 
-                    "--disable-setuid-sandbox",
-                    "--disable-infobars",
-                    "--disable-blink-features=AutomationControlled", // Critical for Stealth
-                    "--enable-features=EncryptedClientHello", // Bypass SNI Blocking
-                    "--dns-over-https-url=https://cloudflare-dns.com/dns-query", // Force Chrome to use DoH
-                    "--ignore-certificate-errors", // Bypass SSL/TLS cert issues
-                    "--ignore-ssl-errors",
-                    "--allow-running-insecure-content"
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var downloadPath = System.IO.Path.Combine(appData, "Yomic", "puppeteer");
+                
+                if (!System.IO.Directory.Exists(downloadPath))
+                    System.IO.Directory.CreateDirectory(downloadPath);
+
+                Console.WriteLine($"[CloudflareService] Initializing Puppeteer at: {downloadPath}");
+
+                // Determine if we need to download browser
+                var browserFetcher = new BrowserFetcher(new BrowserFetcherOptions { Path = downloadPath });
+                var revisionInfo = await browserFetcher.DownloadAsync(); // Downloads default revision and returns info
+
+                var exePath = browserFetcher.GetExecutablePath(revisionInfo.BuildId);
+                
+                if (!System.IO.File.Exists(exePath))
+                {
+                     Console.WriteLine("[CloudflareService] Chrome executable not found after download attempt.");
+                     // Retry logic or fail gracefully could go here, but Puppeteer usually throws.
                 }
-            });
+
+                _browser = await Puppeteer.LaunchAsync(new LaunchOptions
+                {
+                    Headless = true, 
+                    ExecutablePath = exePath, // Explicitly use the downloaded path
+                    Args = new[] 
+                    { 
+                        "--no-sandbox", 
+                        "--disable-setuid-sandbox",
+                        "--disable-infobars",
+                        "--disable-blink-features=AutomationControlled", 
+                        "--enable-features=EncryptedClientHello", 
+                        "--dns-over-https-url=https://cloudflare-dns.com/dns-query", 
+                        "--ignore-certificate-errors", 
+                        "--ignore-ssl-errors",
+                        "--allow-running-insecure-content"
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CloudflareService] CRITICAL INIT ERROR: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
+                throw; // Rethrow to ensure caller knows, but logged first
+            }
         }
 
         public async Task<(string? UserAgent, Dictionary<string, string> Cookies)> GetTokensAsync(string url)

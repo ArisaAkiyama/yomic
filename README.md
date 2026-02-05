@@ -8,6 +8,7 @@
 Discover and read manga, webtoons, comics, and more – easier than ever on your Windows desktop.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+![Visitors](https://api.visitorbadge.io/api/visitors?path=ArisaAkiyama/yomic&label=Visitors&countColor=%2337d67a)
 
 </div>
 

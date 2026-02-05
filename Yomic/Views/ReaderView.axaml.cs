@@ -31,6 +31,16 @@ namespace Yomic.Views
             // Custom Scroll Speed Handler
             // ScrollViewer consumes the event by default, so we need handledEventsToo: true
             this.AddHandler(PointerWheelChangedEvent, OnReaderPointerWheelChanged, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+
+            // Pan / Drag Handlers
+            // Pan / Drag Handlers
+            var mainScroll = this.FindControl<ScrollViewer>("MainScroll");
+            if (mainScroll != null)
+            {
+                mainScroll.AddHandler(PointerPressedEvent, OnPanPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+                mainScroll.AddHandler(PointerReleasedEvent, OnPanPointerReleased, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+                mainScroll.AddHandler(PointerMovedEvent, OnPanPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+            }
         }
 
         private void OnReaderPointerWheelChanged(object? sender, PointerWheelEventArgs e)
@@ -189,6 +199,52 @@ namespace Yomic.Views
                 // Lazy Load when attached to visual tree (scrolled into view)
                 page.Load();
             }
+        }
+
+        // --- Drag / Pan Support ---
+        private bool _isPanning = false;
+        private Point _lastPanPosition;
+
+        private void OnPanPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            // Only Left Click and if we are in Webtoon mode (or Paged mode inside ScrollViewer)
+            var props = e.GetCurrentPoint(this).Properties;
+            if (props.IsLeftButtonPressed && MainScroll != null)
+            {
+                _isPanning = true;
+                _lastPanPosition = e.GetPosition(this);
+                
+                // Capture pointer to ensure smooth dragging and prevent "jumping"
+                if (sender is Control control) e.Pointer.Capture(control);
+                
+                // Change cursor to Hand/SizeAll
+                this.Cursor = new Cursor(StandardCursorType.SizeAll);
+            }
+        }
+
+        private void OnPanPointerReleased(object? sender, PointerReleasedEventArgs e)
+        {
+            if (_isPanning)
+            {
+                _isPanning = false;
+                e.Pointer.Capture(null);
+                
+                // Reset Cursor
+                this.Cursor = Cursor.Default;
+            }
+        }
+
+        private void OnPanPointerMoved(object? sender, PointerEventArgs e)
+        {
+            if (!_isPanning || MainScroll == null) return;
+
+            var currentPosition = e.GetPosition(this);
+            var delta = _lastPanPosition - currentPosition; 
+
+            // Apply new offset
+            MainScroll.Offset = new Vector(MainScroll.Offset.X + delta.X, MainScroll.Offset.Y + delta.Y);
+            
+            _lastPanPosition = currentPosition;
         }
     }
 }

@@ -23,6 +23,17 @@ namespace Yomic.Core.Services
                                 .ToListAsync();
         }
 
+        public async Task<List<Manga>> GetHistoryMangaAsync()
+        {
+            using var context = new MangaDbContext();
+            // Fetch non-favorite items that have been read/viewed
+            return await context.Mangas
+                                .Include(m => m.Chapters)
+                                .Where(m => !m.Favorite && m.LastViewed > 0)
+                                .OrderByDescending(m => m.LastViewed)
+                                .ToListAsync();
+        }
+
         public async Task<int> GetLibraryCountAsync()
         {
             using var context = new MangaDbContext();
@@ -245,7 +256,29 @@ namespace Yomic.Core.Services
                     // 3. Add New
                     // 4. Remove Missing (Ghost chapters) - ONLY if not downloaded
                     
-                    var dbChaptersDict = dbManga.Chapters.ToDictionary(c => c.Url);
+                    // FIX: Duplicate URL Crash (ArgumentException)
+                    // Occasionally, some sources or prior sync failures might have created duplicate rows in DB.
+                    // We identify them, keep the most "complete" one (downloaded), and prune the rest.
+                    var allDbChapters = dbManga.Chapters.ToList();
+                    var dbChaptersDict = new Dictionary<string, Chapter>();
+                    var duplicatesToRemove = new List<Chapter>();
+
+                    foreach (var group in allDbChapters.GroupBy(c => c.Url))
+                    {
+                        var list = group.OrderByDescending(c => c.IsDownloaded).ThenByDescending(c => c.Id).ToList();
+                        dbChaptersDict[group.Key] = list[0];
+                        
+                        if (list.Count > 1)
+                        {
+                            duplicatesToRemove.AddRange(list.Skip(1));
+                        }
+                    }
+
+                    if (duplicatesToRemove.Any())
+                    {
+                        Console.WriteLine($"[LibraryService] Cleaning up {duplicatesToRemove.Count} duplicate chapters for {dbManga.Title}");
+                        context.Chapters.RemoveRange(duplicatesToRemove);
+                    }
                     var newChapters = new List<Chapter>();
                     long now = DateTimeOffset.Now.ToUnixTimeMilliseconds();
                     
@@ -257,7 +290,11 @@ namespace Yomic.Core.Services
                     // Track URLs found in source to identify missing ones later
                     var sourceUrls = new HashSet<string>();
 
-                    foreach (var ch in chapters)
+                    // FIX: Duplicate Incoming (Source Side)
+                    // Some sources might return the same chapter URL twice in one list.
+                    var uniqueIncoming = chapters.GroupBy(c => c.Url).Select(g => g.First()).ToList();
+
+                    foreach (var ch in uniqueIncoming)
                     {
                         sourceUrls.Add(ch.Url);
                         
@@ -276,6 +313,27 @@ namespace Yomic.Core.Services
                             ch.MangaId = dbManga.Id;
                             // Mark as "Old" (0) if this is the first time fetching chapters for this manga
                             ch.DateFetch = (isInitialLoad || isEmptyLibrary) ? 0 : now; 
+
+                            // NEW BADGE LOGIC
+                            // Only mark as New if:
+                            // 1. Not initial load
+                            // 2. Library is not empty (has history)
+                            // 3. Chapter Number is strictly greater than the previous max
+                            if (!isInitialLoad && !isEmptyLibrary)
+                            {
+                                // Find max from existing DB chapters (cached dict has the latest state)
+                                float maxExisting = 0;
+                                if (dbManga.Chapters.Any())
+                                {
+                                    maxExisting = dbManga.Chapters.Max(c => c.ChapterNumber);
+                                }
+                                
+                                if (ch.ChapterNumber > maxExisting)
+                                {
+                                    ch.IsNew = true;
+                                }
+                            }
+                            
                             newChapters.Add(ch);
                         }
                     }
@@ -370,7 +428,7 @@ namespace Yomic.Core.Services
             }
         }
 
-        public async Task MarkChapterAsReadAsync(string chapterUrl, long sourceId = 0, string mangaUrl = "", string chapterTitle = "", float chapterNumber = -1)
+        public async Task SetChapterReadStatusAsync(string chapterUrl, bool isRead, long sourceId = 0, string mangaUrl = "", string chapterTitle = "", float chapterNumber = -1)
         {
             try
             {
@@ -379,13 +437,14 @@ namespace Yomic.Core.Services
                 
                 if (chapter != null)
                 {
-                    chapter.Read = true;
+                    chapter.Read = isRead;
+                    if (isRead) chapter.IsNew = false; // Clear "New" badge when read
                     await context.SaveChangesAsync();
-                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Marked chapter as read: {chapter.Name}");
+                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Set chapter read status to {isRead}: {chapter.Name}");
                 }
-                else if (sourceId > 0 && !string.IsNullOrEmpty(mangaUrl)) 
+                else if (isRead && sourceId > 0 && !string.IsNullOrEmpty(mangaUrl)) 
                 {
-                    // Fallback: Chapter doesn't exist (Online reading), create it
+                    // Fallback: Chapter doesn't exist (Online reading), create it ONLY if marking as Read
                      var manga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
                      if (manga != null)
                      {
@@ -407,7 +466,7 @@ namespace Yomic.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LibraryService] Error marking as read: {ex}");
+                System.Diagnostics.Debug.WriteLine($"[LibraryService] Error setting read status: {ex}");
             }
         }
 
@@ -542,6 +601,31 @@ namespace Yomic.Core.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[LibraryService] Error clearing database: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Clears the read status of all chapters without deleting any data.
+        /// </summary>
+        public async Task ClearAllReadHistoryAsync()
+        {
+            try
+            {
+                using var context = new MangaDbContext();
+                var readChapters = await context.Chapters.Where(c => c.Read).ToListAsync();
+                
+                foreach (var chapter in readChapters)
+                {
+                    chapter.Read = false;
+                }
+                
+                await context.SaveChangesAsync();
+                System.Diagnostics.Debug.WriteLine($"[LibraryService] Cleared read status for {readChapters.Count} chapters.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LibraryService] Error clearing read history: {ex.Message}");
                 throw;
             }
         }

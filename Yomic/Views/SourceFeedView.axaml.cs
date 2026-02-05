@@ -11,9 +11,10 @@ namespace Yomic.Views
             InitializeComponent();
             
             // Infinite Scroll Logic
-            MainScrollViewer.ScrollChanged += (s, e) => 
+            // Infinite Scroll Logic (Attached to ListBox's internal ScrollViewer)
+            MainListBox.AddHandler(ScrollViewer.ScrollChangedEvent, (s, e) => 
             {
-                if (s is ScrollViewer sv)
+                if (e.Source is ScrollViewer sv)
                 {
                     // Debug Scroll
                     // System.Diagnostics.Debug.WriteLine($"[Scroll] Off: {sv.Offset.Y}, Ext: {sv.Extent.Height}, View: {sv.Viewport.Height}");
@@ -34,7 +35,7 @@ namespace Yomic.Views
                         }
                     }
                 }
-            };
+            });
         }
     }
 }

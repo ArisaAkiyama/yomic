@@ -14,6 +14,10 @@ class Program
     {
         try
         {
+            // Redirect Debug.WriteLine to Console
+            System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.TextWriterTraceListener(System.Console.Out));
+            System.Diagnostics.Trace.AutoFlush = true;
+
             BuildAvaloniaApp()
                 .StartWithClassicDesktopLifetime(args);
         }

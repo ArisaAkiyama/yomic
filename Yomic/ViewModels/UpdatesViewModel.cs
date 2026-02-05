@@ -16,8 +16,7 @@ namespace Yomic.ViewModels
         private readonly LibraryService _libraryService;
         private readonly NetworkService _networkService;
         private readonly SourceManager _sourceManager;
-        private readonly DownloadService _downloadService;
-        private readonly MainWindowViewModel _mainVM;
+
 
         private ObservableCollection<UpdatesGroupParams> _groupedUpdates = new();
         public ObservableCollection<UpdatesGroupParams> GroupedUpdates
@@ -52,12 +51,17 @@ namespace Yomic.ViewModels
         public ReactiveCommand<ChapterItem, Unit> OpenChapterCommand { get; }
         public ReactiveCommand<Unit, Unit> GoToLibraryCommand { get; }
 
-        public UpdatesViewModel(LibraryService libraryService, NetworkService networkService, SourceManager sourceManager, DownloadService downloadService, MainWindowViewModel mainVM)
+        private readonly DownloadService _downloadService;
+        private readonly ImageCacheService _imageCacheService;
+        private readonly MainWindowViewModel _mainVM;
+
+        public UpdatesViewModel(LibraryService libraryService, NetworkService networkService, SourceManager sourceManager, DownloadService downloadService, ImageCacheService imageCacheService, MainWindowViewModel mainVM)
         {
             _libraryService = libraryService;
             _networkService = networkService;
             _sourceManager = sourceManager;
             _downloadService = downloadService;
+            _imageCacheService = imageCacheService;
             _mainVM = mainVM;
 
             // Offline Logic
@@ -186,23 +190,33 @@ namespace Yomic.ViewModels
                     return;
                 }
 
-                // Group by Date
+                // Group by Date for UI first
                 var groups = chapters
                     .GroupBy(c => GetTimeHeader(c.DateFetch))
                     .Select(g => new UpdatesGroupParams
                     {
                         Header = g.Key,
-                        Items = new ObservableCollection<ChapterItem>(g.Select(c => new ChapterItem(null!, null!) 
-                        {
-                            Title = c.Name,
-                            Url = c.Url,
-                            // Store Manga Ref for navigation
-                            MangaRef = c.Manga,
-                            // Formatted time ago
-                            Date = GetTimeAgo(c.DateFetch),
-                            IsRead = c.Read,
-                            IsDownloaded = c.IsDownloaded
-                        }))
+                        // Within each group (Today, Yesterday, etc.), deduplicate by Manga
+                        Items = new ObservableCollection<ChapterItem>(g
+                            .GroupBy(c => c.MangaId)
+                            .Select(mg => mg.OrderByDescending(c => c.DateFetch).First())
+                            .OrderByDescending(c => c.DateFetch)
+                            .Select(c => 
+                            {
+                                 // Instantiate with null actions for context menu (Updates view doesn't support them yet)
+                                 var item = new ChapterItem(null, null, null, null, null) 
+                                 {
+                                    Title = c.Name,
+                                    Url = c.Url,
+                                    MangaRef = c.Manga,
+                                    Date = GetTimeAgo(c.DateFetch),
+                                    IsRead = c.Read,
+                                    IsDownloaded = c.IsDownloaded
+                                 };
+                                 // Fire and forget image load
+                                 _ = LoadCover(item);
+                                 return item;
+                            }))
                     })
                     .ToList();
 
@@ -284,6 +298,102 @@ namespace Yomic.ViewModels
             if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
             if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
             return $"{(int)diff.TotalDays}d ago";
+        }
+
+        private async Task LoadCover(ChapterItem item)
+        {
+            if (item.MangaRef == null || string.IsNullOrEmpty(item.MangaRef.ThumbnailUrl)) return;
+            
+            var url = item.MangaRef.ThumbnailUrl;
+            
+            // 1. Check Memory Cache
+            var cached = _imageCacheService.GetImage(url);
+            if (cached != null)
+            {
+                Dispatcher.UIThread.Post(() => item.CoverBitmap = cached);
+                return;
+            }
+            
+            // 2. Check Disk Cache
+            try
+            {
+                await Task.Run(async () => 
+                {
+                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                    var cacheFolder = System.IO.Path.Combine(appData, "Yomic", "covers");
+                    
+                    // Generate Key (MD5) - Must match Library/Detail logic
+                    string cacheKey;
+                    using (var md5 = System.Security.Cryptography.MD5.Create())
+                    {
+                        var inputBytes = System.Text.Encoding.ASCII.GetBytes(url);
+                        var hashBytes = md5.ComputeHash(inputBytes);
+                        var sb = new System.Text.StringBuilder();
+                        for (int i = 0; i < hashBytes.Length; i++) sb.Append(hashBytes[i].ToString("X2"));
+                        
+                        var ext = System.IO.Path.GetExtension(new Uri(url).AbsolutePath);
+                        if (string.IsNullOrEmpty(ext)) ext = ".jpg";
+                        cacheKey = $"{sb}{ext}";
+                    }
+                    
+                    var cachePath = System.IO.Path.Combine(cacheFolder, cacheKey);
+                    
+                    if (System.IO.File.Exists(cachePath))
+                    {
+                         using var stream = System.IO.File.OpenRead(cachePath);
+                         var bitmap = new Avalonia.Media.Imaging.Bitmap(stream);
+                         
+                         // Update Memory Cache
+                         _imageCacheService.AddImage(url, bitmap);
+                         
+                         Dispatcher.UIThread.Post(() => item.CoverBitmap = bitmap);
+                    }
+                    else
+                    {
+                         // Not in cache, download it
+                         try 
+                         {
+                             using var client = _networkService.CreateOptimizedHttpClient();
+                             var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, url);
+                             
+                             // Add basic headers
+                             req.Headers.UserAgent.TryParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                             
+                             // Simple Referer logic based on domain
+                             if (url.Contains("komikcast")) req.Headers.Referrer = new Uri("https://komikcast.ch/");
+                             else if (url.Contains("mangabats")) req.Headers.Referrer = new Uri("https://www.mangabats.com/");
+                             else req.Headers.Referrer = new Uri("https://komiku.org/");
+
+                             using var response = await client.SendAsync(req);
+                             if (response.IsSuccessStatusCode)
+                             {
+                                 var data = await response.Content.ReadAsByteArrayAsync();
+                                 if (data.Length > 0)
+                                 {
+                                     // Ensure directory exists
+                                     if (!System.IO.Directory.Exists(cacheFolder)) System.IO.Directory.CreateDirectory(cacheFolder);
+                                     
+                                     await System.IO.File.WriteAllBytesAsync(cachePath, data);
+                                     
+                                     using var ms = new System.IO.MemoryStream(data);
+                                     var bitmap = new Avalonia.Media.Imaging.Bitmap(ms);
+                                     
+                                     _imageCacheService.AddImage(url, bitmap);
+                                     Dispatcher.UIThread.Post(() => item.CoverBitmap = bitmap);
+                                 }
+                             }
+                         }
+                         catch (Exception downloadEx)
+                         {
+                             System.Diagnostics.Debug.WriteLine($"Error downloading cover: {downloadEx.Message}");
+                         }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading cover for update: {ex.Message}");
+            }
         }
     }
     

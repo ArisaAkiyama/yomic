@@ -63,11 +63,11 @@
         <Panel>
             <!-- Webtoon Mode -->
             <ScrollViewer x:Name="MainScroll" IsVisible="{Binding IsWebtoon}"
-                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden"
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden"
                           ScrollChanged="OnScrollChanged">
                  <!-- Virtualizing ListBox for Webtoon Mode -->
                  <ListBox ItemsSource="{Binding Pages}" 
-                          MaxWidth="800" 
+                          MaxWidth="{Binding WebtoonWidth}" 
                           HorizontalAlignment="Center"
                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
@@ -132,24 +132,32 @@
 
             <!-- Paged Mode -->
             <Grid IsVisible="{Binding IsPaged}" Background="Black">
-                <ContentControl Content="{Binding CurrentPage}">
-                    <ContentControl.ContentTemplate>
-                        <DataTemplate x:DataType="vm:PageViewModel">
-                             <Panel>
-                                 <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                            IsVisible="{Binding IsLoading}"/>
-                                 <Image Source="{Binding Image}" Stretch="Uniform" Margin="10"
-                                        IsVisible="{Binding !IsLoading}">
-                                     <Image.Effect>
-                                         <BlurEffect Radius="{Binding BlurRadius}"/>
-                                     </Image.Effect>
-                                 </Image>
-                                 <TextBlock Text="{Binding Error}" Foreground="Red" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                            IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                             </Panel>
-                        </DataTemplate>
-                    </ContentControl.ContentTemplate>
-                </ContentControl>
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                    <LayoutTransformControl HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <LayoutTransformControl.LayoutTransform>
+                            <ScaleTransform ScaleX="{Binding ZoomScale}" ScaleY="{Binding ZoomScale}"/>
+                        </LayoutTransformControl.LayoutTransform>
+
+                        <ContentControl Content="{Binding CurrentPage}">
+                            <ContentControl.ContentTemplate>
+                                <DataTemplate x:DataType="vm:PageViewModel">
+                                     <Panel>
+                                         <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    IsVisible="{Binding IsLoading}"/>
+                                         <Image Source="{Binding Image}" Stretch="Uniform" Margin="10"
+                                                IsVisible="{Binding !IsLoading}">
+                                             <Image.Effect>
+                                                 <BlurEffect Radius="{Binding BlurRadius}"/>
+                                             </Image.Effect>
+                                         </Image>
+                                         <TextBlock Text="{Binding Error}" Foreground="Red" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                     </Panel>
+                                </DataTemplate>
+                            </ContentControl.ContentTemplate>
+                        </ContentControl>
+                    </LayoutTransformControl>
+                </ScrollViewer>
             </Grid>
         </Panel>
 
@@ -164,9 +172,9 @@
                     HorizontalAlignment="Stretch" VerticalAlignment="Top"
                     Padding="20,10">
 
-                <Grid>
+                <Grid ColumnDefinitions="Auto, *, Auto">
                     <!-- Back Button (Left) -->
-                    <Button Classes="NavBtn" 
+                    <Button Grid.Column="0" Classes="NavBtn" 
                             Command="{Binding BackCommand}"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Center">
@@ -174,9 +182,26 @@
                     </Button>
 
                     <!-- Title Info (Center) -->
-                    <StackPanel Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                         <TextBlock Text="{Binding Title}" Foreground="#CDD6F4" FontWeight="Bold" HorizontalAlignment="Center" FontSize="16"/>
-                         <TextBlock Text="{Binding ChapterTitle}" Foreground="#A6ADC8" FontSize="12" HorizontalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10,0">
+                         <TextBlock Text="{Binding Title}" Foreground="#CDD6F4" FontWeight="Bold" HorizontalAlignment="Center" FontSize="16"
+                                    TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                         <TextBlock Text="{Binding ChapterTitle}" Foreground="#A6ADC8" FontSize="12" HorizontalAlignment="Center"
+                                    TextTrimming="CharacterEllipsis" MaxLines="1"/>
+                    </StackPanel>
+
+                    <!-- Zoom Controls (Right) -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4" VerticalAlignment="Center">
+                        <Button Command="{Binding ZoomOutCommand}" Classes="NavBtn" ToolTip.Tip="Zoom Out">
+                            <TextBlock Text="&#xE738;" FontFamily="Segoe Fluent Icons" FontSize="16"/>
+                        </Button>
+                        
+                        <Button Command="{Binding ResetZoomCommand}" Classes="NavBtn" ToolTip.Tip="Reset Zoom" Width="60">
+                            <TextBlock Text="{Binding ZoomScale, StringFormat='{}{0:P0}'}" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        </Button>
+
+                        <Button Command="{Binding ZoomInCommand}" Classes="NavBtn" ToolTip.Tip="Zoom In">
+                            <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" FontSize="16"/>
+                        </Button>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -189,6 +214,21 @@
 
                 <StackPanel Spacing="10" MaxWidth="1200" HorizontalAlignment="Stretch">
                     
+                    <!-- Page Indicator Pill -->
+                    <Border Background="#313244" CornerRadius="15" Padding="15,6" 
+                            HorizontalAlignment="Center" Margin="0,0,0,2"
+                            BorderBrush="#45475A" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Halaman" Foreground="#A6ADC8" FontSize="11" VerticalAlignment="Center" Opacity="0.8"/>
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="{Binding CurrentPageIndex, Converter={x:Static vm:MathConverters.AddOne}}" 
+                                           Foreground="{DynamicResource AccentColor}" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
+                                <TextBlock Text="/" Foreground="#6C7086" FontSize="12" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Pages.Count}" Foreground="#CDD6F4" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Single Row: Prev | Slider | Next -->
                     <Grid ColumnDefinitions="Auto, *, Auto" VerticalAlignment="Center">
                         

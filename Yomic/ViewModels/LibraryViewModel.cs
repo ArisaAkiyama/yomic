@@ -8,9 +8,17 @@ using System.Net.Http;
 using System.IO;
 using System.Linq;
 using System;
+using System.Reactive.Linq;
 
 namespace Yomic.ViewModels
 {
+    public enum LibrarySortMode
+    {
+        TitleAsc,     // A-Z
+        TitleDesc,    // Z-A
+        DateModified  // Most recent first
+    }
+
     public class LibraryViewModel : ViewModelBase
     {
         private static readonly HttpClient _httpClient = new();
@@ -23,6 +31,7 @@ namespace Yomic.ViewModels
         private readonly MainWindowViewModel _mainVM;
         private readonly Core.Services.LibraryService _libraryService;
         private readonly Core.Services.ImageCacheService _imageCacheService;
+        private readonly Core.Services.SettingsService _settingsService;
         
 
 
@@ -45,11 +54,7 @@ namespace Yomic.ViewModels
         public string SearchText
         {
             get => _searchText;
-            set
-            {
-                this.RaiseAndSetIfChanged(ref _searchText, value);
-                FilterLibrary();
-            }
+            set => this.RaiseAndSetIfChanged(ref _searchText, value);
         }
 
         private bool _isLibraryEmpty;
@@ -95,6 +100,19 @@ namespace Yomic.ViewModels
             get => _isFilterVisible;
             set => this.RaiseAndSetIfChanged(ref _isFilterVisible, value);
         }
+
+        private LibrarySortMode _selectedSortMode = LibrarySortMode.TitleAsc;
+        public LibrarySortMode SelectedSortMode
+        {
+            get => _selectedSortMode;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _selectedSortMode, value);
+                FilterLibrary();
+            }
+        }
+
+        public ReactiveCommand<LibrarySortMode, Unit> SetSortModeCommand { get; }
         
         // Helper for UI
         public bool HasItems => LibraryItems.Count > 0;
@@ -111,12 +129,23 @@ namespace Yomic.ViewModels
         public LibraryViewModel(MainWindowViewModel mainViewModel, 
                                 Core.Services.LibraryService libraryService, 
                                 Core.Services.NetworkService networkService,
-                                Core.Services.ImageCacheService imageCacheService)
+                                Core.Services.ImageCacheService imageCacheService,
+                                Core.Services.SettingsService settingsService)
         {
             _mainVM = mainViewModel;
             _libraryService = libraryService;
             _networkService = networkService;
             _imageCacheService = imageCacheService;
+            _settingsService = settingsService;
+
+            // Load persisted sort preference
+            _selectedSortMode = (LibrarySortMode)_settingsService.LibrarySortMode;
+
+            // Throttled search (300ms debounce)
+            this.WhenAnyValue(x => x.SearchText)
+                .Throttle(TimeSpan.FromMilliseconds(300))
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(_ => FilterLibrary());
 
             // Bind to NetworkService
             IsOnline = _networkService.IsOnline;
@@ -171,11 +200,15 @@ namespace Yomic.ViewModels
                 var manga = new Core.Models.Manga { Url = item.MangaUrl, Source = item.SourceId };
                 await _libraryService.RemoveFromLibraryAsync(manga, deleteFiles: false);
                 
-                // UI Update
-                _allItems.Remove(item);
-                LibraryItems.Remove(item);
-                IsEmpty = LibraryItems.Count == 0;
-                this.RaisePropertyChanged(nameof(HasItems));
+                // UI Update - Delayed to let ContextMenu close
+                await Task.Delay(100);
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+                {
+                    _allItems.Remove(item);
+                    LibraryItems.Remove(item);
+                    IsEmpty = LibraryItems.Count == 0;
+                    this.RaisePropertyChanged(nameof(HasItems));
+                });
             });
             
             DeleteMangaCommand = ReactiveCommand.CreateFromTask<MangaItem>(async item => 
@@ -183,11 +216,15 @@ namespace Yomic.ViewModels
                 var manga = new Core.Models.Manga { Url = item.MangaUrl, Source = item.SourceId };
                 await _libraryService.RemoveFromLibraryAsync(manga, deleteFiles: true);
                 
-                // UI Update
-                _allItems.Remove(item);
-                LibraryItems.Remove(item);
-                IsEmpty = LibraryItems.Count == 0;
-                this.RaisePropertyChanged(nameof(HasItems));
+                // UI Update - Delayed to let ContextMenu close
+                await Task.Delay(100);
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+                {
+                    _allItems.Remove(item);
+                    LibraryItems.Remove(item);
+                    IsEmpty = LibraryItems.Count == 0;
+                    this.RaisePropertyChanged(nameof(HasItems));
+                });
             });
 
             // Manual Refresh Button - Force reload covers from network
@@ -197,6 +234,15 @@ namespace Yomic.ViewModels
                 {
                     await ForceRefreshLibrary();
                 }
+            });
+
+            // Sort Mode Command
+            SetSortModeCommand = ReactiveCommand.Create<LibrarySortMode>(mode =>
+            {
+                SelectedSortMode = mode;
+                // Persist to settings
+                _settingsService.LibrarySortMode = (int)mode;
+                _settingsService.Save();
             });
             
             // Initial load
@@ -333,8 +379,17 @@ namespace Yomic.ViewModels
                  var query = string.IsNullOrWhiteSpace(SearchText) 
                      ? _allItems 
                      : _allItems.Where(x => x.Title.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
-                     
-                 var source = query.OrderBy(x => x.Title).ToList();
+
+                 // Apply sort based on SelectedSortMode
+                 IEnumerable<MangaItem> sorted = SelectedSortMode switch
+                 {
+                     LibrarySortMode.TitleAsc => query.OrderBy(x => x.Title),
+                     LibrarySortMode.TitleDesc => query.OrderByDescending(x => x.Title),
+                     LibrarySortMode.DateModified => query.OrderByDescending(x => x.LastUpdate),
+                     _ => query.OrderBy(x => x.Title)
+                 };
+                      
+                 var source = sorted.ToList();
 
                  // Smart Sync for ObservableCollection (Prevents full UI rebuild/flicker)
                  

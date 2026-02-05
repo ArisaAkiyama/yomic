@@ -289,6 +289,7 @@ namespace Yomic.ViewModels
             _cts = new System.Threading.CancellationTokenSource();
             var token = _cts.Token;
 
+            MonitorLoadingSpeed();
             IsLoading = true;
             HasError = false;
             ErrorMessage = null;
@@ -400,6 +401,7 @@ namespace Yomic.ViewModels
             }
             var token = _cts?.Token ?? System.Threading.CancellationToken.None;
 
+            MonitorLoadingSpeed();
             IsLoading = true;
             HasError = false;
             ErrorMessage = null;
@@ -695,6 +697,7 @@ namespace Yomic.ViewModels
             var url = m.Url?.ToLower() ?? "";
             return title.Contains("manhwa") || url.Contains("manhwa") || 
                    title.Contains("korean") || title.Contains("webtoon");
+        
         }
 
         private bool IsManhua(Manga m)
@@ -703,6 +706,28 @@ namespace Yomic.ViewModels
             var url = m.Url?.ToLower() ?? "";
             return title.Contains("manhua") || url.Contains("manhua") || 
                    title.Contains("chinese") || title.Contains("cultivation");
+        }
+
+        private bool _hasShownVpnTip = false;
+
+        private void MonitorLoadingSpeed()
+        {
+            if (_hasShownVpnTip || !IsMangaDex || Core.Services.SingboxService.Instance.IsRunning) return;
+
+            Task.Delay(8000).ContinueWith(t => 
+            {
+                if (IsLoading && _networkService.IsOnline)
+                {
+                     Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                     {
+                         if (IsLoading && !_hasShownVpnTip) // Double check
+                         {
+                             _mainVm.ShowNotification("Loading taking too long? Try enabling VPN Bypass in Settings.", NotificationType.Warning);
+                             _hasShownVpnTip = true;
+                         }
+                     });
+                }
+            });
         }
     }
 }

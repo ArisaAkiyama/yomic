@@ -82,7 +82,30 @@ namespace Yomic.ViewModels
                 Dispatcher.UIThread.Post(() => IsOffline = !isOnline);
             };
 
-            RefreshCommand = ReactiveCommand.CreateFromTask(LoadHistory);
+            RefreshCommand = ReactiveCommand.CreateFromTask(async () => 
+            {
+                if (IsOffline)
+                {
+                    await LoadHistory();
+                }
+                else
+                {
+                    // Global Update requested by user
+                    try 
+                    {
+                        System.Diagnostics.Debug.WriteLine("[HistoryVM] Refreshing global updates...");
+                        await _libraryService.UpdateAllLibraryMangaAsync(_sourceManager);
+                    }
+                    catch (Exception ex)
+                    {
+                         System.Diagnostics.Debug.WriteLine($"[HistoryVM] Global update error: {ex}");
+                    }
+                    finally
+                    {
+                        await LoadHistory();
+                    }
+                }
+            });
             ClearHistoryCommand = ReactiveCommand.CreateFromTask(ClearHistoryAsync);
             RemoveHistoryItemCommand = ReactiveCommand.CreateFromTask<MangaItem>(RemoveHistoryItemAsync);
             
@@ -125,13 +148,18 @@ namespace Yomic.ViewModels
             
             try 
             {
-                 // 1. Remove from local list immediatey
-                 HistoryItems.Remove(item);
-                 HasItems = HistoryItems.Count > 0;
-                 
-                 // 2. Update DB
+                 // 1. Update DB first
                  using var context = new Yomic.Core.Data.MangaDbContext();
                  await context.Database.ExecuteSqlRawAsync("UPDATE Mangas SET LastViewed = 0 WHERE Url = {0}", item.MangaUrl);
+
+                 // 2. Remove from local list after a tiny delay to let ContextMenu close 
+                 // This prevents "PlatformImpl is null" error in Avalonia
+                 await Task.Delay(100);
+                 Dispatcher.UIThread.Post(() => 
+                 {
+                    HistoryItems.Remove(item);
+                    HasItems = HistoryItems.Count > 0;
+                 });
             }
             catch (Exception ex)
             {
@@ -212,7 +240,7 @@ namespace Yomic.ViewModels
             return date.ToString("MMM dd");
         }
 
-        private async Task LoadCoverAsync(MangaItem item)
+        private async Task LoadCoverAsync(MangaItem item, bool isRetry = false)
         {
             if (string.IsNullOrEmpty(item.CoverUrl)) return;
 
@@ -283,7 +311,7 @@ namespace Yomic.ViewModels
                      {
                          req.Headers.Referrer = new Uri("https://komikcast.ch/");
                      }
-                     else if (item.SourceId == 4) // Mangabats
+                     else if (item.SourceId == 6) // Mangabats
                      {
                          req.Headers.Referrer = new Uri("https://www.mangabats.com/");
                      }
@@ -291,6 +319,10 @@ namespace Yomic.ViewModels
                      {
                          req.Headers.Referrer = new Uri("https://mangadex.org/");
                          System.Console.WriteLine($"[HistoryVM] Using Referer: https://mangadex.org/ for {item.Title}");
+                     }
+                     else if (item.SourceId == 20) // Kiryuu
+                     {
+                         req.Headers.Referrer = new Uri("https://kiryuu.org/");
                      }
                      else 
                      {
@@ -329,12 +361,88 @@ namespace Yomic.ViewModels
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[HistoryVM] LoadCover Error for {item.Title} ({item.CoverUrl}): {ex.Message}");
+                
+                // If this is a network/timeout error, try to refresh the cover URL from source
+                bool isNetworkError = ex is HttpRequestException || ex is TaskCanceledException || 
+                                       ex.Message.Contains("connection") || ex.Message.Contains("timeout");
+                
+                if (isNetworkError && !isRetry && !string.IsNullOrEmpty(item.MangaUrl))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[HistoryVM] Attempting to refresh cover URL for {item.Title}...");
+                    var newUrl = await RefreshCoverUrlAsync(item);
+                    if (!string.IsNullOrEmpty(newUrl) && newUrl != item.CoverUrl)
+                    {
+                        item.CoverUrl = newUrl;
+                        // Retry download with new URL (recursive call, but only once via the flag)
+                        await LoadCoverAsync(item, isRetry: true);
+                        return;
+                    }
+                }
+                
                 // If cache file is corrupt/invalid, delete it so we try again next time
                 try { 
                     var cacheKey = GetCacheKey(item.CoverUrl);
                     var cachePath = Path.Combine(_cacheFolder, cacheKey);
                     if (File.Exists(cachePath)) File.Delete(cachePath); 
                 } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Fetches fresh cover URL from the manga source.
+        /// Used when cached URLs expire (e.g., KomikCast signed S3 URLs).
+        /// </summary>
+        private async Task<string?> RefreshCoverUrlAsync(MangaItem item)
+        {
+            try
+            {
+                var source = _sourceManager.GetSource(item.SourceId);
+                if (source == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[HistoryVM] RefreshCover: Source {item.SourceId} not found");
+                    return null;
+                }
+
+                var manga = await source.GetMangaDetailsAsync(item.MangaUrl);
+                if (manga == null || string.IsNullOrEmpty(manga.ThumbnailUrl))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[HistoryVM] RefreshCover: No thumbnail for {item.Title}");
+                    return null;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[HistoryVM] RefreshCover: Got new URL for {item.Title}");
+                
+                // Update database
+                await UpdateHistoryCoverUrlAsync(item.MangaUrl, manga.ThumbnailUrl);
+                
+                return manga.ThumbnailUrl;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HistoryVM] RefreshCover Error: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Updates the cover URL in the manga database.
+        /// </summary>
+        private async Task UpdateHistoryCoverUrlAsync(string mangaUrl, string newCoverUrl)
+        {
+            try
+            {
+                using var context = new Yomic.Core.Data.MangaDbContext();
+                var manga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == mangaUrl);
+                if (manga != null)
+                {
+                    manga.ThumbnailUrl = newCoverUrl;
+                    await context.SaveChangesAsync();
+                    System.Diagnostics.Debug.WriteLine($"[HistoryVM] Updated cover URL in database for {manga.Title}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HistoryVM] UpdateHistoryCoverUrl Error: {ex.Message}");
             }
         }
 

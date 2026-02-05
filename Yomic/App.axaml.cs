@@ -42,33 +42,48 @@ namespace Yomic
                     }
                     catch (System.Exception ex)
                     {
-                        // Handle case where DB was created with EnsureCreated() (missing migration history)
-                        // but tables exist.
-                        if (ex.Message.Contains("already exists"))
+                        // 1. Handle "Duplicate Column" (Migration mismatch)
+                        if (ex.Message.Contains("duplicate column name") && ex.Message.Contains("LastViewed"))
                         {
-                            System.Diagnostics.Debug.WriteLine($"[App] Migration conflict detected. Attempting to fix history...");
+                            System.Diagnostics.Debug.WriteLine($"[App] 'LastViewed' column exists. Syncing migration history...");
                             try
                             {
-                                // Manually insert the InitialCreate record
-                                // Requires 'Migrations' folder to contain '20260121005426_InitialCreate'
+                                string fixHistory = "INSERT INTO __EFMigrationsHistory (MigrationId, ProductVersion) VALUES ('20260123075531_AddLastViewedToManga', '9.0.0');";
+                                context.Database.ExecuteSqlRaw(fixHistory);
+                            }
+                            catch { /* Ignore if already in history */ }
+                        }
+                        // 2. Handle "Table Already Exists" (InitialCreate mismatch)
+                        else if (ex.Message.Contains("already exists"))
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[App] Migration conflict logic...");
+                            try
+                            {
                                 string insertSql = "INSERT INTO __EFMigrationsHistory (MigrationId, ProductVersion) VALUES ('20260121005426_InitialCreate', '9.0.0');";
                                 context.Database.ExecuteSqlRaw(insertSql);
                                 
-                                // Retry migration for subsequent updates (like AddLastViewed)
+                                // Retry migration
                                 context.Database.Migrate();
-                                System.Diagnostics.Debug.WriteLine($"[App] Database repaired and migrated.");
+                                System.Diagnostics.Debug.WriteLine($"[App] Database repaired.");
                             }
                             catch (System.Exception recoverEx) 
-                            { 
-                                System.Diagnostics.Debug.WriteLine($"[App] Failed to recover DB: {recoverEx.Message}");
-                                // If recovery fails, we might just have to swallow it if the app still runs?
-                                // Or throw to let user know.
+                            {
+                                // If retry fails specifically due to LastViewed
+                                if (recoverEx.Message.Contains("duplicate column name"))
+                                {
+                                     try
+                                     {
+                                         string fixHistory = "INSERT INTO __EFMigrationsHistory (MigrationId, ProductVersion) VALUES ('20260123075531_AddLastViewedToManga', '9.0.0');";
+                                         context.Database.ExecuteSqlRaw(fixHistory);
+                                         System.Diagnostics.Debug.WriteLine($"[App] Recovered from duplicate column error.");
+                                     }
+                                     catch {}
+                                }
+                                else
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[App] Failed to recover DB: {recoverEx.Message}");
+                                }
                             }
-                        }
-                        else
-                        {
-                            // Other errors: log or rethrow
-                            System.Diagnostics.Debug.WriteLine($"[App] DB Error: {ex}");
                         }
                     }
                 }

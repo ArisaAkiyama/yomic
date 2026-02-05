@@ -41,36 +41,35 @@
                 <StackPanel>
                     <!-- Header -->
                     <StackPanel Margin="0,0,0,30">
-                        <StackPanel Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
-                            <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="28" 
-                                       Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
-                                       RenderOptions.TextRenderingMode="Antialias"/>
-                            <TextBlock Text="Updates" FontSize="32" FontWeight="Bold" 
-                                       Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
-                            
-                            <!-- Count Badge -->
-                             <Border Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="12,4" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding UpdatesCount, StringFormat='{}{0} New Chapters'}" 
-                                           Foreground="{DynamicResource SecondaryText}" FontSize="12" VerticalAlignment="Center"/>
-                            </Border>
-                        </StackPanel>
-                        <TextBlock Text="Recent chapters from your library" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" FontSize="14"/>
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
+                                <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="28" 
+                                           Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
+                                           RenderOptions.TextRenderingMode="Antialias"/>
+                                <TextBlock Text="Updates" FontSize="32" FontWeight="Bold" 
+                                           Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
+                                
+                                <!-- Count Badge -->
+                                 <Border Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="12,4" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding UpdatesCount, StringFormat='{}{0} New Chapters'}" 
+                                               Foreground="{DynamicResource SecondaryText}" FontSize="12" VerticalAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
 
-                         <!-- Actions Row -->
-                         <!-- Use Grid to push button to right, similar to LibraryView search row -->
-                        <Grid ColumnDefinitions="*, Auto" Margin="0,20,0,0">
-                             <Button Grid.Column="1" Command="{Binding RefreshCommand}"
-                                     Background="{DynamicResource SidebarBackground}" Foreground="#FF9900" 
-                                     CornerRadius="20" Width="40" Height="40" Padding="0"
-                                     ToolTip.Tip="Sync Library">
-                                 <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
-                                            FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                             </Button>
+                            <Button Grid.Column="1" Command="{Binding RefreshCommand}"
+                                    Background="{DynamicResource SidebarBackground}" Foreground="#FF9900" 
+                                    CornerRadius="20" Width="40" Height="40" Padding="0"
+                                    VerticalAlignment="Center"
+                                    ToolTip.Tip="Sync Library">
+                                <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
+                                           FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Button>
                         </Grid>
+                        <TextBlock Text="Recent chapters from your library" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" FontSize="14"/>
                     </StackPanel>
 
                     <!-- Updates List (Grouped) -->
-                    <ItemsControl ItemsSource="{Binding GroupedUpdates}" IsVisible="{Binding !IsEmpty}">
+                    <ItemsControl ItemsSource="{Binding GroupedUpdates}" IsVisible="{Binding !IsEmpty}" MaxWidth="900" HorizontalAlignment="Left">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="0,0,0,25">
@@ -106,19 +105,17 @@
                                                     <Border Classes="UpdateCard" CornerRadius="12" Padding="12">
                                                         <Grid ColumnDefinitions="Auto, *, Auto">
                                                             <!-- Cover Placeholder / Image -->
-                                                            <Border Grid.Column="0" Width="45" Height="65" CornerRadius="6" ClipToBounds="True" Margin="0,0,15,0" Background="#181825">
-                                                                <Image Source="{Binding MangaRef.ThumbnailUrl}" Stretch="UniformToFill">
-                                                                    <Image.Source>
-                                                                         <Bitmap>avares://Yomic/Assets/placeholder_cover.png</Bitmap>
-                                                                    </Image.Source>
-                                                                </Image>
+                                                            <Border Grid.Column="0" Width="60" Height="90" CornerRadius="8" ClipToBounds="True" Margin="0,0,18,0" Background="#181825">
+                                                                <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill" />
                                                             </Border>
                                                             
                                                             <!-- Info -->
-                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                                                                <TextBlock Text="{Binding MangaRef.Title}" Foreground="{DynamicResource PrimaryText}" FontWeight="Bold" FontSize="15" TextTrimming="CharacterEllipsis"/>
-                                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource SecondaryText}" FontSize="13"/>
+                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6" Margin="0,4">
+                                                                <TextBlock Text="{Binding MangaRef.Title}" Foreground="{DynamicResource PrimaryText}" 
+                                                                           FontWeight="Bold" FontSize="16" TextWrapping="Wrap" MaxLines="2" 
+                                                                           LineHeight="22" TextTrimming="CharacterEllipsis"/>
+                                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource SecondaryText}" FontSize="14"/>
                                                                     <Border Background="{DynamicResource OverlayBackground}" CornerRadius="4" Padding="6,1" IsVisible="{Binding IsRead}">
                                                                         <TextBlock Text="READ" FontSize="10" Foreground="{DynamicResource SecondaryText}"/>
                                                                     </Border>
@@ -126,14 +123,14 @@
                                                             </StackPanel>
                                                             
                                                             <!-- Metadata / Actions -->
-                                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal" Spacing="15" Margin="0,0,10,0">
+                                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal" Spacing="20" Margin="10,0,10,0">
                                                                 <TextBlock Text="{Binding Date}" Foreground="{DynamicResource SecondaryText}" FontSize="12" VerticalAlignment="Center"/>
                                                                 
-                                                                <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" FontSize="16"
+                                                                <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" FontSize="18"
                                                                            IsVisible="{Binding IsDownloaded}" 
                                                                            ToolTip.Tip="Downloaded" VerticalAlignment="Center"/>
                                                                            
-                                                                <TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" Foreground="#FF9900" FontSize="16"
+                                                                <TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" Foreground="#FF9900" FontSize="18"
                                                                            IsVisible="{Binding !IsRead}" 
                                                                            ToolTip.Tip="New Chapter" VerticalAlignment="Center"/>
                                                             </StackPanel>

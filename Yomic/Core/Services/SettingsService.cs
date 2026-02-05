@@ -31,6 +31,7 @@ namespace Yomic.Core.Services
         public bool UpdateOnStart { get; set; } = false;
         public bool CheckAppUpdateOnStart { get; set; } = true;
         public bool IsFirstRun { get; set; } = true;
+        public int LibrarySortMode { get; set; } = 0; // 0=TitleAsc, 1=TitleDesc, 2=DateModified
 
         public SettingsService()
         {
@@ -62,6 +63,7 @@ namespace Yomic.Core.Services
                         UpdateOnStart = settings.UpdateOnStart;
                         CheckAppUpdateOnStart = settings.CheckAppUpdateOnStart;
                         IsFirstRun = settings.IsFirstRun;
+                        LibrarySortMode = settings.LibrarySortMode;
                     }
                 }
             }
@@ -82,7 +84,8 @@ namespace Yomic.Core.Services
                     SecureScreen = SecureScreen,
                     UpdateOnStart = UpdateOnStart,
                     CheckAppUpdateOnStart = CheckAppUpdateOnStart,
-                    IsFirstRun = IsFirstRun
+                    IsFirstRun = IsFirstRun,
+                    LibrarySortMode = LibrarySortMode
                 };
 
                 var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
@@ -111,6 +114,7 @@ namespace Yomic.Core.Services
                 UpdateOnStart = false;
                 CheckAppUpdateOnStart = true;
                 IsFirstRun = true;
+                LibrarySortMode = 0;
             }
             catch (Exception ex)
             {
@@ -127,6 +131,7 @@ namespace Yomic.Core.Services
             public bool UpdateOnStart { get; set; }
             public bool CheckAppUpdateOnStart { get; set; }
             public bool IsFirstRun { get; set; }
+            public int LibrarySortMode { get; set; }
         }
     }
 }

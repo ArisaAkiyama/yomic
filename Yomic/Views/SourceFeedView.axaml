@@ -194,84 +194,103 @@
 
         <!-- Content -->
         <Panel Grid.Row="1">
-            <ScrollViewer x:Name="MainScrollViewer" Padding="40,0,40,20" IsVisible="{Binding !IsMangaDexBlocked}">
-                <StackPanel>
-                     <!-- Loading Bar -->
-                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" HorizontalAlignment="Stretch" Height="2" Foreground="#FF9900" Margin="0,0,0,10"/>
-                    
-                    <!-- Error Message (Only show if NOT blocked, to avoid duplicate) -->
-                    <Border Background="#453132" BorderBrush="#F38BA8" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,20">
-                        <Border.IsVisible>
-                            <MultiBinding Converter="{x:Static BoolConverters.And}">
-                                <Binding Path="HasError"/>
-                                <Binding Path="IsMangaDexBlocked" Converter="{x:Static BoolConverters.Not}"/>
-                            </MultiBinding>
-                        </Border.IsVisible>
-                        <StackPanel Spacing="5">
-                             <TextBlock Text="Error Loading Source" FontWeight="Bold" Foreground="#F38BA8"/>
-                             <TextBlock Text="{Binding ErrorMessage}" Foreground="#CDD6F4" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Border>
-                    
-                    <!-- Manga Grid -->
-                    <ItemsControl ItemsSource="{Binding MangaList}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                 <Button Background="Transparent" Padding="0" Margin="0,0,25,30"
-                                         Command="{Binding $parent[UserControl].((vm:SourceFeedViewModel)DataContext).OpenMangaCommand}"
-                                         CommandParameter="{Binding}">
-                                     <Button.Styles>
-                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="Transparent"/>
-                                        </Style>
-                                     </Button.Styles>
-                                     
-                                    <StackPanel Width="150" Spacing="10">
-                                        <!-- Cover Image -->
-                                        <Border Classes="MangaCard" Height="225" CornerRadius="12" 
-                                                Background="{DynamicResource SidebarBackground}" ClipToBounds="True"
-                                                BoxShadow="0 4 10 0 #40000000">
-                                            <Grid>
-                                                <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill"/>
+            <!-- Loading Bar -->
+            <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" HorizontalAlignment="Stretch" Height="2" Foreground="#FF9900" 
+                         VerticalAlignment="Top" ZIndex="10"/>
+
+            <!-- content wrapper -->
+            <Panel IsVisible="{Binding !IsMangaDexBlocked}">
+                 <!-- Error Message (Only show if NOT blocked, to avoid duplicate) -->
+                <Border Background="#453132" BorderBrush="#F38BA8" BorderThickness="1" CornerRadius="8" Padding="15" Margin="40,20,40,20" VerticalAlignment="Top" ZIndex="5">
+                    <Border.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="HasError"/>
+                            <Binding Path="IsMangaDexBlocked" Converter="{x:Static BoolConverters.Not}"/>
+                        </MultiBinding>
+                    </Border.IsVisible>
+                    <StackPanel Spacing="5">
+                         <TextBlock Text="Error Loading Source" FontWeight="Bold" Foreground="#F38BA8"/>
+                         <TextBlock Text="{Binding ErrorMessage}" Foreground="#CDD6F4" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Virtualized ListBox -->
+                <ListBox x:Name="MainListBox" ItemsSource="{Binding MangaList}" 
+                         Background="Transparent" BorderThickness="0" 
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         Margin="20,0,0,0">
+                    <ListBox.Styles>
+                        <!-- Disable default ListBoxItem selection styles -->
+                        <Style Selector="ListBoxItem">
+                             <Setter Property="Padding" Value="0"/>
+                             <Setter Property="Margin" Value="0"/>
+                             <Setter Property="Background" Value="Transparent"/>
+                        </Style>
+                        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="Transparent"/>
+                        </Style>
+                        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                            <Setter Property="Background" Value="Transparent"/>
+                        </Style>
+                    </ListBox.Styles>
+
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" ItemWidth="175" ItemHeight="310"/> 
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                             <Button x:CompileBindings="False" Background="Transparent" Padding="0" Margin="10,0,10,20"
+                                     Command="{Binding DataContext.OpenMangaCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
+                                     CommandParameter="{Binding}">
+                                 <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                 </Button.Styles>
+                                 
+                                <StackPanel Width="150" Spacing="10">
+                                    <!-- Cover Image -->
+                                    <Border Classes="MangaCard" Height="225" CornerRadius="12" 
+                                            Background="{DynamicResource SidebarBackground}" ClipToBounds="True"
+                                            BoxShadow="0 4 10 0 #40000000">
+                                        <Grid>
+                                            <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill"/>
+                                            
+                                            <!-- Time Overlay (Bottom) -->
+                                            <Panel VerticalAlignment="Bottom" IsVisible="{Binding LastUpdateString, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                <!-- Gradient Shadow for readability -->
+                                                <Border Height="60" VerticalAlignment="Bottom">
+                                                    <Border.Background>
+                                                        <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+                                                            <GradientStop Offset="0" Color="#00000000"/>
+                                                            <GradientStop Offset="1" Color="#D0000000"/>
+                                                        </LinearGradientBrush>
+                                                    </Border.Background>
+                                                </Border>
                                                 
-                                                <!-- Time Overlay (Bottom) -->
-                                                <Panel VerticalAlignment="Bottom" IsVisible="{Binding LastUpdateString, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                                    <!-- Gradient Shadow for readability -->
-                                                    <Border Height="60" VerticalAlignment="Bottom">
-                                                        <Border.Background>
-                                                            <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-                                                                <GradientStop Offset="0" Color="#00000000"/>
-                                                                <GradientStop Offset="1" Color="#D0000000"/>
-                                                            </LinearGradientBrush>
-                                                        </Border.Background>
-                                                    </Border>
-                                                    
-                                                    <!-- Text -->
-                                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="10,0,10,10" VerticalAlignment="Bottom">
-                                                        <TextBlock Text="&#xE916;" FontFamily="Segoe Fluent Icons" FontSize="10" Foreground="#FF9900" VerticalAlignment="Center"/>
-                                                        <TextBlock Text="{Binding LastUpdateString}" Foreground="#FF9900" 
-                                                                   FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
-                                                    </StackPanel>
-                                                </Panel>
-                                            </Grid>
-                                        </Border>
-                                        
-                                        <!-- Title Below Image -->
-                                        <TextBlock Text="{Binding Title}" Foreground="{DynamicResource PrimaryText}" 
-                                                   TextAlignment="Left" TextTrimming="CharacterEllipsis"
-                                                   FontSize="14" FontWeight="Medium" MaxLines="2" Height="40"/>
-                                    </StackPanel>
-                                 </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </ScrollViewer>
+                                                <!-- Text -->
+                                                <StackPanel Orientation="Horizontal" Spacing="4" Margin="10,0,10,10" VerticalAlignment="Bottom">
+                                                    <TextBlock Text="&#xE916;" FontFamily="Segoe Fluent Icons" FontSize="10" Foreground="#FF9900" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding LastUpdateString}" Foreground="#FF9900" 
+                                                               FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Panel>
+                                        </Grid>
+                                    </Border>
+                                    
+                                    <!-- Title Below Image -->
+                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource PrimaryText}" 
+                                               TextAlignment="Left" TextTrimming="CharacterEllipsis"
+                                               FontSize="14" FontWeight="Medium" MaxLines="2" Height="40"/>
+                                </StackPanel>
+                             </Button>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Panel>
             
             <!-- Blocked/No Internet View Overlay -->
             <Grid IsVisible="{Binding IsMangaDexBlocked}" 

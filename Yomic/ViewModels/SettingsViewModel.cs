@@ -96,6 +96,7 @@ namespace Yomic.ViewModels
         private readonly Core.Services.SourceManager _sourceManager;
         
         public ReactiveCommand<Unit, Unit> ClearAllDataCommand { get; }
+        public ReactiveCommand<Unit, Unit> ClearReadHistoryCommand { get; }
         public ReactiveCommand<Unit, Unit> CheckForUpdatesCommand { get; }
         public ReactiveCommand<Unit, Unit> VisitWebsiteCommand { get; }
         public ReactiveCommand<Unit, Unit> OpenTwitterCommand { get; }
@@ -186,6 +187,7 @@ namespace Yomic.ViewModels
             _checkAppUpdateOnStart = _settingsService.CheckAppUpdateOnStart;
             
             ClearAllDataCommand = ReactiveCommand.CreateFromTask(ClearAllDataAsync);
+            ClearReadHistoryCommand = ReactiveCommand.CreateFromTask(ClearReadHistoryAsync);
             CheckForUpdatesCommand = ReactiveCommand.Create(CheckForUpdates);
             VisitWebsiteCommand = ReactiveCommand.Create(VisitWebsite);
             OpenTwitterCommand = ReactiveCommand.Create(OpenTwitter);
@@ -298,6 +300,20 @@ namespace Yomic.ViewModels
             catch (System.Exception ex)
             {
                  _mainViewModel.ShowNotification($"Error clearing data: {ex.Message}");
+            }
+        }
+
+        private async System.Threading.Tasks.Task ClearReadHistoryAsync()
+        {
+            try
+            {
+                // Clear all chapter read status from database
+                await _libraryService.ClearAllReadHistoryAsync();
+                _mainViewModel.ShowNotification("Read history cleared successfully!", NotificationType.Success);
+            }
+            catch (System.Exception ex)
+            {
+                _mainViewModel.ShowNotification($"Error clearing read history: {ex.Message}");
             }
         }
         private bool _isSyncingLibrary;

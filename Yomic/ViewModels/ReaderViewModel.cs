@@ -325,9 +325,31 @@ namespace Yomic.ViewModels
             {
                  if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1);
             });
+            
+            // Zoom Logic
+            ZoomInCommand = ReactiveCommand.Create(() => ZoomScale = Math.Min(5.0, ZoomScale + 0.25));
+            ZoomOutCommand = ReactiveCommand.Create(() => ZoomScale = Math.Max(0.5, ZoomScale - 0.25));
+            ResetZoomCommand = ReactiveCommand.Create(() => ZoomScale = 1.0);
         }
-        
-        // ... (commands)
+
+        // Zoom Properties
+        private double _zoomScale = 1.0;
+        public double ZoomScale
+        {
+            get => _zoomScale;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _zoomScale, value);
+                this.RaisePropertyChanged(nameof(WebtoonWidth));
+            }
+        }
+
+        public double WebtoonWidth => 800 * ZoomScale;
+
+        public ReactiveCommand<Unit, double> ZoomInCommand { get; }
+        public ReactiveCommand<Unit, double> ZoomOutCommand { get; }
+        public ReactiveCommand<Unit, double> ResetZoomCommand { get; }
+
         public ReactiveCommand<Unit, Unit> NextPageCommand { get; }
         public ReactiveCommand<Unit, Unit> PrevPageCommand { get; }
         public ReactiveCommand<Unit, Unit> ToggleMenuCommand { get; }
@@ -384,8 +406,9 @@ namespace Yomic.ViewModels
                     // This is risky, so relying on passed arg is best.
                 }
 
-                await _libraryService.MarkChapterAsReadAsync(
+                await _libraryService.SetChapterReadStatusAsync(
                     _currentChapter.Url, 
+                    true,
                     _sourceId, 
                     _mangaUrl, 
                     _currentChapter.Title, 

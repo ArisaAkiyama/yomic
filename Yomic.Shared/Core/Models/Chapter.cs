@@ -18,6 +18,7 @@ namespace Yomic.Core.Models
         public bool Bookmark { get; set; }
         public long LastPageRead { get; set; }
         public bool IsDownloaded { get; set; }
+        public bool IsNew { get; set; } // New Release Badge
         
         public string? Scanlator { get; set; }
         

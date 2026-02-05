@@ -78,6 +78,29 @@
                         </Border>
                         <Separator Background="{DynamicResource SecondaryText}" Height="1" Margin="20,0" Opacity="0.2"/>
 
+                        <!-- Clear Read History -->
+                        <Border Padding="20,15" CornerRadius="12" Background="Transparent">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="Clear Read History" FontWeight="SemiBold" Foreground="#FF9900" FontSize="16"/>
+                                    <TextBlock Text="Reset all chapters to unread status" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="Clear History" Command="{Binding ClearReadHistoryCommand}" 
+                                        Background="Transparent" BorderBrush="#FF9900" BorderThickness="1" 
+                                        Foreground="#FF9900" CornerRadius="18" Padding="20,6" FontWeight="SemiBold" FontSize="13"
+                                        VerticalAlignment="Center" Cursor="Hand">
+                                    <Button.Styles>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="#20FF9900"/>
+                                            <Setter Property="BorderBrush" Value="#FF9900"/>
+                                            <Setter Property="Foreground" Value="#FF9900"/>
+                                        </Style>
+                                    </Button.Styles>
+                                </Button>
+                            </Grid>
+                        </Border>
+                        <Separator Background="{DynamicResource SecondaryText}" Height="1" Margin="20,0" Opacity="0.2"/>
+
                         <!-- Danger Zone -->
                         <Border Padding="20,15" CornerRadius="12" Background="Transparent">
                             <Grid ColumnDefinitions="*, Auto">

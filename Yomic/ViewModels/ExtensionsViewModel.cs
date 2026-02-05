@@ -88,8 +88,24 @@ namespace Yomic.ViewModels
             ToggleInstallCommand = ReactiveCommand.Create<ExtensionItem>(ToggleInstall);
             VerifyExtensionCommand = ReactiveCommand.Create<ExtensionItem>(VerifyExtension);
             AddExtensionCommand = ReactiveCommand.Create(AddExtension);
+            OpenRepoCommand = ReactiveCommand.Create(OpenRepo);
             
             LoadExtensions();
+        }
+
+        public ReactiveCommand<Unit, Unit> OpenRepoCommand { get; }
+
+        private void OpenRepo()
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo 
+                { 
+                    FileName = "https://github.com/ArisaAkiyama/extension-yomic", 
+                    UseShellExecute = true 
+                });
+            }
+            catch { /* Ignore */ }
         }
 
         private async void VerifyExtension(ExtensionItem item)

@@ -252,13 +252,45 @@
                                        MaxLines="4" TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
                     </Border>
-                    
 
                     
                     <!-- Chapter Header -->
-                    <Grid ColumnDefinitions="Auto, *, Auto" Margin="0,10,0,5">
-                        <TextBlock Text="Chapters" FontWeight="SemiBold" Foreground="White" FontSize="18"/>
-                        <Button Grid.Column="2" Command="{Binding ViewModel.DownloadAllCommand}" 
+                    <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto" Margin="0,10,0,5">
+                        <TextBlock Text="Chapters" FontWeight="SemiBold" Foreground="White" FontSize="18" VerticalAlignment="Center"/>
+                        
+                        <!-- Start Button (Always visible - Goes to Chapter 1) -->
+                        <Button Grid.Column="2" Command="{Binding ViewModel.StartReadingCommand}" 
+                                Background="#313244" Foreground="#A6ADC8" 
+                                CornerRadius="6" Padding="12,6" Margin="0,0,10,0">
+                            <Button.Styles>
+                                <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="#45475A"/>
+                                </Style>
+                            </Button.Styles>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons" FontSize="14" VerticalAlignment="Center"/>
+                                <TextBlock Text="Start" FontWeight="SemiBold" FontSize="12"/>
+                            </StackPanel>
+                        </Button>
+                        
+                        <!-- Resume Button (Only visible if user has read chapters - Shows chapter info) -->
+                        <Button Grid.Column="3" Command="{Binding ViewModel.ResumeReadingCommand}" 
+                                IsVisible="{Binding ViewModel.CanResume}"
+                                Background="#FF9900" Foreground="#1E1E2E" 
+                                CornerRadius="6" Padding="12,6" Margin="0,0,10,0">
+                            <Button.Styles>
+                                <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="#E68A00"/>
+                                </Style>
+                            </Button.Styles>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons" FontSize="14" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding ViewModel.ResumeButtonText, FallbackValue=Resume}" FontWeight="SemiBold" FontSize="12"/>
+                            </StackPanel>
+                        </Button>
+                        
+                        <!-- Download All Button -->
+                        <Button Grid.Column="4" Command="{Binding ViewModel.DownloadAllCommand}" 
                                 Background="#313244" Foreground="#A6E3A1" 
                                 CornerRadius="6" Padding="12,6">
                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -277,15 +309,36 @@
             <!-- CHAPTER ITEM TEMPLATE -->
             <DataTemplate DataType="vm:ChapterItem">
                 <Border Background="Transparent" BorderBrush="#313244" BorderThickness="0,0,0,1" Margin="40,0,40,0">
+                    <Border.ContextMenu>
+                        <ContextMenu x:CompileBindings="False">
+                            <!-- Mark as Read -->
+                            <MenuItem Header="Mark as Read" Command="{Binding MarkAsReadCommand}"/>
+                            
+                            <!-- Mark as Unread -->
+                            <MenuItem Header="Mark as Unread" Command="{Binding MarkAsUnreadCommand}"/>
+
+                            <Separator/>
+
+                            <!-- Mark Previous as Read -->
+                            <MenuItem Header="Mark Previous as Read" Command="{Binding MarkPreviousAsReadCommand}"/>
+                        </ContextMenu>
+                    </Border.ContextMenu>
                     <Grid>
                         <!-- Last Read Indicator -->
                         <Border Width="4" HorizontalAlignment="Left" Background="#FF9900"
                                 IsVisible="{Binding IsLastRead}" Margin="0,10"/>
                                 
                         <Grid ColumnDefinitions="*, Auto" Margin="15,16,10,16">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Title}" Classes.Unread="{Binding !IsRead}" Classes.Read="{Binding IsRead}" FontSize="15"/>
-                                <TextBlock Text="{Binding Date}" Foreground="#6C7086" FontSize="12" Margin="0,4,0,0"/>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" 
+                                           Classes.Unread="{Binding !IsRead}" Classes.Read="{Binding IsRead}" 
+                                           FontSize="15" VerticalAlignment="Center"/>
+                                
+                                <!-- NEW Badge -->
+                                <Border Background="#D20F39" CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
+                                        IsVisible="{Binding IsNewRelease}">
+                                    <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                </Border>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                                 <!-- Download Button -->

@@ -111,7 +111,7 @@ namespace Yomic.ViewModels
                      {
                         req.Headers.Referrer = new Uri(customHeaders["Referer"]);
                      }
-                     else if (_request.Manga.Source == 4) // Mangabats (ID=4)
+                     else if (_request.Manga.Source == 6) // Mangabats (ID=6)
                      {
                         req.Headers.Referrer = new Uri("https://www.mangabats.com/");
                      }
