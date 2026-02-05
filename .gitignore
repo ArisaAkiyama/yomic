@@ -34,3 +34,10 @@ MyMangaApp/bin_tool/
 rename_content.py
 run_app.bat
 setup.iss
+
+# Temporary Debug Files
+api_pustaka_*.html
+dump.html
+komikcast.js
+komikcast_bundle.js
+komikcast_*.js
