@@ -34,7 +34,7 @@ namespace Yomic.Views
 
             if (DataContext is MainWindowViewModel vm)
             {
-                if (e.Key == Avalonia.Input.Key.F11 || e.Key == Avalonia.Input.Key.F2)
+                if (e.Key == Avalonia.Input.Key.F11)
                 {
                     ToggleFullscreen(vm);
                     e.Handled = true;
@@ -47,7 +47,8 @@ namespace Yomic.Views
                 }
                 else if (e.KeyModifiers == Avalonia.Input.KeyModifiers.Control && e.Key == Avalonia.Input.Key.R)
                 {
-                    OnReloadClick(null, null);
+                    // Ctrl+R for Reload
+                    OnReloadClick(this, new RoutedEventArgs());
                     e.Handled = true;
                 }
             }

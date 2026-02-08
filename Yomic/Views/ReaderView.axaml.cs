@@ -88,34 +88,6 @@ namespace Yomic.Views
                     vm.PrevPageCommand.Execute().Subscribe(_ => { });
                     e.Handled = true;
                 }
-                else if (e.Key == Key.PageDown)
-                {
-                    if (vm.IsWebtoon && MainScroll != null)
-                    {
-                        double newOffset = MainScroll.Offset.Y + MainScroll.Viewport.Height;
-                        if (newOffset > MainScroll.Extent.Height) newOffset = MainScroll.Extent.Height;
-                        MainScroll.Offset = new Vector(MainScroll.Offset.X, newOffset);
-                    }
-                    else
-                    {
-                        vm.NextPageCommand.Execute().Subscribe(_ => { });
-                    }
-                    e.Handled = true;
-                }
-                else if (e.Key == Key.PageUp)
-                {
-                    if (vm.IsWebtoon && MainScroll != null)
-                    {
-                        double newOffset = MainScroll.Offset.Y - MainScroll.Viewport.Height;
-                        if (newOffset < 0) newOffset = 0;
-                        MainScroll.Offset = new Vector(MainScroll.Offset.X, newOffset);
-                    }
-                    else
-                    {
-                        vm.PrevPageCommand.Execute().Subscribe(_ => { });
-                    }
-                    e.Handled = true;
-                }
                 else if (e.Key == Key.Space)
                 {
                     vm.ToggleMenuCommand.Execute().Subscribe(_ => { });
@@ -127,9 +99,9 @@ namespace Yomic.Views
                     vm.ToggleFullscreenCommand.Execute().Subscribe(_ => { });
                     e.Handled = true;
                 }
-                else if (e.Key == Key.F11 || e.Key == Key.F2)
+                else if (e.Key == Key.F11)
                 {
-                    // F11/F2 to toggle fullscreen
+                    // F11 to toggle fullscreen
                     vm.ToggleFullscreenCommand.Execute().Subscribe(_ => { });
                     e.Handled = true;
                 }
