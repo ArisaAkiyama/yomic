@@ -12,20 +12,20 @@
 
 **Yomic** brings the best manga reading experience to your Windows desktop. Discover, read, and organize your favorite manga, webtoons, and comics from multiple sources in one beautiful, ad-free application.
 
-[**⬇️ Download Latest Release**](https://github.com/ArisaAkiyama/yomic/releases)
+[**Download Latest Release**](https://github.com/ArisaAkiyama/yomic/releases)
 
 </div>
 
 ---
 
-## ✨ Features
+## Features
 
-### 📚 Comprehensive Library
+### Comprehensive Library
 - **Smart Organization**: Automatically categorizes your manga based on reading status (blue dot for unread, "New" badge for updates).
 - **Search & Filter**: Find any manga in your library instantly with powerful search and sort options.
 - **Reading History**: Pick up exactly where you left off with synchronized history.
 
-### 🌐 Unlimited Sources (Extensions)
+### Unlimited Sources (Extensions)
 - **Plugin Architecture**: Support for varied sources via external extensions.
 - **Supported Sources**:
   - **MangaDex** (Global)
@@ -35,13 +35,13 @@
   - **KomikCast** (Indonesia)
 - **Extensible**: Developers can easily create new extensions in C#.
 
-### 📖 Immersive Reading
+### Immersive Reading
 - **Webtoon Mode**: Smooth, continuous scrolling for vertical webtoons.
 - **Paged Mode**: Traditional left-to-right or right-to-left reading.
 - **Zoom & Fit**: Auto-fit to width/height or custom zoom levels.
 - **Keyboard Navigation**: Use arrow keys or PageUp/PageDown for seamless reading.
 
-### 🚀 Performance & Utility
+### Performance & Utility
 - **Offline Mode**: Download chapters to read without an internet connection.
 - **Image Caching**: Smart caching system for fast loading and offline fallback.
 - **VPN Bypass**: Integrated secure headers and proxy support to bypass regional blocks (e.g., for MangaDex).
@@ -50,7 +50,7 @@
 
 ---
 
-## 📥 Installation
+## Installation
 
 ### Prerequisites
 - **Windows 10** or higher (64-bit).
@@ -64,7 +64,7 @@
 
 ---
 
-## 🧩 Extensions Setup
+## Extensions Setup
 
 Yomic uses a modular extension system. You need to install extensions to access manga sources.
 
@@ -80,7 +80,7 @@ Yomic uses a modular extension system. You need to install extensions to access 
 
 ---
 
-## 🛠️ Building from Source
+## Building from Source
 
 Requirements:
 - **.NET 8.0 SDK**
@@ -103,7 +103,7 @@ dotnet build Yomic/Extensions/Mangabats/Yomic.Extensions.Mangabats.csproj
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
@@ -115,7 +115,7 @@ dotnet build Yomic/Extensions/Mangabats/Yomic.Extensions.Mangabats.csproj
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
@@ -127,12 +127,12 @@ Contributions are what make the open-source community such an amazing place to l
 
 ---
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 The developer(s) of this application does not have any affiliation with the content providers available. This application is a strictly a tool for browsing and viewing media hosted on third-party websites. All content is retrieved via extensions from third-party sources.
 
 ---
 
-## 📄 License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
