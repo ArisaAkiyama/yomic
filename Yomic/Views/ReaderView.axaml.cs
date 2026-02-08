@@ -23,6 +23,7 @@ namespace Yomic.Views
             }
 
             // Focusable needs to be true for KeyDown to work
+            this.Focusable = true; 
             this.AttachedToVisualTree += OnAttachedToVisualTree;
             
 
@@ -54,6 +55,8 @@ namespace Yomic.Views
             _autoScrollTimer.Tick += OnAutoScrollTick;
         }
 
+        private DateTime _lastNavTime = DateTime.MinValue;
+
         private void OnReaderPointerWheelChanged(object? sender, PointerWheelEventArgs e)
         {
             if (DataContext is ReaderViewModel vm && vm.IsWebtoon && MainScroll != null)
@@ -78,13 +81,23 @@ namespace Yomic.Views
             
             if (DataContext is ReaderViewModel vm)
             {
+                // Debounce / Cool-down for navigation (300ms) to ensure "1x click" feel
+                bool isNavKey = (e.Key == Key.Right || e.Key == Key.Left);
+                if (isNavKey && (DateTime.Now - _lastNavTime).TotalMilliseconds < 300)
+                {
+                    e.Handled = true;
+                    return;
+                }
+
                 if (e.Key == Key.Right)
                 {
+                    _lastNavTime = DateTime.Now;
                     vm.NextPageCommand.Execute().Subscribe(_ => { });
                     e.Handled = true;
                 }
                 else if (e.Key == Key.Left)
                 {
+                    _lastNavTime = DateTime.Now;
                     vm.PrevPageCommand.Execute().Subscribe(_ => { });
                     e.Handled = true;
                 }
