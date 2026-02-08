@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia; // Added for VisualTreeAttachmentEventArgs
+using Avalonia.Threading; // Added for DispatcherTimer
 using Yomic.ViewModels;
 using System;
 
@@ -22,7 +23,9 @@ namespace Yomic.Views
             }
 
             // Focusable needs to be true for KeyDown to work
-            this.AttachedToVisualTree += (s, e) => this.Focus();
+            this.AttachedToVisualTree += OnAttachedToVisualTree;
+            
+
 
             // Fix for "Jumping to top":
             // We use AddHandler with handledEventsToo: true to ensure we capture events.
@@ -40,7 +43,15 @@ namespace Yomic.Views
                 mainScroll.AddHandler(PointerPressedEvent, OnPanPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
                 mainScroll.AddHandler(PointerReleasedEvent, OnPanPointerReleased, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
                 mainScroll.AddHandler(PointerMovedEvent, OnPanPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+                mainScroll.AddHandler(PointerMovedEvent, OnPanPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
             }
+            
+            // AutoScroll Timer
+            _autoScrollTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(16) // ~60fps
+            };
+            _autoScrollTimer.Tick += OnAutoScrollTick;
         }
 
         private void OnReaderPointerWheelChanged(object? sender, PointerWheelEventArgs e)
@@ -77,9 +88,31 @@ namespace Yomic.Views
                     vm.PrevPageCommand.Execute().Subscribe(_ => { });
                     e.Handled = true;
                 }
+                else if (e.Key == Key.PageDown)
+                {
+                    vm.NextPageCommand.Execute().Subscribe(_ => { });
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.PageUp)
+                {
+                    vm.PrevPageCommand.Execute().Subscribe(_ => { });
+                    e.Handled = true;
+                }
                 else if (e.Key == Key.Space)
                 {
                     vm.ToggleMenuCommand.Execute().Subscribe(_ => { });
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.Escape && vm.IsFullscreen)
+                {
+                    // ESC to exit fullscreen
+                    vm.ToggleFullscreenCommand.Execute().Subscribe(_ => { });
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.F11 || e.Key == Key.F2)
+                {
+                    // F11/F2 to toggle fullscreen
+                    vm.ToggleFullscreenCommand.Execute().Subscribe(_ => { });
                     e.Handled = true;
                 }
             }
@@ -201,50 +234,131 @@ namespace Yomic.Views
             }
         }
 
-        // --- Drag / Pan Support ---
+        // --- Drag / Pan / AutoScroll Support ---
         private bool _isPanning = false;
+        private bool _isAutoScrolling = false;
         private Point _lastPanPosition;
+        
+        // AutoScroll Vars
+        private DispatcherTimer _autoScrollTimer;
+        private Point _autoScrollAnchorPosition;
+        private double _autoScrollSpeedY = 0;
+        private Canvas? _autoScrollCanvas;
+        private Border? _autoScrollAnchor;
 
         private void OnPanPointerPressed(object? sender, PointerPressedEventArgs e)
         {
-            // Only Left Click and if we are in Webtoon mode (or Paged mode inside ScrollViewer)
             var props = e.GetCurrentPoint(this).Properties;
-            if (props.IsLeftButtonPressed && MainScroll != null)
+            if (!props.IsLeftButtonPressed || MainScroll == null) return;
+            
+            if (DataContext is ReaderViewModel vm && vm.ZoomScale <= 1.5)
             {
+                // --- AUTO SCROLL MODE (Zoom <= 150%) ---
+                _isAutoScrolling = true;
+                _autoScrollAnchorPosition = e.GetPosition(this);
+                
+                // Show Anchor
+                if (_autoScrollCanvas == null) _autoScrollCanvas = this.FindControl<Canvas>("AutoScrollCanvas");
+                if (_autoScrollAnchor == null) _autoScrollAnchor = this.FindControl<Border>("AutoScrollAnchor");
+                
+                if (_autoScrollCanvas != null && _autoScrollAnchor != null)
+                {
+                    _autoScrollCanvas.IsVisible = true;
+                    // Position the anchor centered on the click
+                    Canvas.SetLeft(_autoScrollAnchor, _autoScrollAnchorPosition.X);
+                    Canvas.SetTop(_autoScrollAnchor, _autoScrollAnchorPosition.Y);
+                }
+                
+                // Capture pointer
+                if (sender is Control control) e.Pointer.Capture(control);
+                
+                // Start Timer
+                _autoScrollSpeedY = 0;
+                _autoScrollTimer.Start();
+                this.Cursor = new Cursor(StandardCursorType.SizeNorthSouth); // North-South Arrows
+            }
+            else
+            {
+                // --- PAN MODE (Zoom > 100%) ---
                 _isPanning = true;
                 _lastPanPosition = e.GetPosition(this);
                 
-                // Capture pointer to ensure smooth dragging and prevent "jumping"
                 if (sender is Control control) e.Pointer.Capture(control);
-                
-                // Change cursor to Hand/SizeAll
-                this.Cursor = new Cursor(StandardCursorType.SizeAll);
+                this.Cursor = new Cursor(StandardCursorType.SizeAll); // Hand/All Arrows
             }
         }
 
         private void OnPanPointerReleased(object? sender, PointerReleasedEventArgs e)
         {
-            if (_isPanning)
+            if (_isAutoScrolling)
+            {
+                _isAutoScrolling = false;
+                _autoScrollTimer.Stop();
+                _autoScrollSpeedY = 0;
+                
+                if (_autoScrollCanvas != null) _autoScrollCanvas.IsVisible = false;
+                
+                e.Pointer.Capture(null);
+                this.Cursor = Cursor.Default;
+            }
+            else if (_isPanning)
             {
                 _isPanning = false;
                 e.Pointer.Capture(null);
-                
-                // Reset Cursor
                 this.Cursor = Cursor.Default;
             }
         }
 
         private void OnPanPointerMoved(object? sender, PointerEventArgs e)
         {
-            if (!_isPanning || MainScroll == null) return;
+            if (MainScroll == null) return;
 
-            var currentPosition = e.GetPosition(this);
-            var delta = _lastPanPosition - currentPosition; 
+            if (_isAutoScrolling)
+            {
+                var currentPosition = e.GetPosition(this);
+                
+                // Calculate Speed based on distance from Anchor
+                // Deadzone of 20px
+                double dy = currentPosition.Y - _autoScrollAnchorPosition.Y;
+                
+                if (Math.Abs(dy) < 20)
+                {
+                    _autoScrollSpeedY = 0;
+                }
+                else
+                {
+                    // Linear speed scaling: (Distance - Deadzone) * Multiplier
+                    // Adjust multiplier for sensitivity
+                    double val = (dy > 0) ? (dy - 20) : (dy + 20);
+                    _autoScrollSpeedY = val * 0.5; // Multiplier
+                }
+            }
+            else if (_isPanning)
+            {
+                var currentPosition = e.GetPosition(this);
+                var delta = _lastPanPosition - currentPosition; 
 
-            // Apply new offset
-            MainScroll.Offset = new Vector(MainScroll.Offset.X + delta.X, MainScroll.Offset.Y + delta.Y);
-            
-            _lastPanPosition = currentPosition;
+                // Apply new offset
+                MainScroll.Offset = new Vector(MainScroll.Offset.X + delta.X, MainScroll.Offset.Y + delta.Y);
+                
+                _lastPanPosition = currentPosition;
+            }
         }
+        
+        private void OnAutoScrollTick(object? sender, EventArgs e)
+        {
+            if (_isAutoScrolling && MainScroll != null && Math.Abs(_autoScrollSpeedY) > 0.1)
+            {
+                 MainScroll.Offset = new Vector(MainScroll.Offset.X, MainScroll.Offset.Y + _autoScrollSpeedY);
+            }
+        }
+        
+        private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+        {
+            this.Focus();
+            
+        }
+        
+
     }
 }

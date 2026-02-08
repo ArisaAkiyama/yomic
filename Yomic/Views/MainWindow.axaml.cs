@@ -1,5 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.ReactiveUI; // Added for WhenAnyValue
+using ReactiveUI; // Added for WhenAnyValue
 using Yomic.ViewModels;
 using System;
 
@@ -10,6 +12,75 @@ namespace Yomic.Views
         public MainWindow()
         {
             InitializeComponent();
+            DataContextChanged += OnDataContextChanged;
+        }
+
+        private void OnDataContextChanged(object? sender, EventArgs e)
+        {
+            if (DataContext is MainWindowViewModel vm)
+            {
+                // Sync WindowState when ViewModel.IsFullscreen changes (e.g., from ReaderView)
+                vm.WhenAnyValue(x => x.IsFullscreen)
+                  .Subscribe(isFullscreen =>
+                  {
+                      SetFullscreen(vm, isFullscreen);
+                  });
+            }
+        }
+
+        protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+
+            if (DataContext is MainWindowViewModel vm)
+            {
+                if (e.Key == Avalonia.Input.Key.F11 || e.Key == Avalonia.Input.Key.F2)
+                {
+                    ToggleFullscreen(vm);
+                    e.Handled = true;
+                }
+                else if (e.Key == Avalonia.Input.Key.Escape && vm.IsFullscreen)
+                {
+                    // Only exit fullscreen if currently in fullscreen
+                    SetFullscreen(vm, false);
+                    e.Handled = true;
+                }
+                else if (e.KeyModifiers == Avalonia.Input.KeyModifiers.Control && e.Key == Avalonia.Input.Key.R)
+                {
+                    OnReloadClick(null, null);
+                    e.Handled = true;
+                }
+            }
+        }
+
+        private void ToggleFullscreen(MainWindowViewModel vm)
+        {
+            bool newState = !vm.IsFullscreen;
+            SetFullscreen(vm, newState);
+        }
+
+        private void SetFullscreen(MainWindowViewModel vm, bool isFullscreen)
+        {
+            vm.IsFullscreen = isFullscreen;
+            
+            if (isFullscreen)
+            {
+                // Strict Fullscreen Mode: Remove borders, padding, and transparency
+                SystemDecorations = SystemDecorations.None;
+                WindowState = WindowState.FullScreen;
+                Padding = new Avalonia.Thickness(0);
+                Background = Avalonia.Media.Brushes.Black;
+                ExtendClientAreaToDecorationsHint = false; // Disable custom chrome to remove potential top bar reservation
+            }
+            else
+            {
+                // Restore Normal Mode
+                SystemDecorations = SystemDecorations.Full;
+                WindowState = WindowState.Normal;
+                Padding = new Avalonia.Thickness(0); // WindowState=Maximized style handle this via XAML, but standard is 0 for Normal
+                Background = Avalonia.Media.Brushes.Transparent;
+                ExtendClientAreaToDecorationsHint = true;
+            }
         }
 
         private void OnLibraryClick(object? sender, RoutedEventArgs e)
