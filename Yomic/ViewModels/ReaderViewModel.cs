@@ -285,7 +285,7 @@ namespace Yomic.ViewModels
                 // Mark as read immediately
                 _ = MarkCurrentChapterAsReadAsync();
                 
-                System.Threading.Tasks.Task.Run(LoadPages);
+                System.Threading.Tasks.Task.Run(() => LoadPages(false));
             }
 
             BackCommand = ReactiveCommand.Create(() => 
@@ -297,12 +297,12 @@ namespace Yomic.ViewModels
             NextPageCommand = ReactiveCommand.Create(() => 
             {
                  if (CurrentPageIndex < Pages.Count - 1) CurrentPageIndex++;
-                 else if (HasNextChapter) SwitchToChapter(_allChapters![_currentChapterIndex - 1], _currentChapterIndex - 1); // Logic depends on list order
+                 else if (HasNextChapter) SwitchToChapter(_allChapters![_currentChapterIndex - 1], _currentChapterIndex - 1, false); // Next Chapter -> Page 0
             });
             PrevPageCommand = ReactiveCommand.Create(() => 
             {
                  if (CurrentPageIndex > 0) CurrentPageIndex--;
-                 else if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1);
+                 else if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1, true); // Prev Chapter -> Last Page
             });
             ToggleMenuCommand = ReactiveCommand.Create(() => 
             { 
@@ -318,115 +318,38 @@ namespace Yomic.ViewModels
             
             NextChapterCommand = ReactiveCommand.Create(() => 
             {
-                 if (HasNextChapter) SwitchToChapter(_allChapters![_currentChapterIndex - 1], _currentChapterIndex - 1);
+                 if (HasNextChapter) SwitchToChapter(_allChapters![_currentChapterIndex - 1], _currentChapterIndex - 1, false);
             });
             
             PrevChapterCommand = ReactiveCommand.Create(() => 
             {
-                 if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1);
+                 if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1, false);
             });
             
             // Zoom Logic
             ZoomInCommand = ReactiveCommand.Create(() => ZoomScale = Math.Min(5.0, ZoomScale + 0.25));
             ZoomOutCommand = ReactiveCommand.Create(() => ZoomScale = Math.Max(0.5, ZoomScale - 0.25));
             ResetZoomCommand = ReactiveCommand.Create(() => ZoomScale = 1.0);
-        }
-
-        // Zoom Properties
-        private double _zoomScale = 1.0;
-        public double ZoomScale
-        {
-            get => _zoomScale;
-            set
-            {
-                this.RaiseAndSetIfChanged(ref _zoomScale, value);
-                this.RaisePropertyChanged(nameof(WebtoonWidth));
-            }
-        }
-
-        public double WebtoonWidth => 800 * ZoomScale;
-
-        public ReactiveCommand<Unit, double> ZoomInCommand { get; }
-        public ReactiveCommand<Unit, double> ZoomOutCommand { get; }
-        public ReactiveCommand<Unit, double> ResetZoomCommand { get; }
-
-        public ReactiveCommand<Unit, Unit> NextPageCommand { get; }
-        public ReactiveCommand<Unit, Unit> PrevPageCommand { get; }
-        public ReactiveCommand<Unit, Unit> ToggleMenuCommand { get; }
-        
-        public ReactiveCommand<ReaderMode, Unit> SetModeCommand { get; }
-        public ReactiveCommand<Unit, Unit> NextChapterCommand { get; }
-        public ReactiveCommand<Unit, Unit> PrevChapterCommand { get; }
-
-        private bool _isHeaderVisible = true;
-        public bool IsHeaderVisible { get => _isHeaderVisible; set => this.RaiseAndSetIfChanged(ref _isHeaderVisible, value); }
-
-        private bool _isFooterVisible = true;
-        public bool IsFooterVisible { get => _isFooterVisible; set => this.RaiseAndSetIfChanged(ref _isFooterVisible, value); }
-        
-        // Backward compatibility / Master Toggle
-        public bool IsMenuVisible
-        {
-            get => _isHeaderVisible || _isFooterVisible;
-            set
-            {
-                IsHeaderVisible = value;
-                IsFooterVisible = value;
-                this.RaisePropertyChanged(nameof(IsMenuVisible));
-            }
-        }
-
-        private bool _isWebtoon = true;
-        public bool IsWebtoon 
-        { 
-            get => _isWebtoon; 
-            set => this.RaiseAndSetIfChanged(ref _isWebtoon, value); 
-        }
-        
-        public bool IsPaged => !IsWebtoon;
-        
-        public Action? CustomBackAction { get; set; }
-
-        private async System.Threading.Tasks.Task MarkCurrentChapterAsReadAsync()
-        {
-            if (_currentChapter == null || _libraryService == null) return;
             
-            try
+            // Fullscreen Toggle
+            ToggleFullscreenCommand = ReactiveCommand.Create(() =>
             {
-                // Update UI optimistically
-                _currentChapter.IsRead = true;
-                
-                // Persist to DB
-                // Pass extra info to support Online/Non-Library persistance
-                string mangaUrlForDb = _mangaUrl;
-                if (string.IsNullOrEmpty(mangaUrlForDb) && _sourceId > 0 && !string.IsNullOrEmpty(_currentChapter.Url))
-                {
-                    // Fallback infer from ChapterURL if we really have to, but hopefully _mangaUrl is set
-                    // Assuming standard format like /manga/slug/chapter/slug
-                    // This is risky, so relying on passed arg is best.
-                }
-
-                await _libraryService.SetChapterReadStatusAsync(
-                    _currentChapter.Url, 
-                    true,
-                    _sourceId, 
-                    _mangaUrl, 
-                    _currentChapter.Title, 
-                    -1 // Chapter number parsing is complex, skipping for now
-                );
-            }
-            catch (System.Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ReaderVM] Failed to mark as read: {ex.Message}");
-            }
+                IsFullscreen = !IsFullscreen;
+            });
+            
+            // Sync with MainViewModel
+            _mainViewModel.WhenAnyValue(x => x.IsFullscreen)
+                          .Subscribe(_ => this.RaisePropertyChanged(nameof(IsFullscreen)));
         }
 
-        private async System.Threading.Tasks.Task LoadPages()
+        // ... (Properties omitted for brevity) ...
+        
+        // Correct position for LoadPages
+        private async System.Threading.Tasks.Task LoadPages(bool startAtLastPage = false)
         {
             if (_sourceManager == null || _currentChapter == null) return;
             
             // Calculate Blur Status
-            // Helper logic: If NsfwMode (SecureScreen) is ON and Content is NSFW -> Blur
             bool shouldBlur = _mainViewModel.SettingsService.SecureScreen && _isNsfwContent;
             
             // Check if Downloaded
@@ -443,7 +366,7 @@ namespace Yomic.ViewModels
                     if (System.IO.Directory.Exists(chapterDir))
                     {
                         var files = System.IO.Directory.GetFiles(chapterDir)
-                            .OrderBy(f => f) // Ensure order by filename (000.jpg, 001.jpg)
+                            .OrderBy(f => f) 
                             .ToList();
                             
                         if (files.Count > 0)
@@ -455,7 +378,7 @@ namespace Yomic.ViewModels
                                 {
                                     Pages.Add(new PageViewModel(file, _networkService, shouldBlur));
                                 }
-                                CurrentPageIndex = 0;
+                                CurrentPageIndex = startAtLastPage ? Math.Max(0, Pages.Count - 1) : 0;
                             });
                             return; // Loaded from disk, exit
                         }
@@ -484,7 +407,6 @@ namespace Yomic.ViewModels
                 try 
                 {
                     var urls = await source.GetPageListAsync(_currentChapter.Url);
-                    // ...
                     
                     Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                     {
@@ -495,8 +417,7 @@ namespace Yomic.ViewModels
                             {
                                 Pages.Add(new PageViewModel(url, _networkService, shouldBlur));
                             }
-                            // Reset index
-                            CurrentPageIndex = 0;
+                            CurrentPageIndex = startAtLastPage ? Math.Max(0, Pages.Count - 1) : 0;
                         }
                         else
                         {
@@ -514,7 +435,7 @@ namespace Yomic.ViewModels
         /// <summary>
         /// Switches to a new chapter in-place (for standalone windows)
         /// </summary>
-        private void SwitchToChapter(ChapterItem newChapter, int newIndex)
+        private void SwitchToChapter(ChapterItem newChapter, int newIndex, bool startAtLastPage)
         {
             _currentChapter = newChapter;
             _currentChapterIndex = newIndex;
@@ -531,7 +452,7 @@ namespace Yomic.ViewModels
             _ = MarkCurrentChapterAsReadAsync();
             
             // Reload pages
-            System.Threading.Tasks.Task.Run(LoadPages);
+            System.Threading.Tasks.Task.Run(() => LoadPages(startAtLastPage));
         }
     }
 }
