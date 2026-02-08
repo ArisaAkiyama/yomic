@@ -90,12 +90,30 @@ namespace Yomic.Views
                 }
                 else if (e.Key == Key.PageDown)
                 {
-                    vm.NextPageCommand.Execute().Subscribe(_ => { });
+                    if (vm.IsWebtoon && MainScroll != null)
+                    {
+                        double newOffset = MainScroll.Offset.Y + MainScroll.Viewport.Height;
+                        if (newOffset > MainScroll.Extent.Height) newOffset = MainScroll.Extent.Height;
+                        MainScroll.Offset = new Vector(MainScroll.Offset.X, newOffset);
+                    }
+                    else
+                    {
+                        vm.NextPageCommand.Execute().Subscribe(_ => { });
+                    }
                     e.Handled = true;
                 }
                 else if (e.Key == Key.PageUp)
                 {
-                    vm.PrevPageCommand.Execute().Subscribe(_ => { });
+                    if (vm.IsWebtoon && MainScroll != null)
+                    {
+                        double newOffset = MainScroll.Offset.Y - MainScroll.Viewport.Height;
+                        if (newOffset < 0) newOffset = 0;
+                        MainScroll.Offset = new Vector(MainScroll.Offset.X, newOffset);
+                    }
+                    else
+                    {
+                        vm.PrevPageCommand.Execute().Subscribe(_ => { });
+                    }
                     e.Handled = true;
                 }
                 else if (e.Key == Key.Space)
