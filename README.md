@@ -30,6 +30,7 @@
 - **Supported Sources**:
   - **MangaDex** (Global)
   - **Mangabats** (English)
+  - **Weebcentral** (English)
   - **Kiryuu** (Indonesia)
   - **Komiku** (Indonesia)
   - **KomikCast** (Indonesia)
@@ -68,11 +69,11 @@
 
 Yomic uses a modular extension system. You need to install extensions to access manga sources.
 
-1. Download the **[Extension.zip](https://github.com/ArisaAkiyama/extension-yomic/raw/main/Extension.zip)**.
+1. Download the **[Extensions.zip](https://github.com/ArisaAkiyama/extension-yomic/raw/main/Extensions.zip)**.
 2. Open Yomic and go to the **Extensions** tab (or Settings > Extensions).
 3. Click **"Open Extensions Folder"**.
-4. Extract the contents of `Extension.zip` into this folder.
-   - Structure should look like: `.../Extensions/Mangabats/Yomic.Extensions.Mangabats.dll`
+4. Extract the contents of `Extensions.zip` into this folder.
+   - Structure should look like: `.../Plugins/Yomic.Extensions.Mangabats.dll`
 5. **Restart Yomic**.
 6. Go to **Browse Sources** to see your new sources!
 
