@@ -16,13 +16,21 @@ namespace Yomic.ViewModels
     {
         TitleAsc,     // A-Z
         TitleDesc,    // Z-A
-        DateModified  // Most recent first
+        DateModified, // Most recent first
+        UnreadCountDesc, // Most unread first
+        LastReadDesc  // Recently read first
+    }
+
+    public enum LibraryFilterMode
+    {
+        All,
+        UnreadOnly,
+        OngoingOnly,
+        CompletedOnly
     }
 
     public class LibraryViewModel : ViewModelBase
     {
-        private static readonly HttpClient _httpClient = new();
-        // private static readonly Dictionary<string, Bitmap> _coverCache = new(); // REMOVED (Memory Leak)
         private static readonly string _cacheFolder;
         
         private List<MangaItem> _allItems = new(); // Store all items offline
@@ -37,10 +45,6 @@ namespace Yomic.ViewModels
 
         static LibraryViewModel()
         {
-             // Configure HttpClient
-             _httpClient.DefaultRequestHeaders.Add("Referer", "https://komiku.org/");
-             _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-
             // Setup cache folder
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             _cacheFolder = Path.Combine(appData, "Yomic", "covers");
@@ -56,6 +60,19 @@ namespace Yomic.ViewModels
             get => _searchText;
             set => this.RaiseAndSetIfChanged(ref _searchText, value);
         }
+
+        private string _selectedSourceFilter = "All";
+        public string SelectedSourceFilter
+        {
+            get => _selectedSourceFilter;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _selectedSourceFilter, value);
+                FilterLibrary();
+            }
+        }
+
+        public ObservableCollection<string> AvailableSources { get; } = new ObservableCollection<string> { "All" };
 
         private bool _isLibraryEmpty;
         public bool IsLibraryEmpty
@@ -91,6 +108,7 @@ namespace Yomic.ViewModels
         public ReactiveCommand<Unit, Unit> OpenFilterCommand { get; }
         public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
         public ReactiveCommand<MangaItem, Unit> MarkAsReadCommand { get; }
+        public ReactiveCommand<MangaItem, Unit> MarkAsUnreadCommand { get; }
         public ReactiveCommand<MangaItem, Unit> RemoveMangaCommand { get; }
         public ReactiveCommand<MangaItem, Unit> DeleteMangaCommand { get; }
 
@@ -112,7 +130,19 @@ namespace Yomic.ViewModels
             }
         }
 
+        private LibraryFilterMode _selectedFilterMode = LibraryFilterMode.All;
+        public LibraryFilterMode SelectedFilterMode
+        {
+            get => _selectedFilterMode;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _selectedFilterMode, value);
+                FilterLibrary();
+            }
+        }
+
         public ReactiveCommand<LibrarySortMode, Unit> SetSortModeCommand { get; }
+        public ReactiveCommand<LibraryFilterMode, Unit> SetFilterModeCommand { get; }
         
         // Helper for UI
         public bool HasItems => LibraryItems.Count > 0;
@@ -165,8 +195,16 @@ namespace Yomic.ViewModels
                 });
             };
 
-            OpenMangaCommand = ReactiveCommand.Create<MangaItem>(item => 
+            OpenMangaCommand = ReactiveCommand.CreateFromTask<MangaItem>(async item => 
             {
+                // Clear the badge in UI immediately
+                item.HasNewChapters = false;
+                
+                // Clear the badge in DB (Fire and forget or await? Better await to ensure consistency but don't block navigation too much)
+                // We can do it in background if needed, but let's await for safety.
+                // However, navigation should be fast.
+                _ = _libraryService.MarkMangaAsSeenAsync(item.MangaUrl, item.SourceId);
+
                 mainViewModel.GoToDetail(item);
             });
 
@@ -186,13 +224,27 @@ namespace Yomic.ViewModels
                 await _libraryService.MarkChaptersAsReadAsync(manga);
                 
                 // UI Update
-                // Assuming "0" or null hides the badge? 
-                // Let's set it to null or empty if 0 is hidden by converter, 
-                // but usually "0" is hidden if using IsNotNull converter? 
-                // The XAML uses IsNotNull converter. So null is safer for hiding.
-                item.UnreadCount = null; // Or "0" if textblock handles it.
-                // Re-raise property change just in case UnreadCount setter doesn't if logic depends on something else
-                // But MangaItem.UnreadCount setter (ViewModelBase) usually does it.
+                item.UnreadCount = null;
+                item.HasNewChapters = false;
+            });
+
+            // COMMAND: Mark as Unread (Clear Read Story)
+            MarkAsUnreadCommand = ReactiveCommand.CreateFromTask<MangaItem>(async item => 
+            {
+                var manga = new Core.Models.Manga { Url = item.MangaUrl, Source = item.SourceId };
+                // Call backend to mark all chapters as unread
+                await _libraryService.MarkChaptersAsUnreadAsync(manga);
+                
+                // Update UI: Restore Unread Count
+                var dbManga = await _libraryService.GetMangaByUrlAsync(item.MangaUrl, item.SourceId);
+                if (dbManga != null && dbManga.Chapters != null)
+                {
+                    int unread = dbManga.Chapters.Count; // Since all are unread now
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+                    {
+                        item.UnreadCount = unread > 0 ? unread.ToString() : null;
+                    });
+                }
             });
 
             RemoveMangaCommand = ReactiveCommand.CreateFromTask<MangaItem>(async item => 
@@ -243,6 +295,12 @@ namespace Yomic.ViewModels
                 // Persist to settings
                 _settingsService.LibrarySortMode = (int)mode;
                 _settingsService.Save();
+            });
+
+            // Filter Mode Command
+            SetFilterModeCommand = ReactiveCommand.Create<LibraryFilterMode>(mode =>
+            {
+                SelectedFilterMode = mode;
             });
             
             // Initial load
@@ -341,51 +399,129 @@ namespace Yomic.ViewModels
                  {
                      // Update existing
                      if (existingItem.Title != m.Title) existingItem.Title = m.Title;
-                     if (existingItem.UnreadCount != unreadString) existingItem.UnreadCount = unreadString;
-                     
-                     // Check cover
-                     if (existingItem.CoverUrl != m.ThumbnailUrl || forceDownload)
+                     if (existingItem.UnreadCount != unreadString) 
                      {
-                         existingItem.CoverUrl = m.ThumbnailUrl;
-                         if (forceDownload) _ = DownloadAndCacheCoverAsync(existingItem);
-                         else _ = LoadCoverFromCacheAsync(existingItem);
+                         existingItem.UnreadCount = unreadString;
+                         // If unread count changes and is > 0, show badge?
+                         // Only if strictly increasing? Or just if > 0?
+                         // User wants to hide on click. If we update library and find new chapters, should it reappear?
+                         // Yes. If Unread > 0, show badge. Click hides it.
+                         // But if we just click, unread count might stay same.
+                         // So we only set IsNewBadgeVisible = true if Unread > 0 AND we are updating.
+                         // Only update if changed to avoid unnecessary notifications
+                         if (existingItem.HasNewChapters != m.HasNewChapters)
+                             existingItem.HasNewChapters = m.HasNewChapters;
                      }
+                      
+                       if (existingItem.CoverUrl != m.ThumbnailUrl)
+                       {
+                           existingItem.CoverUrl = m.ThumbnailUrl;
+                       }
+
+                        // Update Status and LastViewed
+                        if (existingItem.Status != m.Status) existingItem.Status = m.Status;
+                        if (existingItem.LastViewed != m.LastViewed) existingItem.LastViewed = m.LastViewed;
+                        if (string.IsNullOrEmpty(existingItem.SourceName)) existingItem.SourceName = _mainVM.SourceManager.GetSource(m.Source)?.Name;
+                   }
+                  else
+                  {
+                      // Add New
+                      var newItem = new MangaItem
+                      {
+                           Title = m.Title,
+                           CoverUrl = m.ThumbnailUrl,
+                           SourceId = m.Source,
+                           SourceName = _mainVM.SourceManager.GetSource(m.Source)?.Name,
+                           MangaUrl = m.Url,
+                           UnreadCount = unreadString,
+                           Status = m.Status, // Fix: Map Status
+                           LastViewed = m.LastViewed // Fix: Map LastViewed
+                      };
+                      newItem.HasNewChapters = m.HasNewChapters;
+                      
+                       _allItems.Add(newItem);
+                 }
+              }
+             
+             // 3. Update AvailableSources
+             Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+             {
+                 var sourcesInItems = _allItems
+                     .Select(x => x.SourceName)
+                     .Where(name => !string.IsNullOrEmpty(name))
+                     .Select(name => name!)
+                     .Distinct()
+                     .OrderBy(x => x)
+                     .ToList();
+                 var desiredSources = new List<string> { "All" };
+                 desiredSources.AddRange(sourcesInItems);
+
+                 // Sync
+                 var toRemoveSource = AvailableSources.Where(s => !desiredSources.Contains(s)).ToList();
+                 foreach (var s in toRemoveSource) AvailableSources.Remove(s);
+
+                 foreach (var s in desiredSources)
+                 {
+                     if (!AvailableSources.Contains(s)) AvailableSources.Add(s);
+                 }
+
+                 // Fix Order natively
+                 for (int i = 0; i < desiredSources.Count; i++)
+                 {
+                     if (AvailableSources[i] != desiredSources[i])
+                     {
+                         var oldIndex = AvailableSources.IndexOf(desiredSources[i]);
+                         AvailableSources.Move(oldIndex, i);
+                     }
+                 }
+
+                 if (!AvailableSources.Contains(SelectedSourceFilter))
+                 {
+                     SelectedSourceFilter = "All";
                  }
                  else
                  {
-                     // Add New
-                     var newItem = new MangaItem
-                     {
-                          Title = m.Title,
-                          CoverUrl = m.ThumbnailUrl,
-                          SourceId = m.Source,
-                          MangaUrl = m.Url,
-                          UnreadCount = unreadString
-                     };
-                     _allItems.Add(newItem);
-                     
-                     if (forceDownload) _ = DownloadAndCacheCoverAsync(newItem);
-                     else _ = LoadCoverFromCacheAsync(newItem);
+                      // Re-trigger filter just in case
+                      FilterLibrary();
                  }
-             }
-             
-             FilterLibrary();
+             });
         }
 
         private void FilterLibrary()
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(() => 
             {
-                 var query = string.IsNullOrWhiteSpace(SearchText) 
-                     ? _allItems 
-                     : _allItems.Where(x => x.Title.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+                 var query = _allItems.AsEnumerable();
 
-                 // Apply sort based on SelectedSortMode
+                 // 1. Apply Search
+                 if (!string.IsNullOrWhiteSpace(SearchText))
+                 {
+                     query = query.Where(x => x.Title.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+                 }
+
+                 // 2. Apply Source Filter
+                 if (!string.IsNullOrEmpty(SelectedSourceFilter) && SelectedSourceFilter != "All")
+                 {
+                     query = query.Where(x => string.Equals(x.SourceName, SelectedSourceFilter, StringComparison.OrdinalIgnoreCase));
+                 }
+
+                 // 2. Apply Filter
+                 query = SelectedFilterMode switch
+                 {
+                     LibraryFilterMode.UnreadOnly => query.Where(x => !string.IsNullOrEmpty(x.UnreadCount) && x.UnreadCount != "0"),
+                     LibraryFilterMode.OngoingOnly => query.Where(x => x.Status == 1),
+                     LibraryFilterMode.CompletedOnly => query.Where(x => x.Status == 2),
+                     _ => query
+                 };
+
+                 // 3. Apply Sort
                  IEnumerable<MangaItem> sorted = SelectedSortMode switch
                  {
                      LibrarySortMode.TitleAsc => query.OrderBy(x => x.Title),
                      LibrarySortMode.TitleDesc => query.OrderByDescending(x => x.Title),
                      LibrarySortMode.DateModified => query.OrderByDescending(x => x.LastUpdate),
+                     LibrarySortMode.UnreadCountDesc => query.OrderByDescending(x => int.TryParse(x.UnreadCount, out int c) ? c : 0),
+                     LibrarySortMode.LastReadDesc => query.OrderByDescending(x => x.LastViewed),
                      _ => query.OrderBy(x => x.Title)
                  };
                       
@@ -397,22 +533,23 @@ namespace Yomic.ViewModels
                  var toRemove = LibraryItems.Where(i => !source.Contains(i)).ToList();
                  foreach(var item in toRemove) LibraryItems.Remove(item);
                  
-                 // 2. Add / Move items
-                 // Since we want to respect Sort Order, we might need to Move items or Insert at correct index.
-                 // For simplicity in this Smart Sync, we'll just Ensure items exist, 
-                 // BUT `LibraryItems` ObservableCollection won't automatically resort if we just Add.
-                 // We need to sync the ORDER too.
-                 
-                 LibraryItems.Clear();
-                 foreach(var item in source) LibraryItems.Add(item);
-                 
-                 // NOTE: The optimization above (Smart Sync) was:
-                 // 1. Remove missing
-                 // 2. Add new
-                 // But valid Sorting requires re-ordering. 
-                 // For a Library size < 1000, Clearing and Adding sorted list is actually fast enough provided we reused the OBJECTS (which we did in MergeLibraryItems).
-                 // The "Flicker" comes from creating NEW instances + downloading images.
-                 // Since _allItems keeps the instances with cached Bitmaps, Clear+Add here is visually instant.
+                 // 2. Sync order and add new
+                 for (int i = 0; i < source.Count; i++)
+                 {
+                     var item = source[i];
+                     int existingIndex = LibraryItems.IndexOf(item);
+                     
+                     if (existingIndex == -1)
+                     {
+                         // Not in list, insert at correct index
+                         LibraryItems.Insert(i, item);
+                     }
+                     else if (existingIndex != i)
+                     {
+                         // In list but wrong index, move it
+                         LibraryItems.Move(existingIndex, i);
+                     }
+                 }
                  
                  IsLibraryEmpty = _allItems.Count == 0;
                  IsEmpty = LibraryItems.Count == 0;
@@ -422,145 +559,5 @@ namespace Yomic.ViewModels
             });
         }
 
-        /// <summary>
-        /// Load cover from memory/disk cache first.
-        /// OFFLINE MODE: Does NOT automatically download if missing. 
-        /// Use ForceRefreshLibrary (Refresh button) to download missing covers.
-        /// </summary>
-        private async Task LoadCoverFromCacheAsync(MangaItem item)
-        {
-            if (string.IsNullOrEmpty(item.CoverUrl)) return;
-            
-            try
-            {
-                // 1. Check shared memory cache (WeakRef)
-                var cachedBitmap = _imageCacheService.GetImage(item.CoverUrl);
-                if (cachedBitmap != null)
-                {
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() => item.CoverBitmap = cachedBitmap);
-                    return;
-                }
-                
-                // 2. Check disk cache
-                var cacheKey = GetCacheKey(item.CoverUrl);
-                var cachePath = Path.Combine(_cacheFolder, cacheKey);
-                if (File.Exists(cachePath))
-                {
-                    byte[] data = await File.ReadAllBytesAsync(cachePath);
-                    using var stream = new MemoryStream(data);
-                    var bitmap = new Bitmap(stream);
-                    
-                    // Add to shared cache
-                    _imageCacheService.AddImage(item.CoverUrl, bitmap);
-                    
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() => item.CoverBitmap = bitmap);
-                    return;
-                }
-                
-                // 3. Fallback: Auto-Download if Online and missing
-                // This heals "Blank Covers" automatically
-                if (IsOnline)
-                {
-                    _ = DownloadAndCacheCoverAsync(item);
-                }
-            }
-            catch (Exception ex)
-            {
-                 System.Diagnostics.Debug.WriteLine($"[LibraryVM] LoadCover Error: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Download cover from network and save to cache
-        /// </summary>
-        private async Task DownloadAndCacheCoverAsync(MangaItem item)
-        {
-            if (string.IsNullOrEmpty(item.CoverUrl)) return;
-            if (!IsOnline) return; // Prevent network access if offline
-            
-            try
-            {
-                // Parse Headers
-                string requestUrl = item.CoverUrl;
-                var customHeaders = new System.Collections.Generic.Dictionary<string, string>();
-                if (item.CoverUrl.Contains("|"))
-                {
-                    var parts = item.CoverUrl.Split('|', 2);
-                    requestUrl = parts[0];
-                    if (parts.Length > 1)
-                    {
-                        var headers = parts[1].Split('&');
-                        foreach(var h in headers)
-                        {
-                            var pair = h.Split('=', 2);
-                            if (pair.Length == 2) customHeaders[pair[0].Trim()] = pair[1].Trim();
-                        }
-                    }
-                }
-
-                var req = new HttpRequestMessage(HttpMethod.Get, requestUrl);
-                
-                // Apply Headers
-                if (customHeaders.ContainsKey("Referer")) req.Headers.Referrer = new Uri(customHeaders["Referer"]);
-                else req.Headers.Referrer = new Uri("https://komiku.org/");
-
-                if (customHeaders.ContainsKey("User-Agent")) req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
-                
-                // Use Optimized Client
-                using var client = _networkService.CreateOptimizedHttpClient();
-                using var response = await client.SendAsync(req);
-                var data = await response.Content.ReadAsByteArrayAsync();
-                
-                var cacheKey = GetCacheKey(item.CoverUrl);
-                var cachePath = Path.Combine(_cacheFolder, cacheKey);
-                
-                // Save to disk
-                await File.WriteAllBytesAsync(cachePath, data);
-                
-                // Load to memory
-                // IMPORTANT: Use UI Thread for Bitmap creation if needed, OR create here and pass? 
-                // Avalonia Bitmaps can be created on bg thread usually.
-                using var stream = new MemoryStream(data);
-                var bitmap = new Bitmap(stream);
-                
-                _imageCacheService.AddImage(item.CoverUrl, bitmap);
-                
-                Avalonia.Threading.Dispatcher.UIThread.Post(() => item.CoverBitmap = bitmap);
-            }
-            catch { }
-        }
-
-        private string GetCacheKey(string url)
-        {
-            // Clean URL first
-            string cleanUrl = url.Contains("|") ? url.Split('|')[0] : url;
-
-            // Use MD5 for stable hash across sessions
-            // Use ORIGINAL url for hash to differentiate (e.g. if we have different headers?)
-            // No, use cleanUrl for extension logic, but original for hash? 
-            // Let's use cleanUrl for everything to be safe.
-            
-            using (var md5 = System.Security.Cryptography.MD5.Create())
-            {
-                var inputBytes = System.Text.Encoding.ASCII.GetBytes(cleanUrl);
-                var hashBytes = md5.ComputeHash(inputBytes);
-                // Convert to hex string
-                var sb = new System.Text.StringBuilder();
-                for (int i = 0; i < hashBytes.Length; i++)
-                {
-                    sb.Append(hashBytes[i].ToString("X2"));
-                }
-                
-                string ext = ".jpg";
-                try 
-                {
-                    ext = Path.GetExtension(new Uri(cleanUrl).AbsolutePath);
-                    if (string.IsNullOrEmpty(ext)) ext = ".jpg";
-                }
-                catch {}
-                
-                return $"{sb.ToString()}{ext}";
-            }
-        }
     }
 }

@@ -9,7 +9,7 @@ using System;
 
 namespace Yomic.ViewModels
 {
-    public class DownloadItemViewModel : ViewModelBase
+    public class DownloadItemViewModel : ViewModelBase, IDisposable
     {
         private readonly Core.Services.DownloadRequest _request;
         public Core.Services.DownloadRequest Request => _request;
@@ -21,7 +21,7 @@ namespace Yomic.ViewModels
         
         public string StatusColor => _request.Status switch 
         {
-            "Downloading" => "#FF9900",
+            "Downloading" => "#0078D7",
             "Completed" => "#A6E3A1",
             "Error" => "#F38BA8",
             "Paused" => "#F9E2AF",
@@ -30,23 +30,32 @@ namespace Yomic.ViewModels
         };
 
         public bool IsActive => _request.Status == "Downloading";
+        public bool ShowProgress => _request.Status == "Downloading" || _request.Status == "Paused";
         public bool IsIndeterminate => IsActive && Progress == 0;
         
-        private Avalonia.Media.Imaging.Bitmap? _coverBitmap;
-        public Avalonia.Media.Imaging.Bitmap? CoverBitmap
-        {
-            get => _coverBitmap;
-            set => this.RaiseAndSetIfChanged(ref _coverBitmap, value);
-        }
-
         // Commands
         public System.Windows.Input.ICommand CancelCommand { get; }
         public ReactiveCommand<Unit, Unit> ExportCommand { get; }
+        public ReactiveCommand<Unit, Unit> OpenChapterCommand { get; }
 
         public DownloadItemViewModel(Core.Services.DownloadRequest request, Core.Services.DownloadService service, MainWindowViewModel mainVM)
         {
             _request = request;
             CancelCommand = ReactiveCommand.Create(() => service.Cancel(request));
+            
+            OpenChapterCommand = ReactiveCommand.Create(() => 
+            {
+                var chapterItem = new ChapterItem(null, null, null, null, null)
+                {
+                    Title = _request.Chapter.Name,
+                    Url = _request.Chapter.Url,
+                    ChapterNumber = _request.Chapter.ChapterNumber,
+                    MangaRef = _request.Manga,
+                    IsDownloaded = _request.Status == "Completed"
+                };
+
+                mainVM.GoToReader(chapterItem, new System.Collections.Generic.List<ChapterItem> { chapterItem }, _request.Manga.Source, _request.Manga.Title ?? "", _request.Manga.Url ?? "", false);
+            });
             
             ExportCommand = ReactiveCommand.CreateFromTask(async () => 
             {
@@ -62,104 +71,6 @@ namespace Yomic.ViewModels
                     mainVM.ShowNotification($"Export Failed: {ex.Message}");
                 }
             });
-
-            _ = LoadCoverAsync();
-        }
-
-        private async System.Threading.Tasks.Task LoadCoverAsync()
-        {
-             if (string.IsNullOrEmpty(_request.Manga.ThumbnailUrl)) return;
-             
-             try
-             {
-                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                 var cacheFolder = Path.Combine(appData, "Yomic", "covers");
-                 if (!Directory.Exists(cacheFolder)) Directory.CreateDirectory(cacheFolder);
-
-                 var cacheKey = GetCacheKey(_request.Manga.ThumbnailUrl);
-                 var filePath = Path.Combine(cacheFolder, cacheKey);
-
-                 if (File.Exists(filePath))
-                 {
-                     using var stream = File.OpenRead(filePath);
-                     CoverBitmap = new Bitmap(stream);
-                 }
-                 else
-                 {
-                     // Parse Headers
-                     string requestUrl = _request.Manga.ThumbnailUrl;
-                     var customHeaders = new System.Collections.Generic.Dictionary<string, string>();
-                     if (_request.Manga.ThumbnailUrl.Contains("|"))
-                     {
-                         var parts = _request.Manga.ThumbnailUrl.Split('|', 2);
-                         requestUrl = parts[0];
-                         if (parts.Length > 1)
-                         {
-                             var headers = parts[1].Split('&');
-                             foreach(var h in headers)
-                             {
-                                  var pair = h.Split('=', 2);
-                                  if (pair.Length == 2) customHeaders[pair[0].Trim()] = pair[1].Trim();
-                             }
-                         }
-                     }
-
-                     using var client = new HttpClient();
-                     var req = new HttpRequestMessage(HttpMethod.Get, requestUrl);
-                     
-                     if (customHeaders.ContainsKey("Referer")) 
-                     {
-                        req.Headers.Referrer = new Uri(customHeaders["Referer"]);
-                     }
-                     else if (_request.Manga.Source == 6) // Mangabats (ID=6)
-                     {
-                        req.Headers.Referrer = new Uri("https://www.mangabats.com/");
-                     }
-                     else 
-                     {
-                        req.Headers.Referrer = new Uri(requestUrl); // Fallback
-                     }
-
-                     if (customHeaders.ContainsKey("User-Agent")) req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
-                     else req.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-
-                     using var response = await client.SendAsync(req);
-                     
-                     if (!response.IsSuccessStatusCode) return; // Prevent saving error pages
-
-                     var data = await response.Content.ReadAsByteArrayAsync();
-                     await File.WriteAllBytesAsync(filePath, data);
-                     
-                     using var stream = new MemoryStream(data);
-                     CoverBitmap = new Bitmap(stream);
-                 }
-             }
-             catch { /* Ignore errors for now */ }
-        }
-
-        private string GetCacheKey(string url)
-        {
-            // Clean URL first
-            string cleanUrl = url.Contains("|") ? url.Split('|')[0] : url;
-
-            using var md5 = System.Security.Cryptography.MD5.Create();
-            var inputBytes = System.Text.Encoding.ASCII.GetBytes(cleanUrl);
-            var hashBytes = md5.ComputeHash(inputBytes);
-            var sb = new System.Text.StringBuilder();
-            for (int i = 0; i < hashBytes.Length; i++)
-            {
-                sb.Append(hashBytes[i].ToString("X2"));
-            }
-            
-            string ext = ".jpg";
-            try 
-            {
-                ext = Path.GetExtension(new Uri(cleanUrl).AbsolutePath);
-                if (string.IsNullOrEmpty(ext)) ext = ".jpg";
-            }
-            catch {}
-            
-            return $"{sb.ToString()}{ext}";
         }
         
         // Helper to refresh UI
@@ -169,11 +80,17 @@ namespace Yomic.ViewModels
             this.RaisePropertyChanged(nameof(Progress));
             this.RaisePropertyChanged(nameof(StatusColor));
             this.RaisePropertyChanged(nameof(IsActive));
+            this.RaisePropertyChanged(nameof(ShowProgress));
             this.RaisePropertyChanged(nameof(IsIndeterminate));
+        }
+
+        public void Dispose()
+        {
+            // No cover bitmap to dispose anymore
         }
     }
 
-    public class DownloadsViewModel : ViewModelBase
+    public class DownloadsViewModel : ViewModelBase, IDisposable
     {
         private readonly MainWindowViewModel _mainViewModel;
         private readonly Core.Services.DownloadService _downloadService;
@@ -315,6 +232,17 @@ namespace Yomic.ViewModels
             HasDownloads = QueuedItems.Any();
             this.RaisePropertyChanged(nameof(QueueCount));
             this.RaisePropertyChanged(nameof(HasQueue));
+        }
+
+        public void Dispose()
+        {
+            _downloadService.QueueChanged -= OnQueueChanged;
+            _downloadService.ProgressChanged -= OnProgressChanged;
+            _downloadService.StatusChanged -= OnStatusChanged;
+            
+            QueuedItems.Clear();
+
+            System.Diagnostics.Debug.WriteLine("[DownloadsVM] Disposed and memory references cleared.");
         }
     }
 }

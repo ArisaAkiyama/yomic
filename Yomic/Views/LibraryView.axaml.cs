@@ -34,5 +34,28 @@ namespace Yomic.Views
                 vm.IsFilterVisible = false;
             }
         }
+
+        private void ScrollTabsLeft_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            var sv = this.FindControl<ScrollViewer>("SourceTabsScrollViewer");
+            if (sv != null)
+            {
+                var newOffset = Math.Max(0, sv.Offset.X - 200);
+                sv.Offset = new Avalonia.Vector(newOffset, sv.Offset.Y);
+            }
+        }
+
+        private void ScrollTabsRight_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            var sv = this.FindControl<ScrollViewer>("SourceTabsScrollViewer");
+            if (sv != null)
+            {
+                var newOffset = Math.Min(sv.Extent.Width - sv.Viewport.Width, sv.Offset.X + 200);
+                if (newOffset > 0)
+                {
+                    sv.Offset = new Avalonia.Vector(newOffset, sv.Offset.Y);
+                }
+            }
+        }
     }
 }

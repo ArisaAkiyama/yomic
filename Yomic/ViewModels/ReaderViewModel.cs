@@ -4,6 +4,7 @@ using System.Reactive;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Yomic.ViewModels
 {
@@ -23,10 +24,14 @@ namespace Yomic.ViewModels
         Double
     }
 
-    public class PageViewModel : ReactiveObject
+    public class PageViewModel : ReactiveObject, IDisposable
     {
         public string Url { get; }
         private readonly Core.Services.NetworkService _networkService;
+        private System.Threading.CancellationToken _cancellationToken;
+        
+        // Limit concurrent image downloads globally (Max 4 downloads at once for Mihon-like speed)
+        private static readonly System.Threading.SemaphoreSlim _downloadThrottle = new(4, 4);
         
         private Avalonia.Media.Imaging.Bitmap? _image;
         public Avalonia.Media.Imaging.Bitmap? Image
@@ -56,13 +61,24 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _blurRadius, value);
         }
 
+        public ReactiveCommand<Unit, Unit> RetryCommand { get; }
+
         private bool _isLoaded = false;
 
-        public PageViewModel(string url, Core.Services.NetworkService networkService, bool shouldBlur = false)
+        public PageViewModel(string url, Core.Services.NetworkService networkService, bool shouldBlur = false, System.Threading.CancellationToken cancellationToken = default)
         {
             Url = url;
             _networkService = networkService;
+            _cancellationToken = cancellationToken;
             if (shouldBlur) BlurRadius = 40; // Strong Blur
+            
+            RetryCommand = ReactiveCommand.Create(() => 
+            {
+                Error = string.Empty;
+                IsLoading = true;
+                _isLoaded = true;
+                _ = LoadImageAsync();
+            });
             // Lazy Loading: Do not call Load() here.
         }
 
@@ -73,11 +89,60 @@ namespace Yomic.ViewModels
             await LoadImageAsync();
         }
 
+        public void Dispose()
+        {
+            if (_image != null)
+            {
+                _image.Dispose();
+                _image = null;
+            }
+        }
+
+        public event EventHandler? ImageLoaded;
+
         private async System.Threading.Tasks.Task LoadImageAsync()
         {
+            bool semaphoreAcquired = false;
             try
             {
-                // Local File
+                _cancellationToken.ThrowIfCancellationRequested();
+                
+                // --- Disk Cache Logic Setup ---
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var cacheDir = System.IO.Path.Combine(appData, "Yomic", "Cache", "Reader");
+                System.IO.Directory.CreateDirectory(cacheDir);
+                
+                // Create a clean hash for the URL to use as filename
+                using var md5 = System.Security.Cryptography.MD5.Create();
+                var hashBytes = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(Url));
+                var hashString = BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+                var cacheFilePath = System.IO.Path.Combine(cacheDir, hashString + ".cache");
+
+                // Check Disk Cache First
+                if (System.IO.File.Exists(cacheFilePath))
+                {
+                    try
+                    {
+                        using var stream = System.IO.File.OpenRead(cacheFilePath);
+                        // Downscale to max 1200px width to save RAM (Mihon-style downscaling)
+                        var bitmap = Avalonia.Media.Imaging.Bitmap.DecodeToWidth(stream, 1200);
+                        
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+                        {
+                            Image = bitmap;
+                            IsLoading = false;
+                            ImageLoaded?.Invoke(this, EventArgs.Empty);
+                        });
+                        return; // Successfully loaded from cache, skip network!
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[PageVM] Corrupted cache file: {ex.Message}");
+                        try { System.IO.File.Delete(cacheFilePath); } catch { } // Delete corrupted file
+                    }
+                }
+
+                // Local File (Fallback for local readers)
                 if (!Url.StartsWith("http"))
                 {
                     if (System.IO.File.Exists(Url))
@@ -89,6 +154,7 @@ namespace Yomic.ViewModels
                          {
                              Image = bitmap;
                              IsLoading = false;
+                             ImageLoaded?.Invoke(this, EventArgs.Empty);
                          });
                          return;
                     }
@@ -98,8 +164,14 @@ namespace Yomic.ViewModels
                 // If offline and remote URL, fail fast
                 // But we shouldn't reach here if offline logic is correct in ReaderVM
 
-                string requestUrl = Url;
-                var customHeaders = new Dictionary<string, string>();
+                // Wait for concurrency limit
+                await _downloadThrottle.WaitAsync(_cancellationToken);
+                semaphoreAcquired = true;
+                
+                _cancellationToken.ThrowIfCancellationRequested();
+                    
+                    string requestUrl = Url;
+                    var customHeaders = new Dictionary<string, string>();
                 
                 // Parse Custom Headers: url|Key=Value&Key2=Value2
                 if (Url.Contains("|"))
@@ -150,6 +222,26 @@ namespace Yomic.ViewModels
                     req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
                 }
                 
+                // Inject Cloudflare bypass cookies if this is an nHentai image
+                if (requestUrl.Contains("nhentai.net") && Yomic.Core.Services.CloudflareBypassService.Instance != null)
+                {
+                    var relevantCookies = Yomic.Core.Services.CloudflareBypassService.Instance.SavedCookies
+                        .Where(c => new Uri(requestUrl).Host.Contains(c.Domain.Trim('.')))
+                        .ToList();
+
+                    if (relevantCookies.Count > 0)
+                    {
+                        var cookieString = string.Join("; ", relevantCookies.Select(c => $"{c.Name}={c.Value}"));
+                        req.Headers.Add("Cookie", cookieString);
+                    }
+
+                    if (!string.IsNullOrEmpty(Yomic.Core.Services.CloudflareBypassService.Instance.BypassUserAgent))
+                    {
+                        req.Headers.Remove("User-Agent");
+                        req.Headers.TryAddWithoutValidation("User-Agent", Yomic.Core.Services.CloudflareBypassService.Instance.BypassUserAgent);
+                    }
+                }
+                
                 // CRITICAL: Add Sec-Fetch-* headers that Chrome sends for image requests
                 // These Client Hints are used by CDNs to verify requests come from real browsers
                 req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "image");
@@ -162,7 +254,7 @@ namespace Yomic.ViewModels
                 // Accept header for images
                 req.Headers.TryAddWithoutValidation("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8");
 
-                var response = await client.SendAsync(req);
+                var response = await client.SendAsync(req, _cancellationToken);
                 Console.WriteLine($"[PageVM] Response: {response.StatusCode}, ContentType: {response.Content.Headers.ContentType}, Size: {response.Content.Headers.ContentLength}");
                 
                 if (!response.IsSuccessStatusCode)
@@ -170,7 +262,8 @@ namespace Yomic.ViewModels
                      throw new Exception($"HTTP {response.StatusCode} {response.ReasonPhrase}");
                 }
                 
-                var data = await response.Content.ReadAsByteArrayAsync();
+                _cancellationToken.ThrowIfCancellationRequested();
+                var data = await response.Content.ReadAsByteArrayAsync(_cancellationToken);
                 
                 // Log first few bytes to detect if it's the placeholder
                 if (data.Length > 20)
@@ -180,12 +273,24 @@ namespace Yomic.ViewModels
                 
                 using var remoteStream = new System.IO.MemoryStream(data);
                 
-                var remoteBitmap = new Avalonia.Media.Imaging.Bitmap(remoteStream);
+                // Downscale to max 1200px width to save RAM
+                var remoteBitmap = Avalonia.Media.Imaging.Bitmap.DecodeToWidth(remoteStream, 1200);
+                
+                // Save to Disk Cache in background so we don't block the UI thread
+                _ = System.Threading.Tasks.Task.Run(() => 
+                {
+                    try
+                    {
+                        System.IO.File.WriteAllBytes(cacheFilePath, data);
+                    }
+                    catch { /* Ignore IO errors for cache */ }
+                });
                 
                 Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                 {
                     Image = remoteBitmap;
                     IsLoading = false;
+                    ImageLoaded?.Invoke(this, EventArgs.Empty);
                 });
             }
             catch (Exception ex)
@@ -196,18 +301,27 @@ namespace Yomic.ViewModels
                     IsLoading = false;
                 });
             }
+            finally
+            {
+                if (semaphoreAcquired)
+                {
+                    _downloadThrottle.Release();
+                }
+            }
         }
     }
 
-    public class ReaderViewModel : ViewModelBase
+    public class ReaderViewModel : ViewModelBase, IDisposable
     {
         private readonly MainWindowViewModel _mainViewModel;
         private readonly Core.Services.SourceManager? _sourceManager;
         private readonly Core.Services.NetworkService _networkService;
         private readonly Core.Services.LibraryService? _libraryService;
+        private readonly Core.Services.SettingsService _settingsService;
         private ChapterItem? _currentChapter;
         private List<ChapterItem>? _allChapters;
         private int _currentChapterIndex;
+        private System.Threading.CancellationTokenSource _cts = new();
 
         private string _title = "";
         public string Title
@@ -225,6 +339,8 @@ namespace Yomic.ViewModels
 
         public ObservableCollection<PageViewModel> Pages { get; } = new();
 
+        private bool _isNextChapterPreloaded = false;
+
         private int _currentPageIndex;
         public int CurrentPageIndex
         {
@@ -233,6 +349,14 @@ namespace Yomic.ViewModels
             {
                 this.RaiseAndSetIfChanged(ref _currentPageIndex, value);
                 this.RaisePropertyChanged(nameof(CurrentPage));
+                // Mihon-style: preload pages around the current viewport
+                PreloadAroundIndex(value);
+
+                // Smart Next-Chapter Preloading
+                if (_settingsService != null && _settingsService.PreloadNextChapter && Pages.Count > 0 && value >= Pages.Count - 3)
+                {
+                    _ = System.Threading.Tasks.Task.Run(() => PreloadNextChapterAsync());
+                }
             }
         }
         
@@ -254,8 +378,9 @@ namespace Yomic.ViewModels
         public ReaderViewModel(MainWindowViewModel mainViewModel, Core.Services.SourceManager? sourceManager, 
                                ChapterItem? chapter, System.Collections.Generic.List<ChapterItem>? allChapters, 
                                Core.Services.NetworkService? networkService,
-                               Core.Services.LibraryService? libraryService = null,
-                               long sourceId = 3, string mangaTitle = "", string mangaUrl = "", bool isNsfw = false)
+                Core.Services.LibraryService? libraryService = null,
+                Core.Services.SettingsService? settingsService = null,
+                long sourceId = 3, string mangaTitle = "", string mangaUrl = "", bool isNsfw = false)
         {
             _mainViewModel = mainViewModel;
             _sourceManager = sourceManager;
@@ -263,6 +388,7 @@ namespace Yomic.ViewModels
             _allChapters = allChapters;
             _networkService = networkService ?? new Core.Services.NetworkService();
             _libraryService = libraryService;
+            _settingsService = settingsService ?? new Core.Services.SettingsService();
             _sourceId = sourceId;
             _mangaTitle = mangaTitle;
             _mangaUrl = mangaUrl;
@@ -296,12 +422,22 @@ namespace Yomic.ViewModels
 
             NextPageCommand = ReactiveCommand.Create(() => 
             {
-                 if (CurrentPageIndex < Pages.Count - 1) CurrentPageIndex++;
+                 if (CurrentPageIndex < Pages.Count - 1)
+                 {
+                     CurrentPageIndex++;
+                     // Ensure the current page is loaded immediately for Paged mode
+                     if (CurrentPage != null) CurrentPage.Load();
+                 }
                  else if (HasNextChapter) SwitchToChapter(_allChapters![_currentChapterIndex - 1], _currentChapterIndex - 1, false); // Next Chapter -> Page 0
             });
             PrevPageCommand = ReactiveCommand.Create(() => 
             {
-                 if (CurrentPageIndex > 0) CurrentPageIndex--;
+                 if (CurrentPageIndex > 0)
+                 {
+                     CurrentPageIndex--;
+                     // Ensure the current page is loaded immediately for Paged mode
+                     if (CurrentPage != null) CurrentPage.Load();
+                 }
                  else if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1, true); // Prev Chapter -> Last Page
             });
             ToggleMenuCommand = ReactiveCommand.Create(() => 
@@ -327,7 +463,7 @@ namespace Yomic.ViewModels
             });
             
             // Zoom Logic
-            ZoomInCommand = ReactiveCommand.Create(() => ZoomScale = Math.Min(5.0, ZoomScale + 0.25));
+            ZoomInCommand = ReactiveCommand.Create(() => ZoomScale = Math.Min(2.0, ZoomScale + 0.25));
             ZoomOutCommand = ReactiveCommand.Create(() => ZoomScale = Math.Max(0.5, ZoomScale - 0.25));
             ResetZoomCommand = ReactiveCommand.Create(() => ZoomScale = 1.0);
             
@@ -340,10 +476,235 @@ namespace Yomic.ViewModels
             // Sync with MainViewModel
             _mainViewModel.WhenAnyValue(x => x.IsFullscreen)
                           .Subscribe(_ => this.RaisePropertyChanged(nameof(IsFullscreen)));
+
+            // Refresh (reload current chapter pages)
+            RefreshCommand = ReactiveCommand.Create(() =>
+            {
+                // Cancel ongoing downloads
+                _cts.Cancel();
+                _cts.Dispose();
+                _cts = new System.Threading.CancellationTokenSource();
+                
+                _isNextChapterPreloaded = false;
+
+                // Clear error message by restoring original chapter title
+                if (_currentChapter != null)
+                    ChapterTitle = _currentChapter.Title;
+
+                foreach (var p in Pages) p.Dispose();
+                Pages.Clear();
+                GC.Collect();
+                System.Threading.Tasks.Task.Run(() => LoadPages(false));
+            });
+
+            // Scroll Logic
+            ScrollUpCommand = ReactiveCommand.Create(() => RequestScroll?.Invoke(this, -1));
+            ScrollDownCommand = ReactiveCommand.Create(() => RequestScroll?.Invoke(this, 1));
         }
 
-        // ... (Properties omitted for brevity) ...
+        // Zoom Properties
+        private double _zoomScale = 1.0;
+        public double ZoomScale
+        {
+            get => _zoomScale;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _zoomScale, value);
+                this.RaisePropertyChanged(nameof(WebtoonWidth));
+            }
+        }
+
+        public double WebtoonWidth => 800 * ZoomScale;
+
+        public ReactiveCommand<Unit, double> ZoomInCommand { get; }
+        public ReactiveCommand<Unit, double> ZoomOutCommand { get; }
+        public ReactiveCommand<Unit, double> ResetZoomCommand { get; }
+
+        public ReactiveCommand<Unit, Unit> NextPageCommand { get; }
+        public ReactiveCommand<Unit, Unit> PrevPageCommand { get; }
+        public ReactiveCommand<Unit, Unit> ToggleMenuCommand { get; }
         
+        public ReactiveCommand<ReaderMode, Unit> SetModeCommand { get; }
+        public ReactiveCommand<Unit, Unit> NextChapterCommand { get; }
+        public ReactiveCommand<Unit, Unit> PrevChapterCommand { get; }
+        public ReactiveCommand<Unit, Unit> ToggleFullscreenCommand { get; }
+        public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
+        
+        public ReactiveCommand<Unit, Unit> ScrollUpCommand { get; }
+        public ReactiveCommand<Unit, Unit> ScrollDownCommand { get; }
+        
+        // Event for View to handle scrolling
+        public event EventHandler<int>? RequestScroll; // int: 1 for down, -1 for up
+
+        public bool IsFullscreen
+        {
+            get => _mainViewModel.IsFullscreen;
+            set => _mainViewModel.IsFullscreen = value;
+        }
+
+        private bool _isHeaderVisible = true;
+        public bool IsHeaderVisible { get => _isHeaderVisible; set => this.RaiseAndSetIfChanged(ref _isHeaderVisible, value); }
+
+        private bool _isFooterVisible = true;
+        public bool IsFooterVisible { get => _isFooterVisible; set => this.RaiseAndSetIfChanged(ref _isFooterVisible, value); }
+        
+        // Backward compatibility / Master Toggle
+        public bool IsMenuVisible
+        {
+            get => _isHeaderVisible || _isFooterVisible;
+            set
+            {
+                IsHeaderVisible = value;
+                IsFooterVisible = value;
+                this.RaisePropertyChanged(nameof(IsMenuVisible));
+            }
+        }
+
+        private bool _isWebtoon = true;
+        public bool IsWebtoon 
+        { 
+            get => _isWebtoon; 
+            set => this.RaiseAndSetIfChanged(ref _isWebtoon, value); 
+        }
+        
+        public bool IsPaged => !IsWebtoon;
+        
+        public Action? CustomBackAction { get; set; }
+
+        // Number of pages to preload ahead/behind the current viewport
+        // Mihon uses a generous buffer so the user never sees "Loading..."
+        private const int PRELOAD_AHEAD = 6;
+        private const int PRELOAD_BEHIND = 2;
+
+        /// <summary>
+        /// Mihon-style viewport-priority preloading.
+        /// Phase 1: Immediately load pages in the viewport area (current ± buffer).
+        /// Phase 2: Then kick off a background task that loads ALL remaining pages
+        ///          outward from the viewport, so they are ready when the user scrolls.
+        /// This is exactly how Mihon works — all pages load eventually, but the
+        /// viewport pages get absolute priority.
+        /// </summary>
+        public void PreloadAroundIndex(int centerIndex)
+        {
+            if (Pages.Count == 0) return;
+
+            int start = Math.Max(0, centerIndex - PRELOAD_BEHIND);
+            int end = Math.Min(Pages.Count - 1, centerIndex + PRELOAD_AHEAD);
+
+            // Phase 1: Load the current page FIRST (highest priority)
+            if (centerIndex >= 0 && centerIndex < Pages.Count)
+            {
+                Pages[centerIndex].Load();
+            }
+
+            // Phase 1b: Then preload nearby pages (viewport buffer)
+            for (int i = start; i <= end; i++)
+            {
+                if (i != centerIndex)
+                {
+                    Pages[i].Load();
+                }
+            }
+
+            // Phase 2: Background-load ALL remaining pages outward from viewport
+            // This ensures that even far-away pages are eventually loaded,
+            // just like Mihon. The concurrency limiter (SemaphoreSlim) ensures
+            // viewport pages still get served first since they were queued earlier.
+            var token = _cts.Token;
+            var allPages = Pages.ToList();
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                // Load outward from center: center+7, center-3, center+8, center-4, ...
+                for (int offset = PRELOAD_AHEAD + 1; offset < allPages.Count; offset++)
+                {
+                    if (token.IsCancellationRequested) break;
+
+                    int ahead = centerIndex + offset;
+                    int behind = centerIndex - offset;
+
+                    if (ahead < allPages.Count)
+                    {
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                        {
+                            if (ahead < allPages.Count) allPages[ahead].Load();
+                        });
+                    }
+                    if (behind >= 0)
+                    {
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                        {
+                            if (behind >= 0 && behind < allPages.Count) allPages[behind].Load();
+                        });
+                    }
+
+                    // Small yield to let viewport pages get priority in the semaphore queue
+                    await System.Threading.Tasks.Task.Delay(30, token).ConfigureAwait(false);
+                }
+            });
+        }
+
+        public void Dispose()
+        {
+            // Cancel all ongoing downloads
+            _cts.Cancel();
+            
+            // Dispose all pages
+            foreach (var page in Pages)
+            {
+                page.Dispose();
+            }
+            Pages.Clear();
+
+            // Force Garbage Collection to aggressively free up RAM
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            
+            _cts.Dispose();
+            System.Diagnostics.Debug.WriteLine("[ReaderVM] Disposed and GC Collected.");
+
+            // Run cache cleanup asynchronously when leaving reader
+            if (_settingsService != null)
+            {
+                var maxCacheSize = _settingsService.MaxCacheSizeMb;
+                System.Threading.Tasks.Task.Run(() => SettingsViewModel.CleanupReaderCache(maxCacheSize));
+            }
+        }
+
+        private async System.Threading.Tasks.Task MarkCurrentChapterAsReadAsync()
+        {
+            if (_currentChapter == null || _libraryService == null) return;
+            
+            try
+            {
+                // Update UI optimistically
+                _currentChapter.IsRead = true;
+                
+                // Persist to DB
+                // Pass extra info to support Online/Non-Library persistance
+                string mangaUrlForDb = _mangaUrl;
+                if (string.IsNullOrEmpty(mangaUrlForDb) && _sourceId > 0 && !string.IsNullOrEmpty(_currentChapter.Url))
+                {
+                    // Fallback infer from ChapterURL if we really have to, but hopefully _mangaUrl is set
+                    // Assuming standard format like /manga/slug/chapter/slug
+                    // This is risky, so relying on passed arg is best.
+                }
+
+                await _libraryService.SetChapterReadStatusAsync(
+                    _currentChapter.Url, 
+                    true,
+                    _sourceId, 
+                    _mangaUrl, 
+                    _currentChapter.Title, 
+                    -1 // Chapter number parsing is complex, skipping for now
+                );
+            }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ReaderVM] Failed to mark as read: {ex.Message}");
+            }
+        }
+
         // Correct position for LoadPages
         private async System.Threading.Tasks.Task LoadPages(bool startAtLastPage = false)
         {
@@ -376,7 +737,8 @@ namespace Yomic.ViewModels
                                 Pages.Clear();
                                 foreach(var file in files)
                                 {
-                                    Pages.Add(new PageViewModel(file, _networkService, shouldBlur));
+                                    var pvm = new PageViewModel(file, _networkService, shouldBlur);
+                                    Pages.Add(pvm);
                                 }
                                 CurrentPageIndex = startAtLastPage ? Math.Max(0, Pages.Count - 1) : 0;
                             });
@@ -413,11 +775,18 @@ namespace Yomic.ViewModels
                         Pages.Clear();
                         if (urls.Count > 0)
                         {
+                            var token = _cts.Token;
                             foreach(var url in urls)
                             {
-                                Pages.Add(new PageViewModel(url, _networkService, shouldBlur));
+                                var pvm = new PageViewModel(url, _networkService, shouldBlur, token);
+                                Pages.Add(pvm);
                             }
                             CurrentPageIndex = startAtLastPage ? Math.Max(0, Pages.Count - 1) : 0;
+                            
+                            // Mihon-style: Only preload pages around the current viewport position
+                            // instead of eagerly loading ALL pages sequentially.
+                            // This ensures the visible page loads instantly, with nearby pages buffered.
+                            PreloadAroundIndex(CurrentPageIndex);
                         }
                         else
                         {
@@ -437,12 +806,22 @@ namespace Yomic.ViewModels
         /// </summary>
         private void SwitchToChapter(ChapterItem newChapter, int newIndex, bool startAtLastPage)
         {
+            // Cancel ongoing downloads before switching
+            _cts.Cancel();
+            _cts.Dispose();
+            _cts = new System.Threading.CancellationTokenSource();
+            
+            _isNextChapterPreloaded = false;
             _currentChapter = newChapter;
             _currentChapterIndex = newIndex;
             
+            // Dispose previous pages to free up RAM *before* loading new ones
+            foreach(var p in Pages) p.Dispose();
+            Pages.Clear();
+            GC.Collect(); // Optional, but helps keep RAM low during binge reading
+
             // Update UI
             ChapterTitle = newChapter.Title;
-            Pages.Clear();
             
             // Notify property changes for navigation button states
             this.RaisePropertyChanged(nameof(HasPrevChapter));
@@ -453,6 +832,147 @@ namespace Yomic.ViewModels
             
             // Reload pages
             System.Threading.Tasks.Task.Run(() => LoadPages(startAtLastPage));
+        }
+
+        private async System.Threading.Tasks.Task PreloadNextChapterAsync()
+        {
+            if (_isNextChapterPreloaded) return;
+            _isNextChapterPreloaded = true;
+
+            if (_settingsService == null || !_settingsService.PreloadNextChapter) return;
+            if (!HasNextChapter) return;
+            if (_allChapters == null || _sourceManager == null) return;
+
+            var nextChapter = _allChapters[_currentChapterIndex - 1];
+            var nextChapterUrl = nextChapter.Url;
+
+            System.Diagnostics.Debug.WriteLine($"[Preload] Starting background preload for next chapter: {nextChapter.Title}");
+
+            try
+            {
+                var source = _sourceManager.GetSource(_sourceId);
+                if (source == null) return;
+
+                // Step 1: Get pages
+                var urls = await source.GetPageListAsync(nextChapterUrl).ConfigureAwait(false);
+                if (urls == null || urls.Count == 0) return;
+
+                System.Diagnostics.Debug.WriteLine($"[Preload] Found {urls.Count} pages to preload.");
+
+                // Step 2: Download each page in the background
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var cacheDir = System.IO.Path.Combine(appData, "Yomic", "Cache", "Reader");
+                System.IO.Directory.CreateDirectory(cacheDir);
+
+                using var client = _networkService.CreateOptimizedHttpClient();
+
+                foreach (var url in urls)
+                {
+                    try
+                    {
+                        // Parse Custom Headers if url contains referer/headers
+                        string requestUrl = url;
+                        var customHeaders = new Dictionary<string, string>();
+                        if (url.Contains("|"))
+                        {
+                            var parts = url.Split('|', 2);
+                            requestUrl = parts[0];
+                            if (parts.Length > 1)
+                            {
+                                var headers = parts[1].Split('&');
+                                foreach (var header in headers)
+                                {
+                                    var pair = header.Split('=', 2);
+                                    if (pair.Length == 2)
+                                    {
+                                        customHeaders[pair[0].Trim()] = pair[1].Trim();
+                                    }
+                                }
+                            }
+                        }
+
+                        // Check hash and cache path
+                        string hashString;
+                        using (var md5 = System.Security.Cryptography.MD5.Create())
+                        {
+                            var hashBytes = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(url));
+                            hashString = BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+                        }
+                        var cacheFilePath = System.IO.Path.Combine(cacheDir, hashString + ".cache");
+
+                        // Skip if already in cache
+                        if (System.IO.File.Exists(cacheFilePath))
+                        {
+                            continue;
+                        }
+
+                        // Download image
+                        var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, requestUrl);
+                        if (customHeaders.ContainsKey("Referer"))
+                        {
+                            req.Headers.Referrer = new Uri(customHeaders["Referer"]);
+                        }
+                        else
+                        {
+                            req.Headers.Referrer = new Uri("https://komiku.org");
+                        }
+                        
+                        if (customHeaders.ContainsKey("Origin"))
+                        {
+                            req.Headers.TryAddWithoutValidation("Origin", customHeaders["Origin"]);
+                        }
+                        
+                        if (customHeaders.ContainsKey("User-Agent"))
+                        {
+                            req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
+                        }
+
+                        req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "image");
+                        req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "no-cors");
+                        req.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "cross-site");
+                        req.Headers.TryAddWithoutValidation("Sec-Ch-Ua", "\"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\", \"Not_A Brand\";v=\"8\"");
+                        req.Headers.TryAddWithoutValidation("Sec-Ch-Ua-Mobile", "?0");
+                        req.Headers.TryAddWithoutValidation("Sec-Ch-Ua-Platform", "\"Windows\"");
+                        req.Headers.TryAddWithoutValidation("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8");
+
+                        // Cookie injection for Cloudflare bypass if needed
+                        if (requestUrl.Contains("nhentai.net") && Yomic.Core.Services.CloudflareBypassService.Instance != null)
+                        {
+                            var relevantCookies = Yomic.Core.Services.CloudflareBypassService.Instance.SavedCookies
+                                .Where(c => new Uri(requestUrl).Host.Contains(c.Domain.Trim('.')))
+                                .ToList();
+
+                            if (relevantCookies.Count > 0)
+                            {
+                                var cookieString = string.Join("; ", relevantCookies.Select(c => $"{c.Name}={c.Value}"));
+                                req.Headers.Add("Cookie", cookieString);
+                            }
+
+                            if (!string.IsNullOrEmpty(Yomic.Core.Services.CloudflareBypassService.Instance.BypassUserAgent))
+                            {
+                                req.Headers.Remove("User-Agent");
+                                req.Headers.TryAddWithoutValidation("User-Agent", Yomic.Core.Services.CloudflareBypassService.Instance.BypassUserAgent);
+                            }
+                        }
+
+                        var response = await client.SendAsync(req).ConfigureAwait(false);
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var data = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                            await System.IO.File.WriteAllBytesAsync(cacheFilePath, data).ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[Preload] Error preloading page {url}: {ex.Message}");
+                    }
+                }
+                System.Diagnostics.Debug.WriteLine($"[Preload] Completed background preload for next chapter: {nextChapter.Title}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Preload] Failed to preload next chapter: {ex.Message}");
+            }
         }
     }
 }

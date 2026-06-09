@@ -95,22 +95,22 @@ namespace Yomic.Core.Services
                     existing.Description = manga.Description;
                     existing.Initialized = true;
                     context.Update(existing);
-                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Updated existing manga: {manga.Title}");
+                    LogService.Info("Library", $"Updated existing manga: {manga.Title}");
                 }
                 else
                 {
                     manga.Favorite = true;
                     manga.DateAdded = DateTimeOffset.Now.ToUnixTimeMilliseconds();
                     await context.Mangas.AddAsync(manga);
-                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Added new manga: {manga.Title}");
+                    LogService.Success("Library", $"Added new manga: {manga.Title}");
                 }
                 
                 await context.SaveChangesAsync();
-                System.Diagnostics.Debug.WriteLine($"[LibraryService] Saved changes to DB.");
+                LogService.Debug("Library", "Saved changes to DB.");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LibraryService] Error adding to library: {ex}");
+                LogService.Error("Library", "Error adding to library", ex);
             }
         }
 
@@ -126,9 +126,16 @@ namespace Yomic.Core.Services
                 if (existing != null)
                 {
                     existing.LastViewed = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                    // Update details just in case, but keep IsFavorite as is
-                    if (string.IsNullOrEmpty(existing.ThumbnailUrl)) existing.ThumbnailUrl = manga.ThumbnailUrl;
-                    if (string.IsNullOrEmpty(existing.Title)) existing.Title = manga.Title;
+                    // Update details — always update ThumbnailUrl if a new valid one is provided
+                    if (!string.IsNullOrEmpty(manga.ThumbnailUrl) && existing.ThumbnailUrl != manga.ThumbnailUrl) 
+                    {
+                        System.Console.WriteLine($"[LibraryService] Updating cover for {manga.Title}: {existing.ThumbnailUrl} -> {manga.ThumbnailUrl}");
+                        existing.ThumbnailUrl = manga.ThumbnailUrl;
+                    }
+                    if (!string.IsNullOrEmpty(manga.Title) && manga.Title != "Unknown") 
+                    {
+                        existing.Title = manga.Title;
+                    }
                     
                     context.Update(existing);
                 }
@@ -144,14 +151,32 @@ namespace Yomic.Core.Services
                 }
                 
                 await context.SaveChangesAsync();
-                System.Diagnostics.Debug.WriteLine($"[LibraryService] History updated for: {manga.Title}");
+                LogService.Info("Library", $"History updated for: {manga.Title}");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LibraryService] Error updating history: {ex.Message}");
+                LogService.Error("Library", "Error updating history", ex);
             }
         }
 
+        public async Task MarkMangaAsSeenAsync(long mangaId)
+        {
+            using var context = new MangaDbContext();
+            var manga = await context.Mangas.FindAsync(mangaId);
+            if (manga != null && manga.HasNewChapters)
+            {
+                manga.HasNewChapters = false;
+                await context.SaveChangesAsync();
+            }
+        }
+        public async Task MarkMangaAsSeenAsync(string url, long sourceId)
+        {
+            var manga = await GetMangaByUrlAsync(url, sourceId);
+            if (manga != null)
+            {
+                await MarkMangaAsSeenAsync(manga.Id);
+            }
+        }
         public async Task RemoveFromLibraryAsync(Manga manga, bool deleteFiles = false)
         {
              using var context = new MangaDbContext();
@@ -175,7 +200,7 @@ namespace Yomic.Core.Services
                  context.Update(existing);
                  await context.SaveChangesAsync();
                  
-                 System.Diagnostics.Debug.WriteLine($"[LibraryService] Removed from library (Unfavorited): {existing.Title}");
+                 LogService.Info("Library", $"Removed from library (Unfavorited): {existing.Title}");
                  
                  if (deleteFiles)
                  {
@@ -188,12 +213,36 @@ namespace Yomic.Core.Services
                         if (System.IO.Directory.Exists(mangaDir))
                         {
                             System.IO.Directory.Delete(mangaDir, true);
-                            System.Diagnostics.Debug.WriteLine($"[LibraryService] Deleted files for: {existing.Title}");
+                            LogService.Success("Library", $"Deleted files for: {existing.Title}");
                         }
+
+                        // Mark all chapters as not downloaded in the DB
+                        var dbChapters = await context.Chapters.Where(c => c.MangaId == existing.Id && c.IsDownloaded).ToListAsync();
+
+                        // Fallback for "Unknown" title bug
+                        var fallbackDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", existing.Source.ToString(), "Unknown");
+                        if (System.IO.Directory.Exists(fallbackDir))
+                        {
+                            foreach (var c in dbChapters)
+                            {
+                                var safeChap = string.Join("_", c.Name.Split(System.IO.Path.GetInvalidFileNameChars()));
+                                var chapDir = System.IO.Path.Combine(fallbackDir, safeChap);
+                                if (System.IO.Directory.Exists(chapDir)) System.IO.Directory.Delete(chapDir, true);
+                            }
+                            // Clean up Unknown folder if empty
+                            try { if (!System.IO.Directory.EnumerateFileSystemEntries(fallbackDir).Any()) System.IO.Directory.Delete(fallbackDir, false); } catch { }
+                        }
+
+                        foreach (var c in dbChapters)
+                        {
+                            c.IsDownloaded = false;
+                        }
+                        context.Chapters.UpdateRange(dbChapters);
+                        await context.SaveChangesAsync();
                      }
                      catch (Exception ex)
                      {
-                         System.Diagnostics.Debug.WriteLine($"[LibraryService] Error deleting files: {ex.Message}");
+                         LogService.Warning("Library", $"Error deleting files: {ex.Message}");
                      }
                  }
              }
@@ -226,12 +275,22 @@ namespace Yomic.Core.Services
                 if (System.IO.Directory.Exists(chapterDir))
                 {
                     System.IO.Directory.Delete(chapterDir, true);
-                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Deleted chapter download: {chapter.Name}");
+                    LogService.Success("Library", $"Deleted chapter download: {chapter.Name}");
+                }
+                else
+                {
+                    // Fallback for "Unknown" title bug
+                    var fallbackChapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", manga.Source.ToString(), "Unknown", safeChapterName);
+                    if (System.IO.Directory.Exists(fallbackChapterDir))
+                    {
+                        System.IO.Directory.Delete(fallbackChapterDir, true);
+                        LogService.Success("Library", $"Deleted fallback 'Unknown' chapter download: {chapter.Name}");
+                    }
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LibraryService] Error deleting chapter download: {ex.Message}");
+                LogService.Error("Library", "Error deleting chapter download", ex);
             }
         }
 
@@ -310,6 +369,7 @@ namespace Yomic.Core.Services
                         else
                         {
                             // ADD NEW
+                            ch.Id = 0; // Fix UNIQUE constraint failure (ensure EF Core auto-generates PK)
                             ch.MangaId = dbManga.Id;
                             // Mark as "Old" (0) if this is the first time fetching chapters for this manga
                             ch.DateFetch = (isInitialLoad || isEmptyLibrary) ? 0 : now; 
@@ -318,7 +378,6 @@ namespace Yomic.Core.Services
                             // Only mark as New if:
                             // 1. Not initial load
                             // 2. Library is not empty (has history)
-                            // 3. Chapter Number is strictly greater than the previous max
                             if (!isInitialLoad && !isEmptyLibrary)
                             {
                                 // Find max from existing DB chapters (cached dict has the latest state)
@@ -328,10 +387,25 @@ namespace Yomic.Core.Services
                                     maxExisting = dbManga.Chapters.Max(c => c.ChapterNumber);
                                 }
                                 
-                                if (ch.ChapterNumber > maxExisting)
+                                // FIX: Some sources don't provide reliable ChapterNumbers (e.g. they return 0, or index-based numbers).
+                                // We should flag it as new if:
+                                // a) It has a higher ChapterNumber OR
+                                // b) It's a completely new URL that we haven't seen before, AND our maxExisting is > 0 (meaning we have an established baseline)
+                                if (ch.ChapterNumber > maxExisting || (maxExisting > 0 && !dbChaptersDict.ContainsKey(ch.Url)))
                                 {
                                     ch.IsNew = true;
+                                    // Mark Manga as having new chapters (Persistent Flag)
+                                    dbManga.HasNewChapters = true;
                                 }
+                                // Ensure strict false if not (just in case default is true)
+                                else 
+                                {
+                                    ch.IsNew = false;
+                                }
+                            }
+                            else
+                            {
+                                ch.IsNew = false;
                             }
                             
                             newChapters.Add(ch);
@@ -489,8 +563,33 @@ namespace Yomic.Core.Services
                 {
                     ch.Read = true;
                 }
+                existing.HasNewChapters = false;
                 await context.SaveChangesAsync();
                 System.Diagnostics.Debug.WriteLine($"[LibraryService] Marked all chapters read for: {existing.Title}");
+            }
+        }
+
+        public async Task MarkChaptersAsUnreadAsync(Manga manga)
+        {
+            using var context = new MangaDbContext();
+            Manga? existing = null;
+            
+            if (manga.Id > 0) existing = await context.Mangas.Include(m => m.Chapters).FirstOrDefaultAsync(m => m.Id == manga.Id);
+            
+            if (existing == null)
+            {
+                existing = await context.Mangas.Include(m => m.Chapters)
+                                       .FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
+            }
+            
+            if (existing != null && existing.Chapters != null)
+            {
+                foreach (var ch in existing.Chapters)
+                {
+                    ch.Read = false;
+                }
+                await context.SaveChangesAsync();
+                System.Diagnostics.Debug.WriteLine($"[LibraryService] Marked all chapters UNREAD for: {existing.Title}");
             }
         }
 
@@ -524,24 +623,29 @@ namespace Yomic.Core.Services
              }
         }
 
-        public async Task<int> UpdateAllLibraryMangaAsync(SourceManager sourceManager)
+        public async Task<int> UpdateAllLibraryMangaAsync(SourceManager sourceManager, IProgress<(int current, int total)>? progress = null)
         {
             System.Diagnostics.Debug.WriteLine("[LibraryService] Starting parallel library update...");
             int updatedCount = 0;
             try
             {
                 var libraryManga = await GetLibraryMangaAsync();
+                int totalManga = libraryManga.Count;
+                int currentManga = 0;
                 
                 // Process in parallel (Limit 5 to avoid timeouts/bans)
-                var options = new ParallelOptions { MaxDegreeOfParallelism = 5 };
-                
-                await Parallel.ForEachAsync(libraryManga, options, async (manga, token) =>
+                // Process in parallel (Limit 5 to avoid timeouts/bans) using SemaphoreSlim to avoid Parallel assembly issues
+                using var semaphore = new System.Threading.SemaphoreSlim(5);
+                var tasks = libraryManga.Select(async manga =>
                 {
+                    await semaphore.WaitAsync();
                     try
                     {
                         var source = sourceManager.GetSource(manga.Source);
                         if (source != null)
                         {
+                            // Stagger requests with a random delay (0.5s - 2s) to prevent Cloudflare bans
+                            await Task.Delay(Random.Shared.Next(500, 2000));
                             var chapters = await source.GetChapterListAsync(manga.Url);
                             int newCount = await UpdateChaptersAsync(manga, chapters);
                             
@@ -556,7 +660,15 @@ namespace Yomic.Core.Services
                     {
                         System.Diagnostics.Debug.WriteLine($"[LibraryService] Error updating {manga.Title}: {ex.Message}");
                     }
+                    finally
+                    {
+                        int completed = System.Threading.Interlocked.Increment(ref currentManga);
+                        progress?.Report((completed, totalManga));
+                        semaphore.Release();
+                    }
                 });
+
+                await Task.WhenAll(tasks);
                 
                 System.Diagnostics.Debug.WriteLine($"[LibraryService] Update complete. Total new: {updatedCount}");
                 
@@ -627,6 +739,57 @@ namespace Yomic.Core.Services
             {
                 System.Diagnostics.Debug.WriteLine($"[LibraryService] Error clearing read history: {ex.Message}");
                 throw;
+            }
+        }
+
+        public async Task ClearAllUpdatesAsync()
+        {
+            await _dbLock.WaitAsync();
+            try
+            {
+                using var context = new MangaDbContext();
+                // "Updates" are defined as chapters with DateFetch > 0 in GetRecentChaptersAsync
+                
+                var recentChapters = await context.Chapters
+                    .Where(c => c.DateFetch > 0 || c.IsNew)
+                    .ToListAsync();
+                
+                if (recentChapters.Any())
+                {
+                    foreach (var chapter in recentChapters)
+                    {
+                        chapter.DateFetch = 0;
+                        chapter.IsNew = false;
+                    }
+                    await context.SaveChangesAsync();
+                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Cleared updates for {recentChapters.Count} chapters.");
+                }
+
+                // We only reset HasNewChapters if ALL chapters' IsNew flags are stripped
+                // If there are still new chapters from today, we keep the flag
+                var allRemainingNewChapters = await context.Chapters.AnyAsync(c => c.IsNew);
+                
+                if (!allRemainingNewChapters)
+                {
+                    var mangasWithUpdates = await context.Mangas
+                        .Where(m => (m.ViewerFlags & Manga.MASK_HAS_NEW_CHAPTERS) != 0)
+                        .ToListAsync();
+                    
+                    if (mangasWithUpdates.Any())
+                    {
+                        foreach (var m in mangasWithUpdates) m.HasNewChapters = false;
+                        await context.SaveChangesAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LibraryService] Error clearing all updates: {ex}");
+                throw;
+            }
+            finally
+            {
+                _dbLock.Release();
             }
         }
     }

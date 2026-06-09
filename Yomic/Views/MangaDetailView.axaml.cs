@@ -1,5 +1,7 @@
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Yomic.ViewModels;
 
 namespace Yomic.Views
@@ -11,6 +13,31 @@ namespace Yomic.Views
             InitializeComponent();
         }
         
+        private void OnSynopsisToggleClick(object? sender, RoutedEventArgs e)
+        {
+            // Find the ListBox's ScrollViewer to preserve scroll position
+            var listBox = this.FindControl<ListBox>("") ?? this.GetVisualDescendants()
+                .OfType<ListBox>().FirstOrDefault();
+            
+            if (listBox == null) return;
+            
+            var scrollViewer = listBox.GetVisualDescendants()
+                .OfType<ScrollViewer>().FirstOrDefault();
+            
+            if (scrollViewer == null) return;
+            
+            // Measure current header height before the command executes
+            // (Command fires before this Click handler via binding order,
+            //  so we need to adjust on next layout pass)
+            var currentOffset = scrollViewer.Offset;
+            
+            // After layout updates, restore the scroll offset
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                scrollViewer.Offset = currentOffset;
+            }, Avalonia.Threading.DispatcherPriority.Render);
+        }
+
         private void OnBackClick(object? sender, RoutedEventArgs e)
         {
             // Find the MainWindow and get its ViewModel
@@ -45,45 +72,6 @@ namespace Yomic.Views
             }
         }
 
-        private void OnTrackingClick(object? sender, RoutedEventArgs e)
-        {
-             var dialog = new TrackingDialog();
-             if (this.VisualRoot is Window parentWindow)
-             {
-                 dialog.ShowDialog(parentWindow);
-             }
-        }
 
-        private void OnOpenInNewWindowClick(object? sender, RoutedEventArgs e)
-        {
-            if (sender is Button btn && btn.DataContext is ChapterItem chapter &&
-                this.VisualRoot is Window parentWindow && 
-                parentWindow.DataContext is MainWindowViewModel vm)
-            {
-                // Get context
-                System.Collections.Generic.List<ChapterItem>? chapters = null;
-                long sourceId = 3;
-                string title = "";
-                bool isNsfw = false;
-                if (this.DataContext is MangaDetailViewModel detailVm)
-                {
-                    chapters = detailVm.Chapters;
-                    sourceId = detailVm.SourceId;
-                    title = detailVm.Title;
-                    isNsfw = detailVm.IsExplicitContent;
-                }
-
-                var readerVM = new ReaderViewModel(vm, vm.SourceManager, chapter, chapters, vm.NetworkService, vm.LibraryService, sourceId, title, "", isNsfw);
-                var readerWindow = new ReaderWindow
-                {
-                    DataContext = readerVM
-                };
-                
-                // Override Back to close window
-                readerVM.CustomBackAction = () => readerWindow.Close();
-
-                readerWindow.Show();
-            }
-        }
     }
 }

@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Yomic.ViewModels"
              xmlns:views="using:Yomic.Views"
+             xmlns:helpers="clr-namespace:Yomic.Views.Helpers"
              x:Class="Yomic.Views.LibraryView"
              x:Name="root"
              x:DataType="vm:LibraryViewModel"
@@ -41,24 +42,95 @@
         </Style>
 
 
-        <!-- Refresh Animation Style -->
-        <Style Selector="Button.refreshing TextBlock">
-             <Style.Animations>
-                <Animation Duration="0:0:1" IterationCount="Infinite">
-                    <KeyFrame KeyTime="0:0:0">
-                        <Setter Property="RotateTransform.Angle" Value="0"/>
-                    </KeyFrame>
-                    <KeyFrame KeyTime="0:0:1">
-                        <Setter Property="RotateTransform.Angle" Value="360"/>
-                    </KeyFrame>
-                </Animation>
-            </Style.Animations>
+
+
+        <!-- Standard Header Action Button Style -->
+        <Style Selector="Button.header-action">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+        </Style>
+        <Style Selector="Button.header-action:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+        </Style>
+        <Style Selector="Button.header-action:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style Selector="Button.header-action:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#25FFFFFF"/>
+        </Style>
+
+        <!-- Disable transitions for header buttons to avoid color "lag" -->
+        <Style Selector="Button.header-action TextBlock">
+             <Setter Property="Transitions" Value="{x:Null}"/>
+        </Style>
+
+        <!-- Source Filter Tab Style (ListBoxItem) -->
+        <Style Selector="#SourceTabsListBox ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="#SourceTabsListBox ListBoxItem:pointerover /template/ Border">
+            <Setter Property="Background" Value="#10FFFFFF"/>
+        </Style>
+        <Style Selector="#SourceTabsListBox ListBoxItem:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style Selector="#SourceTabsListBox ListBoxItem:selected /template/ Border">
+            <Setter Property="Background" Value="#25FFFFFF"/>
+        </Style>
+        <Style Selector="#SourceTabsListBox ListBoxItem:selected">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+
+        <!-- Scroll Button Style -->
+        <Style Selector="Button.scroll-button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.2"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.scroll-button:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+        </Style>
+        <Style Selector="Button.scroll-button TextBlock">
+             <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+        </Style>
+        <Style Selector="Button.scroll-button:pointerover TextBlock">
+             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
         </Style>
     </UserControl.Styles>
     
     <Panel>
         <Grid RowDefinitions="Auto, *">
-            <StackPanel Grid.Row="0" Margin="40,40,40,30">
+            <StackPanel Grid.Row="0" Margin="30,30,30,20">
                 <!-- Header -->
                 <StackPanel Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
                     <!-- Header Icon -->
@@ -83,58 +155,129 @@
                              Watermark="Search library..." CornerRadius="20"
                              Text="{Binding SearchText}"
                              Background="{DynamicResource SidebarBackground}" Foreground="{DynamicResource PrimaryText}" BorderThickness="0"
-                             Padding="15,10" VerticalContentAlignment="Center">
-                        <TextBox.InnerRightContent>
+                             Padding="8,10,15,10" VerticalContentAlignment="Center">
+                        <TextBox.InnerLeftContent>
                              <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" 
-                                        VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        </TextBox.InnerRightContent>
+                                        VerticalAlignment="Center" Margin="15,0,0,0"/>
+                        </TextBox.InnerLeftContent>
                     </TextBox>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
-                        <!-- Filter Button with Sort Flyout -->
-                        <Button Background="Transparent" BorderBrush="{DynamicResource HoverBackground}" BorderThickness="1"
-                                Foreground="{DynamicResource SecondaryText}" CornerRadius="20" Padding="20,8">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+
+                        <!-- Filter Button -->
+                        <Button Classes="header-action" ToolTip.Tip="Sort and Filter">
                             <Button.Flyout>
                                 <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                    <!-- Filter Section -->
+                                    <MenuItem Header="Filter By" IsEnabled="False" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource SecondaryText}"/>
+                                    
+                                    <MenuItem Header="Show All" Command="{Binding SetFilterModeCommand}" CommandParameter="{x:Static vm:LibraryFilterMode.All}">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                       IsVisible="{Binding SelectedFilterMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:LibraryFilterMode.All}}"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Unread Only" Command="{Binding SetFilterModeCommand}" CommandParameter="{x:Static vm:LibraryFilterMode.UnreadOnly}">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                       IsVisible="{Binding SelectedFilterMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:LibraryFilterMode.UnreadOnly}}"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Ongoing Only" Command="{Binding SetFilterModeCommand}" CommandParameter="{x:Static vm:LibraryFilterMode.OngoingOnly}">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                       IsVisible="{Binding SelectedFilterMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:LibraryFilterMode.OngoingOnly}}"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Completed Only" Command="{Binding SetFilterModeCommand}" CommandParameter="{x:Static vm:LibraryFilterMode.CompletedOnly}">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                       IsVisible="{Binding SelectedFilterMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:LibraryFilterMode.CompletedOnly}}"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+
+                                    <Separator/>
+
+                                    <!-- Sort Section -->
+                                    <MenuItem Header="Sort By" IsEnabled="False" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource SecondaryText}"/>
+
+                                    <MenuItem Header="Last Read (Recently)" Command="{Binding SetSortModeCommand}" CommandParameter="{x:Static vm:LibrarySortMode.LastReadDesc}">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                       IsVisible="{Binding SelectedSortMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:LibrarySortMode.LastReadDesc}}"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Most Unread" Command="{Binding SetSortModeCommand}" CommandParameter="{x:Static vm:LibrarySortMode.UnreadCountDesc}">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                       IsVisible="{Binding SelectedSortMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:LibrarySortMode.UnreadCountDesc}}"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Date Modified" Command="{Binding SetSortModeCommand}" CommandParameter="{x:Static vm:LibrarySortMode.DateModified}">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                       IsVisible="{Binding SelectedSortMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:LibrarySortMode.DateModified}}"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
                                     <MenuItem Header="A → Z" Command="{Binding SetSortModeCommand}" CommandParameter="{x:Static vm:LibrarySortMode.TitleAsc}">
                                         <MenuItem.Icon>
-                                            <TextBlock Text="&#xE8CB;" FontFamily="Segoe Fluent Icons" 
-                                                       Foreground="{DynamicResource AccentColor}"
+                                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
                                                        IsVisible="{Binding SelectedSortMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:LibrarySortMode.TitleAsc}}"/>
                                         </MenuItem.Icon>
                                     </MenuItem>
                                     <MenuItem Header="Z → A" Command="{Binding SetSortModeCommand}" CommandParameter="{x:Static vm:LibrarySortMode.TitleDesc}">
                                         <MenuItem.Icon>
-                                            <TextBlock Text="&#xE8CB;" FontFamily="Segoe Fluent Icons" 
-                                                       Foreground="{DynamicResource AccentColor}"
+                                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
                                                        IsVisible="{Binding SelectedSortMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:LibrarySortMode.TitleDesc}}"/>
-                                        </MenuItem.Icon>
-                                    </MenuItem>
-                                    <MenuItem Header="Date Modified" Command="{Binding SetSortModeCommand}" CommandParameter="{x:Static vm:LibrarySortMode.DateModified}">
-                                        <MenuItem.Icon>
-                                            <TextBlock Text="&#xE8CB;" FontFamily="Segoe Fluent Icons" 
-                                                       Foreground="{DynamicResource AccentColor}"
-                                                       IsVisible="{Binding SelectedSortMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:LibrarySortMode.DateModified}}"/>
                                         </MenuItem.Icon>
                                     </MenuItem>
                                 </MenuFlyout>
                             </Button.Flyout>
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="&#xE71C;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
-                                <TextBlock Text="Filter" VerticalAlignment="Center" FontWeight="Medium"/>
+                                <TextBlock Text="&#xE71C;" FontFamily="Segoe Fluent Icons" FontSize="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Filter" VerticalAlignment="Center" FontSize="14" FontWeight="Medium"/>
                             </StackPanel>
                         </Button>
                         
                         <!-- Refresh Button -->
                         <Button Command="{Binding RefreshCommand}"
                                 IsEnabled="{Binding IsOnline}"
-                                Background="{DynamicResource SidebarBackground}" Foreground="#FF9900" 
-                                CornerRadius="20" Width="40" Height="40" Padding="0"
+                                Classes="header-action"
                                 ToolTip.Tip="Sync Library">
                                 <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
-                                           FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                           FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Button>
                     </StackPanel>
+                </Grid>
+
+                <!-- Horizontal Source Tabs -->
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,15,0,0">
+                    <Button Grid.Column="0" Click="ScrollTabsLeft_Click" Classes="scroll-button" ToolTip.Tip="Scroll Left" Margin="0,0,5,0">
+                        <TextBlock Text="&#xE76B;" FontFamily="Segoe Fluent Icons" FontSize="14" VerticalAlignment="Center"/>
+                    </Button>
+
+                    <ScrollViewer Grid.Column="1" x:Name="SourceTabsScrollViewer" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Margin="5,0">
+                        <ListBox x:Name="SourceTabsListBox"
+                                 ItemsSource="{Binding AvailableSources}"
+                                 SelectedItem="{Binding SelectedSourceFilter, Mode=TwoWay}"
+                                 Background="Transparent"
+                                 BorderThickness="0">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}"/>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </ScrollViewer>
+
+                    <Button Grid.Column="2" Click="ScrollTabsRight_Click" Classes="scroll-button" ToolTip.Tip="Scroll Right" Margin="5,0,0,0">
+                        <TextBlock Text="&#xE76C;" FontFamily="Segoe Fluent Icons" FontSize="14" VerticalAlignment="Center"/>
+                    </Button>
                 </Grid>
             </StackPanel>
 
@@ -187,6 +330,10 @@
                                                       x:CompileBindings="False"
                                                       Command="{Binding #root.DataContext.MarkAsReadCommand}"
                                                       CommandParameter="{Binding}"/>
+                                            <MenuItem Header="Mark as Unread"
+                                                      x:CompileBindings="False"
+                                                      Command="{Binding #root.DataContext.MarkAsUnreadCommand}"
+                                                      CommandParameter="{Binding}"/>
                                             <Separator/>
                                             <MenuItem Header="Remove from Library (Keep Files)"
                                                       x:CompileBindings="False"
@@ -200,11 +347,20 @@
                                     </Border.ContextMenu>
                                 
                                     <Grid>
-                                        <Image Source="{Binding CoverBitmap}" 
-                                               Stretch="UniformToFill"/>
+                                         <Image helpers:SecureImageLoader.Url="{Binding CoverUrl}" 
+                                                Stretch="UniformToFill"/>
                                         
+                                        <!-- NEW Badge (Top Left) -->
+                                        <Border Background="#89B4FA" CornerRadius="6"
+                                                HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                Margin="8" Padding="6,2"
+                                                IsVisible="{Binding IsNewBadgeVisible}">
+                                            <TextBlock Text="NEW" Foreground="#1E1E2E"
+                                                       FontSize="10" FontWeight="Bold"/>
+                                        </Border>
+
                                         <!-- Unread Badge -->
-                                        <Border Background="#FF9900" CornerRadius="6" 
+                                        <Border Background="#0078D7" CornerRadius="6" 
                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
                                                 Margin="8" Padding="6,2"
                                                 IsVisible="{Binding UnreadCount, Converter={x:Static ObjectConverters.IsNotNull}}">
@@ -228,7 +384,7 @@
         <!-- Empty State -->
         <!-- Loading State -->
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" IsVisible="{Binding IsLoading}">
-            <ProgressBar IsIndeterminate="True" Width="200" Height="2" Foreground="#FF9900" Background="{DynamicResource HoverBackground}"/>
+            <ProgressBar IsIndeterminate="True" Width="200" Height="2" Foreground="#0078D7" Background="{DynamicResource HoverBackground}"/>
             <TextBlock Text="Loading Library..." FontSize="16" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
         </StackPanel>
 
@@ -246,7 +402,7 @@
             <TextBlock Text="Your library is empty." FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
             <TextBlock Text="Add manga from Browse section to start reading." FontSize="16" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
             
-            <Button Content="Browse Sources" Classes="NavBtn" Background="#FF9900" Foreground="#1E1E2E" Padding="20,10" CornerRadius="8"
+            <Button Content="Browse Sources" Classes="NavBtn" Background="#0078D7" Foreground="#FFFFFF" Padding="20,10" CornerRadius="8"
                     Command="{Binding GoToBrowseCommand}" 
                     HorizontalAlignment="Center" Margin="0,10,0,0"/>
         </StackPanel>
@@ -266,5 +422,13 @@
         </StackPanel>
 
         <!-- Filter Overlay REMOVED for debugging -->
+
+        <!-- Sync Overlay -->
+        <Border Background="#80000000" IsVisible="{Binding IsRefreshing}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
+                 <ProgressBar IsIndeterminate="True" Foreground="{DynamicResource AccentColor}" Width="150" Height="2" Background="#33FFFFFF"/>
+                 <TextBlock Text="Checking for updates..." Foreground="White" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
+            </StackPanel>
+        </Border>
     </Panel>
 </UserControl>

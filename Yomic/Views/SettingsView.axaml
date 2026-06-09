@@ -8,13 +8,12 @@
 
     
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="35" MaxWidth="800" HorizontalAlignment="Center" Margin="40">
+        <StackPanel Spacing="30" Margin="30,20">
              <!-- Header -->
              <StackPanel Orientation="Horizontal" Spacing="15" VerticalAlignment="Center" Margin="0,0,0,10">
-                <Border Width="48" Height="48" CornerRadius="12" Background="{DynamicResource SidebarBackground}">
-                    <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" FontSize="24" 
-                               Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                </Border>
+                <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" FontSize="28" 
+                           Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
+                           RenderOptions.TextRenderingMode="Antialias"/>
                 <TextBlock Text="Settings" FontSize="32" FontWeight="Bold" 
                            Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
             </StackPanel>
@@ -26,104 +25,106 @@
                      <TextBlock Text="General" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}"/>
                 </StackPanel>
                 
-                <Border Background="{DynamicResource SidebarBackground}" CornerRadius="16" Padding="5" BoxShadow="0 4 15 0 #20000000">
-                    <StackPanel>
-                        <!-- Item 1 -->
-                        <Border Padding="20,15" CornerRadius="12" Background="Transparent">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <StackPanel Spacing="3">
-                                    <TextBlock Text="Dark Mode" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
-                                    <TextBlock Text="Use system dark theme preferences" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                <StackPanel Spacing="10">
+                    <!-- Item 1 -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Dark Mode" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                <TextBlock Text="Use system dark theme preferences" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsDarkMode}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </Border>
+                    
+                    <!-- Item 2 -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="Offline Mode" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                    <!-- Status Badges -->
+                                    <Panel VerticalAlignment="Center">
+                                        <Border Background="#2000C853" CornerRadius="8" Padding="8,2" IsVisible="{Binding !IsOfflineMode}">
+                                            <TextBlock Text="ONLINE" Foreground="#00C853" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <Border Background="#20FF5555" CornerRadius="8" Padding="8,2" IsVisible="{Binding IsOfflineMode}">
+                                            <TextBlock Text="OFFLINE" Foreground="#FF5555" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </Panel>
                                 </StackPanel>
-                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsDarkMode}" OnContent="" OffContent=""/>
-                            </Grid>
-                        </Border>
-                        
-                        <Separator Background="{DynamicResource SecondaryText}" Height="1" Margin="20,0" Opacity="0.2"/>
+                                <TextBlock Text="Force application to use downloaded content only" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsOfflineMode}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </Border>
 
-                        <!-- Item 2 -->
-                        <Border Padding="20,15" CornerRadius="12" Background="Transparent">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <StackPanel Spacing="3">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <TextBlock Text="Offline Mode" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
-                                        <!-- Status Badges -->
-                                        <Panel VerticalAlignment="Center">
-                                            <Border Background="#2000C853" CornerRadius="8" Padding="8,2" IsVisible="{Binding !IsOfflineMode}">
-                                                <TextBlock Text="ONLINE" Foreground="#00C853" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
-                                            </Border>
-                                            <Border Background="#20FF5555" CornerRadius="8" Padding="8,2" IsVisible="{Binding IsOfflineMode}">
-                                                <TextBlock Text="OFFLINE" Foreground="#FF5555" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
-                                            </Border>
-                                        </Panel>
-                                    </StackPanel>
-                                    <TextBlock Text="Force application to use downloaded content only" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
-                                </StackPanel>
-                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsOfflineMode}" OnContent="" OffContent=""/>
-                            </Grid>
-                        </Border>
+                    <!-- Show NSFW Sources -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Show NSFW Sources" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                <TextBlock Text="Display extensions with 18+ content in Browse" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding ShowNsfwSources}" OnContent="" OffContent="" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
 
-                        <Separator Background="{DynamicResource SecondaryText}" Height="1" Margin="20,0" Opacity="0.2"/>
+                    <!-- Item 3 -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Auto-Update" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                <TextBlock Text="Check for updates automatically on startup" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding CheckAppUpdateOnStart}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </Border>
 
-                        <!-- Item 3 -->
-                        <Border Padding="20,15" CornerRadius="12" Background="Transparent">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <StackPanel Spacing="3">
-                                    <TextBlock Text="Auto-Update" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
-                                    <TextBlock Text="Check for updates automatically on startup" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
-                                </StackPanel>
-                                
-                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding CheckAppUpdateOnStart}" OnContent="" OffContent=""/>
-                            </Grid>
-                        </Border>
-                        <Separator Background="{DynamicResource SecondaryText}" Height="1" Margin="20,0" Opacity="0.2"/>
+                    <!-- Clear Read History -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Clear Read History" FontWeight="SemiBold" Foreground="#F59E0B" FontSize="16"/>
+                                <TextBlock Text="Reset all chapters to unread status" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Clear History" Command="{Binding ClearReadHistoryCommand}" 
+                                    Background="Transparent" BorderBrush="#F59E0B" BorderThickness="1" 
+                                    Foreground="#F59E0B" CornerRadius="18" Padding="20,6" FontWeight="SemiBold" FontSize="13"
+                                    VerticalAlignment="Center" Cursor="Hand">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="#20F59E0B"/>
+                                        <Setter Property="BorderBrush" Value="#F59E0B"/>
+                                        <Setter Property="Foreground" Value="#F59E0B"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Grid>
+                    </Border>
 
-                        <!-- Clear Read History -->
-                        <Border Padding="20,15" CornerRadius="12" Background="Transparent">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <StackPanel Spacing="3">
-                                    <TextBlock Text="Clear Read History" FontWeight="SemiBold" Foreground="#FF9900" FontSize="16"/>
-                                    <TextBlock Text="Reset all chapters to unread status" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
-                                </StackPanel>
-                                <Button Grid.Column="1" Content="Clear History" Command="{Binding ClearReadHistoryCommand}" 
-                                        Background="Transparent" BorderBrush="#FF9900" BorderThickness="1" 
-                                        Foreground="#FF9900" CornerRadius="18" Padding="20,6" FontWeight="SemiBold" FontSize="13"
-                                        VerticalAlignment="Center" Cursor="Hand">
-                                    <Button.Styles>
-                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="#20FF9900"/>
-                                            <Setter Property="BorderBrush" Value="#FF9900"/>
-                                            <Setter Property="Foreground" Value="#FF9900"/>
-                                        </Style>
-                                    </Button.Styles>
-                                </Button>
-                            </Grid>
-                        </Border>
-                        <Separator Background="{DynamicResource SecondaryText}" Height="1" Margin="20,0" Opacity="0.2"/>
-
-                        <!-- Danger Zone -->
-                        <Border Padding="20,15" CornerRadius="12" Background="Transparent">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <StackPanel Spacing="3">
-                                    <TextBlock Text="Clear All Data" FontWeight="SemiBold" Foreground="#FF5555" FontSize="16"/>
-                                    <TextBlock Text="Irreversible action to clear local database" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
-                                </StackPanel>
-                                <Button Grid.Column="1" Content="Reset Data" Command="{Binding ClearAllDataCommand}" 
-                                        Background="Transparent" BorderBrush="#FF5555" BorderThickness="1" 
-                                        Foreground="#FF5555" CornerRadius="18" Padding="20,6" FontWeight="SemiBold" FontSize="13"
-                                        VerticalAlignment="Center" Cursor="Hand">
-                                    <Button.Styles>
-                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="#20FF5555"/>
-                                            <Setter Property="BorderBrush" Value="#FF5555"/>
-                                            <Setter Property="Foreground" Value="#FF5555"/>
-                                        </Style>
-                                    </Button.Styles>
-                                </Button>
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-                </Border>
+                    <!-- Danger Zone -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Clear All Data" FontWeight="SemiBold" Foreground="#FF5555" FontSize="16"/>
+                                <TextBlock Text="Irreversible action to clear local database" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Reset Data" Command="{Binding ClearAllDataCommand}" 
+                                    Background="Transparent" BorderBrush="#FF5555" BorderThickness="1" 
+                                    Foreground="#FF5555" CornerRadius="18" Padding="20,6" FontWeight="SemiBold" FontSize="13"
+                                    VerticalAlignment="Center" Cursor="Hand">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="#20FF5555"/>
+                                        <Setter Property="BorderBrush" Value="#FF5555"/>
+                                        <Setter Property="Foreground" Value="#FF5555"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </StackPanel>
 
             <!-- Network Section -->
@@ -132,43 +133,56 @@
                      <TextBlock Text="&#xE839;" FontFamily="Segoe Fluent Icons" FontSize="20" Foreground="{DynamicResource SecondaryText}"/>
                      <TextBlock Text="Network" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}"/>
                 </StackPanel>
-                
-                <Border Background="{DynamicResource SidebarBackground}" CornerRadius="16" Padding="5" BoxShadow="0 4 15 0 #20000000">
-                    <StackPanel>
-                        <!-- VPN Bypass Toggle -->
-                        <Border Padding="20,15" CornerRadius="12" Background="Transparent">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <StackPanel Spacing="3">
-                                    <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <TextBlock Text="VPN Bypass Mode" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
-                                        <!-- Status Badge -->
-                                        <Border CornerRadius="4" Padding="8,2" Background="#6B7280">
-                                            <TextBlock Text="{Binding VpnStatus}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
-                                        </Border>
-                                    </StackPanel>
-                                    <TextBlock Text="Enable this to bypass ISP blocking for MangaDex" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
-                                    
-                                    <!-- Download Progress -->
-                                    <ProgressBar IsVisible="{Binding IsVpnDownloading}" 
-                                                 Value="{Binding VpnDownloadProgress}" 
-                                                 Maximum="1" Minimum="0" Height="4" 
-                                                 Foreground="#FF9900" Background="#313244" 
-                                                 Margin="0,8,0,0"/>
+                <StackPanel Spacing="10">
+                    <!-- VPN Bypass Toggle -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="VPN Bypass Mode" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                    <!-- Status Badge -->
+                                    <Border CornerRadius="4" Padding="8,2" Background="#6B7280">
+                                        <TextBlock Text="{Binding VpnStatus}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                    </Border>
                                 </StackPanel>
-                                <Button Grid.Column="1" Command="{Binding ToggleVpnCommand}"
-                                        Content="{Binding VpnButtonText}"
-                                        Background="#FF9900" Foreground="White" CornerRadius="8" Padding="20,10" FontWeight="Bold"
-                                        Margin="20,0,0,0">
-                                    <Button.Styles>
-                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="#FFAD33"/>
-                                        </Style>
-                                    </Button.Styles>
-                                </Button>
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-                </Border>
+                                <TextBlock Text="Enable this to bypass ISP blocking for MangaDex" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                                
+                                <!-- Download Progress -->
+                                <ProgressBar IsVisible="{Binding IsVpnDownloading}" 
+                                             Value="{Binding VpnDownloadProgress}" 
+                                             Maximum="1" Minimum="0" Height="4" 
+                                             Foreground="#0078D7" Background="#313244" 
+                                             Margin="0,8,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Command="{Binding ToggleVpnCommand}"
+                                    Content="{Binding VpnButtonText}"
+                                    Background="#0078D7" Foreground="White" CornerRadius="8" Padding="20,10" FontWeight="Bold"
+                                    Margin="20,0,0,0">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="#3395FF"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Grid>
+                    </Border>
+                    
+                    <!-- DNS over HTTPS -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="DNS over HTTPS" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                <TextBlock Text="Bypass DNS blocking by resolving over HTTPS" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding DnsOverHttpsProvider}" Width="150" VerticalAlignment="Center" CornerRadius="8">
+                                <ComboBoxItem>Disabled</ComboBoxItem>
+                                <ComboBoxItem>Cloudflare</ComboBoxItem>
+                                <ComboBoxItem>Google</ComboBoxItem>
+                                <ComboBoxItem>AdGuard</ComboBoxItem>
+                            </ComboBox>
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </StackPanel>
             <StackPanel Spacing="15">
                 <StackPanel Orientation="Horizontal" Spacing="10">
@@ -176,23 +190,19 @@
                      <TextBlock Text="Library" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}"/>
                 </StackPanel>
                 
-                <Border Background="{DynamicResource SidebarBackground}" CornerRadius="16" Padding="5" BoxShadow="0 4 15 0 #20000000">
-                    <StackPanel>
-                        <!-- Item 1 -->
-                        <Border Padding="20,15" CornerRadius="12" Background="Transparent">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <StackPanel Spacing="3">
-                                    <TextBlock Text="Auto-Sync Library" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
-                                    <TextBlock Text="Automatically check for new chapters on startup" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
-                                </StackPanel>
-                                
-                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding UpdateOnStart}" OnContent="" OffContent=""/>
-                            </Grid>
-                        </Border>
-                        
-
-                    </StackPanel>
-                </Border>
+                <StackPanel Spacing="10">
+                    <!-- Item 1 -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Auto-Sync Library" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                <TextBlock Text="Automatically check for new chapters on startup" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding UpdateOnStart}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </StackPanel>
 
             <!-- Security Section -->
@@ -201,20 +211,117 @@
                      <TextBlock Text="&#xE72E;" FontFamily="Segoe Fluent Icons" FontSize="20" Foreground="{DynamicResource SecondaryText}"/>
                      <TextBlock Text="Security" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}"/>
                 </StackPanel>
-                 <Border Background="{DynamicResource SidebarBackground}" CornerRadius="16" Padding="5" BoxShadow="0 4 15 0 #20000000">
-                    <StackPanel>
-                        <Border Padding="20,15" CornerRadius="12" Background="Transparent">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <StackPanel Spacing="3">
-                                    <TextBlock Text="NSFW 18+" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
-                                    <TextBlock Text="Blur explicit content using logic-based detection." 
-                                               FontSize="13" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" MaxWidth="600"/>
-                                </StackPanel>
-                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding SecureScreen}" OnContent="" OffContent=""/>
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-                </Border>
+                 <StackPanel Spacing="10">
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Blur Explicit Covers" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                <TextBlock Text="Blur cover images containing explicit content in Library" 
+                                           FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding SecureScreen}" OnContent="" OffContent=""/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+
+
+            <!-- Data & Storage Section -->
+            <StackPanel Spacing="15">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                     <TextBlock Text="&#xE78C;" FontFamily="Segoe Fluent Icons" FontSize="20" Foreground="{DynamicResource SecondaryText}"/>
+                     <TextBlock Text="Data &amp; Storage" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}"/>
+                </StackPanel>
+                 <StackPanel Spacing="10">
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Create Backup" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                <TextBlock Text="Create a backup of your local database and settings" 
+                                           FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Backup" Command="{Binding BackupDataCommand}"
+                                    Background="Transparent" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1" 
+                                    Foreground="{DynamicResource PrimaryText}" CornerRadius="18" Padding="20,6" FontWeight="SemiBold" FontSize="13"
+                                    VerticalAlignment="Center" Cursor="Hand">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Grid>
+                    </Border>
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Restore Backup" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                <TextBlock Text="Restore data from a previously created backup file" 
+                                           FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Restore" Command="{Binding RestoreDataCommand}"
+                                    Background="Transparent" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1" 
+                                    Foreground="{DynamicResource PrimaryText}" CornerRadius="18" Padding="20,6" FontWeight="SemiBold" FontSize="13"
+                                    VerticalAlignment="Center" Cursor="Hand">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <!-- Clear Cache & Cookies -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Clear Cache &amp; Cookies" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                <TextBlock Text="Free up memory and reset network connections" FontSize="13" Foreground="{DynamicResource SecondaryText}"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Clear Cache" Command="{Binding ClearCacheCookiesCommand}"
+                                    Background="Transparent" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1" 
+                                    Foreground="{DynamicResource PrimaryText}" CornerRadius="18" Padding="20,6" FontWeight="SemiBold" FontSize="13"
+                                     VerticalAlignment="Center" Cursor="Hand">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <!-- Preload Next Chapter -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                <TextBlock Text="Preload Next Chapter" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16" HorizontalAlignment="Left"/>
+                                <TextBlock Text="Download pages of the next chapter in the background when nearing the end of current chapter" 
+                                           FontSize="13" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" MaxWidth="500" HorizontalAlignment="Left"/>
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding PreloadNextChapter}" OnContent="" OffContent="" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Max Reader Cache Size -->
+                    <Border Background="{DynamicResource SidebarBackground}" Padding="20,15" CornerRadius="8" BoxShadow="0 2 10 0 #05000000">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Spacing="3" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                <TextBlock Text="Max Reader Cache Size" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16" HorizontalAlignment="Left"/>
+                                <TextBlock Text="Automatically clear oldest reader cache files when the size limit is exceeded" 
+                                           FontSize="13" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" MaxWidth="500" HorizontalAlignment="Left"/>
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding MaxCacheSizeIndex}" Width="150" VerticalAlignment="Center" CornerRadius="8">
+                                <ComboBoxItem>Disabled</ComboBoxItem>
+                                <ComboBoxItem>250 MB</ComboBoxItem>
+                                <ComboBoxItem>500 MB</ComboBoxItem>
+                                <ComboBoxItem>1 GB</ComboBoxItem>
+                                <ComboBoxItem>2 GB</ComboBoxItem>
+                            </ComboBox>
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </StackPanel>
 
             <!-- About Section -->
@@ -224,92 +331,146 @@
                      <TextBlock Text="About" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}"/>
                 </StackPanel>
                 <Border Background="{DynamicResource SidebarBackground}" CornerRadius="16" Padding="40" BoxShadow="0 4 15 0 #20000000">
-                    <StackPanel Spacing="25" HorizontalAlignment="Center">
-                        <!-- Header with Icon -->
-                        <StackPanel Orientation="Horizontal" Spacing="25" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Border Width="80" Height="80" CornerRadius="20" ClipToBounds="True" Background="Transparent" BoxShadow="0 4 10 0 #30000000">
-                                <Image Source="/Assets/app.ico" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/>
-                            </Border>
-                            <StackPanel VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="Yomic" FontSize="36" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
-                                <TextBlock Text="{Binding AppVersion}" Foreground="{DynamicResource SecondaryText}" FontSize="16"/>
-                                <TextBlock Text="Credits: ArisaAkiyama" Foreground="{DynamicResource SecondaryText}" FontSize="12" Opacity="0.7"/>
+                    <Grid ColumnDefinitions="Auto, *" Margin="10">
+                        <!-- Logo Column -->
+                        <Border Grid.Column="0" Width="80" Height="80" VerticalAlignment="Top" CornerRadius="20" ClipToBounds="True" Background="Transparent" BoxShadow="0 4 10 0 #30000000">
+                            <Image Source="/Assets/app.ico" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+                        </Border>
+
+                        <!-- Content Column -->
+                        <StackPanel Grid.Column="1" Margin="30,0,0,0" Spacing="15">
+                            <!-- App Name & Version -->
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="Yomic" FontSize="36" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" LineHeight="40"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Border Background="#20FFFFFF" CornerRadius="6" Padding="8,2">
+                                        <TextBlock Text="{Binding AppVersion}" Foreground="{DynamicResource SecondaryText}" FontSize="12" FontWeight="SemiBold"/>
+                                    </Border>
+                                    <TextBlock Text="by ArisaAkiyama" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" FontSize="13" Opacity="0.8"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Description -->
+                            <TextBlock Foreground="{DynamicResource PrimaryText}" FontSize="14" LineHeight="24" TextWrapping="Wrap" MaxWidth="600" HorizontalAlignment="Left" TextAlignment="Left">
+                                <Run Text="Yomic is a free and open source web comic reader, designed for a premium desktop reading experience."/>
+                                <LineBreak/>
+                                <Run Text="It aggregates content from popular sources like MangaDex, allowing you to read your favorite stories distraction-free."/>
+                            </TextBlock>
+
+                            <!-- Actions Row -->
+                            <StackPanel Orientation="Horizontal" Spacing="15" Margin="0,5,0,0">
+                                <Button Command="{Binding VisitWebsiteCommand}" Content="Visit Website" 
+                                        Background="{DynamicResource HoverBackground}" Foreground="{DynamicResource PrimaryText}" FontWeight="SemiBold" FontSize="13"
+                                        CornerRadius="8" Padding="15,8" Cursor="Hand" BorderThickness="0">
+                                    <Button.Styles>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="{DynamicResource PrimaryAccent}"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Style>
+                                    </Button.Styles>
+                                </Button>
+
+                                <Button Command="{Binding CheckForUpdatesCommand}" Content="Check for Updates" 
+                                        Background="Transparent" Foreground="{DynamicResource SecondaryText}" FontWeight="SemiBold" FontSize="13"
+                                        CornerRadius="8" Padding="15,8" Cursor="Hand" BorderThickness="1" BorderBrush="{DynamicResource SeparatorBrush}">
+                                    <Button.Styles>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                                        </Style>
+                                    </Button.Styles>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- Social Icons -->
+                            <StackPanel Orientation="Horizontal" Spacing="20" Margin="0,10,0,0">
+                                <!-- GitHub -->
+                                <Button Command="{Binding OpenGitHubCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip.Tip="GitHub" Padding="5">
+                                    <Button.Styles>
+                                        <Style Selector="PathIcon">
+                                            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover PathIcon">
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Style>
+                                    </Button.Styles>
+                                    <PathIcon Data="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" 
+                                              Width="20" Height="20"/>
+                                </Button>
+
+                                <!-- X (Twitter) -->
+                                <Button Command="{Binding OpenTwitterCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip.Tip="X (Twitter)" Padding="5">
+                                    <Button.Styles>
+                                        <Style Selector="PathIcon">
+                                            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover PathIcon">
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Style>
+                                    </Button.Styles>
+                                    <PathIcon Data="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" 
+                                              Width="18" Height="18"/>
+                                </Button>
+
+                                <!-- Facebook -->
+                                <Button Command="{Binding OpenFacebookCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip.Tip="Facebook" Padding="5">
+                                    <Button.Styles>
+                                        <Style Selector="PathIcon">
+                                            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover PathIcon">
+                                            <Setter Property="Foreground" Value="#1877F2"/>
+                                        </Style>
+                                    </Button.Styles>
+                                    <PathIcon Data="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" 
+                                              Width="20" Height="20"/>
+                                </Button>
+
+                                <!-- Instagram -->
+                                <Button Command="{Binding OpenInstagramCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip.Tip="Instagram" Padding="5">
+                                    <Button.Styles>
+                                        <Style Selector="PathIcon">
+                                            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover PathIcon">
+                                            <Setter Property="Foreground" Value="#E4405F"/>
+                                        </Style>
+                                    </Button.Styles>
+                                    <PathIcon Data="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" 
+                                              Width="20" Height="20"/>
+                                </Button>
+
+                                <!-- TikTok -->
+                                <Button Command="{Binding OpenTikTokCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip.Tip="TikTok" Padding="5">
+                                    <Button.Styles>
+                                        <Style Selector="PathIcon">
+                                            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover PathIcon">
+                                            <Setter Property="Foreground" Value="#00F2EA"/>
+                                        </Style>
+                                    </Button.Styles>
+                                    <PathIcon Data="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" 
+                                              Width="20" Height="20"/>
+                                </Button>
                             </StackPanel>
                         </StackPanel>
-
-                        <!-- Description (VLC Style) -->
-                        <TextBlock TextAlignment="Center" Foreground="{DynamicResource PrimaryText}" FontSize="14" LineHeight="22" MaxWidth="500" TextWrapping="Wrap">
-                            <Run Text="Yomic is a free and open source web comic reader, designed for a premium desktop reading experience."/>
-                            <LineBreak/><LineBreak/>
-                            <Run Text="It aggregates content from popular sources like MangaDex, allowing you to read your favorite stories distraction-free. Built with Avalonia UI for cross-platform performance."/>
-                        </TextBlock>
-
-                        <!-- Primary Links -->
-                        <StackPanel Spacing="5" HorizontalAlignment="Center">
-                            <Button Command="{Binding VisitWebsiteCommand}" Content="Visit Website" 
-                                    Background="Transparent" Foreground="#FF9900" FontWeight="SemiBold" FontSize="14"
-                                    HorizontalAlignment="Center" Cursor="Hand" BorderThickness="0">
-                                <Button.Styles>
-                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                        <Setter Property="Background" Value="Transparent"/>
-                                        <Setter Property="Foreground" Value="#B4BEFE"/>
-                                        <Setter Property="TextBlock.TextDecorations" Value="Underline"/>
-                                    </Style>
-                                </Button.Styles>
-                            </Button>
-
-                            <Button Click="OnCheckUpdatesClick" Content="Check for Updates" 
-                                    Background="Transparent" Foreground="#FF9900" FontWeight="SemiBold" FontSize="14"
-                                    HorizontalAlignment="Center" Cursor="Hand" BorderThickness="0">
-                                <Button.Styles>
-                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                        <Setter Property="Background" Value="Transparent"/>
-                                        <Setter Property="Foreground" Value="#B4BEFE"/>
-                                        <Setter Property="TextBlock.TextDecorations" Value="Underline"/>
-                                    </Style>
-                                </Button.Styles>
-                            </Button>
-                        </StackPanel>
-                        
-                        <Separator Background="{DynamicResource SecondaryText}" Height="1" Opacity="0.1" Width="400"/>
-                        
-                         <!-- Footer Links (Social Icons) -->
-                        <StackPanel Orientation="Horizontal" Spacing="25" HorizontalAlignment="Center">
-                             <!-- GitHub -->
-                             <Button Command="{Binding OpenGitHubCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip.Tip="GitHub">
-                                 <Button.Styles>
-                                     <Style Selector="PathIcon">
-                                         <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
-                                     </Style>
-                                     <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                         <Setter Property="Background" Value="Transparent"/>
-                                     </Style>
-                                     <Style Selector="Button:pointerover PathIcon">
-                                         <Setter Property="Foreground" Value="#FF9900"/>
-                                     </Style>
-                                 </Button.Styles>
-                                 <PathIcon Data="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" 
-                                           Width="24" Height="24"/>
-                             </Button>
-
-                             <!-- Twitter / X -->
-                             <Button Command="{Binding OpenTwitterCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip.Tip="X (Twitter)">
-                                 <Button.Styles>
-                                     <Style Selector="PathIcon">
-                                         <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
-                                     </Style>
-                                     <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                         <Setter Property="Background" Value="Transparent"/>
-                                     </Style>
-                                     <Style Selector="Button:pointerover PathIcon">
-                                         <Setter Property="Foreground" Value="#FF9900"/>
-                                     </Style>
-                                 </Button.Styles>
-                                 <PathIcon Data="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" 
-                                           Width="20" Height="20"/>
-                             </Button>
-                        </StackPanel>
-                    </StackPanel>
+                    </Grid>
                 </Border>
             </StackPanel>
         </StackPanel>

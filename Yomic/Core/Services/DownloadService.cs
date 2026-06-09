@@ -31,8 +31,9 @@ namespace Yomic.Core.Services
         private readonly NetworkService _networkService;
         private readonly string _downloadBaseDir;
 
-        // Queue management
-        private readonly ConcurrentQueue<DownloadRequest> _queue = new();
+        // Queue management - using List + lock for proper removal support
+        private readonly List<DownloadRequest> _queue = new();
+        private readonly object _queueLock = new();
         private readonly List<DownloadRequest> _history = new(); // Completed or Error
         private readonly object _historyLock = new(); // Thread lock
         private DownloadRequest? _currentDownload;
@@ -53,11 +54,15 @@ namespace Yomic.Core.Services
             {
                 lock (_historyLock)
                 {
-                    // Return a snapshot to prevent iteration errors
-                    var historySnapshot = _history.ToList();
-                    return historySnapshot
-                        .Concat(_currentDownload != null ? new[] { _currentDownload } : Array.Empty<DownloadRequest>())
-                        .Concat(_queue);
+                    lock (_queueLock)
+                    {
+                        // Return a snapshot to prevent iteration errors
+                        var historySnapshot = _history.ToList();
+                        var queueSnapshot = _queue.ToList();
+                        return historySnapshot
+                            .Concat(_currentDownload != null ? new[] { _currentDownload } : Array.Empty<DownloadRequest>())
+                            .Concat(queueSnapshot);
+                    }
                 }
             }
         }
@@ -97,9 +102,15 @@ namespace Yomic.Core.Services
                     historySnapshot = _history.ToList();
                 }
 
+                List<DownloadRequest> queueSnapshot;
+                lock (_queueLock)
+                {
+                    queueSnapshot = _queue.ToList();
+                }
+
                 var data = new 
                 {
-                    Queue = _queue.ToList(),
+                    Queue = queueSnapshot,
                     History = historySnapshot,
                     Current = _currentDownload
                 };
@@ -110,7 +121,7 @@ namespace Yomic.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[DownloadService] Error saving queue: {ex.Message}");
+                LogService.Error("Download", $"Error saving queue: {ex.Message}");
             }
         }
 
@@ -135,17 +146,24 @@ namespace Yomic.Core.Services
                     if (data.Current != null && data.Current.Status == "Downloading")
                     {
                         // Reset status to queued if it was interrupted
-                        data.Current.Status = "Queued"; 
-                        _queue.Enqueue(data.Current);
+                        data.Current.Status = "Queued";
+                        data.Current.CancellationTokenSource = new CancellationTokenSource();
+                        lock (_queueLock)
+                        {
+                            _queue.Add(data.Current);
+                        }
                     }
                     
                     if (data.Queue != null)
                     {
-                        foreach(var item in data.Queue)
+                        lock (_queueLock)
                         {
-                            item.CancellationTokenSource = new CancellationTokenSource(); // Recreate CTS
-                            if (item.Status == "Downloading") item.Status = "Queued"; // Reset interrupted
-                            _queue.Enqueue(item);
+                            foreach(var item in data.Queue)
+                            {
+                                item.CancellationTokenSource = new CancellationTokenSource(); // Recreate CTS
+                                if (item.Status == "Downloading") item.Status = "Queued"; // Reset interrupted
+                                _queue.Add(item);
+                            }
                         }
                     }
 
@@ -163,7 +181,7 @@ namespace Yomic.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[DownloadService] Error loading queue: {ex.Message}");
+                LogService.Error("Download", $"Error loading queue: {ex.Message}");
             }
         }
         
@@ -176,20 +194,23 @@ namespace Yomic.Core.Services
 
         public void QueueDownload(Manga manga, Chapter chapter)
         {
-            // Check if already in queue or downloading (use Url for identification, not Id)
-            if (_queue.Any(x => x.Chapter.Url == chapter.Url) || _currentDownload?.Chapter.Url == chapter.Url)
-                return;
-
-            var request = new DownloadRequest
+            lock (_queueLock)
             {
-                Manga = manga,
-                Chapter = chapter,
-                Status = "Queued"
-            };
+                // Check if already in queue or downloading (use Url for identification, not Id)
+                if (_queue.Any(x => x.Chapter.Url == chapter.Url) || _currentDownload?.Chapter.Url == chapter.Url)
+                    return;
 
-            _queue.Enqueue(request);
-            SaveQueue(); // Save
-            QueueChanged?.Invoke(this, request);
+                var request = new DownloadRequest
+                {
+                    Manga = manga,
+                    Chapter = chapter,
+                    Status = "Queued"
+                };
+
+                _queue.Add(request);
+                SaveQueue(); // Save
+                QueueChanged?.Invoke(this, request);
+            }
 
             ProcessQueue();
         }
@@ -204,11 +225,17 @@ namespace Yomic.Core.Services
             {
                 if (_isProcessing || _isPaused) return;
 
-                if (_queue.TryDequeue(out var request))
+                lock (_queueLock)
                 {
-                    _isProcessing = true; // CLAIMED
-                    _currentDownload = request;
-                    requestToStart = request;
+                    // Find first non-cancelled item in queue
+                    var request = _queue.FirstOrDefault(x => !x.CancellationTokenSource.IsCancellationRequested);
+                    if (request != null)
+                    {
+                        _queue.Remove(request);
+                        _isProcessing = true; // CLAIMED
+                        _currentDownload = request;
+                        requestToStart = request;
+                    }
                 }
             }
 
@@ -247,14 +274,14 @@ namespace Yomic.Core.Services
                              request.Status = $"Retrying ({request.RetryCount}/{maxRetries})...";
                              StatusChanged?.Invoke(this, request);
                              
-                             System.Diagnostics.Debug.WriteLine($"[DownloadService] Retry {request.RetryCount} for {request.Chapter.Name}");
+                             LogService.Warning("Download", $"Retry {request.RetryCount} for {request.Chapter.Name}");
                              await Task.Delay(2000 * request.RetryCount); 
                         }
                         else
                         {
                             // Final failure
                             request.Status = "Error";
-                            System.Diagnostics.Debug.WriteLine($"[DownloadService] Error: {ex.Message}");
+                            LogService.Error("Download", $"Max retries exceeded: {ex.Message}");
                             StatusChanged?.Invoke(this, request);
                             break; // Exit loop to finally
                         }
@@ -275,7 +302,10 @@ namespace Yomic.Core.Services
                 {
                     // Re-enqueue for later
                     request.CancellationTokenSource = new CancellationTokenSource(); // Reset token for next run
-                    _queue.Enqueue(request);
+                    lock (_queueLock)
+                    {
+                        _queue.Add(request);
+                    }
                     QueueChanged?.Invoke(this, request);
                 }
                 
@@ -298,33 +328,31 @@ namespace Yomic.Core.Services
         {
             try 
             {
-                Console.WriteLine($"[DownloadService] Starting download for: {request.Chapter.Name}");
-                Console.WriteLine($"[DownloadService] Manga Source ID: {request.Manga.Source}");
-                Console.WriteLine($"[DownloadService] Chapter URL: {request.Chapter.Url}");
+                LogService.Info("Download", $"Starting: {request.Chapter.Name}");
+                LogService.Debug("Download", $"Source ID: {request.Manga.Source}, URL: {request.Chapter.Url}");
                 
                 var source = _sourceManager.GetSource(request.Manga.Source);
                 if (source == null)
                 {
-                    Console.WriteLine($"[DownloadService] ERROR: Source not found for ID {request.Manga.Source}");
+                    LogService.Error("Download", $"Source not found for ID {request.Manga.Source}");
                     throw new Exception("Source not found");
                 }
-                Console.WriteLine($"[DownloadService] Using source: {source.Name}");
+                LogService.Debug("Download", $"Using source: {source.Name}");
 
                 // 1. Get Pages
-                Console.WriteLine($"[DownloadService] Fetching page list...");
                 var pages = await source.GetPageListAsync(request.Chapter.Url);
-                Console.WriteLine($"[DownloadService] GetPageListAsync returned: {pages?.Count ?? 0} pages");
+                LogService.Info("Download", $"Fetched {pages?.Count ?? 0} pages");
                 
                 if (pages == null || pages.Count == 0)
                 {
-                    Console.WriteLine($"[DownloadService] ERROR: No pages found!");
+                    LogService.Error("Download", "No pages found in chapter!");
                     throw new Exception("No pages found in chapter");
                 }
                 
-                // Log first 3 page URLs
-                for (int p = 0; p < Math.Min(3, pages.Count); p++)
+                // Log first few page URLs for debugging
+                if (pages.Count > 0)
                 {
-                    Console.WriteLine($"[DownloadService] Page {p}: {pages[p].Substring(0, Math.Min(80, pages[p].Length))}...");
+                    LogService.Debug("Download", $"First page: {pages[0].Substring(0, Math.Min(60, pages[0].Length))}...");
                 }
                 
                 // 2. Prepare Directory
@@ -333,7 +361,7 @@ namespace Yomic.Core.Services
                 var safeChapterName = string.Join("_", request.Chapter.Name.Split(Path.GetInvalidFileNameChars()));
                 
                 var chapterDir = Path.Combine(_downloadBaseDir, request.Manga.Source.ToString(), safeMangaTitle, safeChapterName);
-                Console.WriteLine($"[DownloadService] Download dir: {chapterDir}");
+                LogService.Debug("Download", $"Dir: {chapterDir}");
                 
                 if (!Directory.Exists(chapterDir))
                     Directory.CreateDirectory(chapterDir);
@@ -359,12 +387,11 @@ namespace Yomic.Core.Services
                         refererUrl = source.BaseUrl.TrimEnd('/') + request.Chapter.Url;
                     }
                     client.DefaultRequestHeaders.Referrer = new Uri(refererUrl);
-                    Console.WriteLine($"[DownloadService] Referer set to: {refererUrl}");
                 }
                 catch (Exception ex)
                 {
                     // Fallback - use source base URL
-                    Console.WriteLine($"[DownloadService] Referer error: {ex.Message}, using base URL");
+                    LogService.Warning("Download", $"Referer error: {ex.Message}, using base URL");
                     client.DefaultRequestHeaders.Referrer = new Uri(source.BaseUrl);
                 }
                 
@@ -372,7 +399,7 @@ namespace Yomic.Core.Services
                 var semaphore = new System.Threading.SemaphoreSlim(4);
                 var downloadTasks = new List<Task>();
                 
-                Console.WriteLine($"[DownloadService] Starting parallel download of {total} images...");
+                LogService.Info("Download", $"Downloading {total} pages...");
 
                 for (int i = 0; i < total; i++)
                 {
@@ -412,22 +439,48 @@ namespace Yomic.Core.Services
                             // Atomic Check: If final file exists, it's done. 
                             if (!File.Exists(filePath))
                             {
-                                var req = new HttpRequestMessage(HttpMethod.Get, requestUrl);
-                                if (customHeaders.ContainsKey("Referer")) req.Headers.Referrer = new Uri(customHeaders["Referer"]);
-                                // refererUrl already constructed above with proper base URL
-
-                                if (customHeaders.ContainsKey("User-Agent")) req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
-                                else req.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-
-                                using var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, request.CancellationTokenSource.Token);
-                                response.EnsureSuccessStatusCode();
-                                var data = await response.Content.ReadAsByteArrayAsync();
+                                // Per-page retry loop (max 3 attempts)
+                                const int maxPageRetries = 3;
+                                int pageRetry = 0;
+                                bool pageSuccess = false;
                                 
-                                // Write to .part file first
-                                await File.WriteAllBytesAsync(tempFilePath, data);
-                                
-                                // Atomic Rename (Move)
-                                File.Move(tempFilePath, filePath, overwrite: true);
+                                while (!pageSuccess && pageRetry < maxPageRetries)
+                                {
+                                    try
+                                    {
+                                        if (request.CancellationTokenSource.IsCancellationRequested) return;
+                                        
+                                        var req = new HttpRequestMessage(HttpMethod.Get, requestUrl);
+                                        if (customHeaders.ContainsKey("Referer")) req.Headers.Referrer = new Uri(customHeaders["Referer"]);
+
+                                        if (customHeaders.ContainsKey("User-Agent")) req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
+                                        else req.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+
+                                        using var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, request.CancellationTokenSource.Token);
+                                        response.EnsureSuccessStatusCode();
+                                        var data = await response.Content.ReadAsByteArrayAsync();
+                                        
+                                        // Write to .part file first
+                                        await File.WriteAllBytesAsync(tempFilePath, data);
+                                        
+                                        // Atomic Rename (Move)
+                                        File.Move(tempFilePath, filePath, overwrite: true);
+                                        pageSuccess = true;
+                                    }
+                                    catch (Exception retryEx)
+                                    {
+                                        pageRetry++;
+                                        if (pageRetry < maxPageRetries)
+                                        {
+                                            LogService.Debug("Download", $"Page {index} retry {pageRetry}/{maxPageRetries}: {retryEx.Message}");
+                                            await Task.Delay(1000 * pageRetry); // Exponential backoff
+                                        }
+                                        else
+                                        {
+                                            throw; // Re-throw to outer catch
+                                        }
+                                    }
+                                }
                             }
 
                             // Update Progress (thread-safe increment)
@@ -438,7 +491,7 @@ namespace Yomic.Core.Services
                         catch (Exception ex)
                         {
                             Interlocked.Increment(ref failedCount);
-                            System.Diagnostics.Debug.WriteLine($"[DownloadService] Error downloading page {index}: {ex.Message}");
+                            LogService.Warning("Download", $"Page {index} failed after retries: {ex.Message}");
                         }
                         finally
                         {
@@ -448,6 +501,9 @@ namespace Yomic.Core.Services
                 }
 
                 await Task.WhenAll(downloadTasks);
+                
+                // Dispose semaphore after all tasks complete
+                semaphore.Dispose();
                 
                 if (request.CancellationTokenSource.IsCancellationRequested)
                 {
@@ -472,7 +528,11 @@ namespace Yomic.Core.Services
                     // 5. Update DB (use URL since ID might be 0 for dynamic chapters)
                     await _libraryService.UpdateChapterDownloadStatusByUrlAsync(request.Chapter.Url, true);
                     
-                    System.Diagnostics.Debug.WriteLine($"[DownloadService] Downloaded {request.Chapter.Name}");
+                    LogService.Success("Download", $"Completed: {request.Chapter.Name}");
+                }
+                else if (request.Status == "Cancelled")
+                {
+                    try { if (Directory.Exists(chapterDir)) Directory.Delete(chapterDir, true); } catch { }
                 }
             }
             catch (Exception ex)
@@ -484,8 +544,8 @@ namespace Yomic.Core.Services
                  }
                  else
                  {
-                    System.Diagnostics.Debug.WriteLine($"[DownloadService] Failed: {ex}");
-                    throw;
+                   LogService.Error("Download", $"Chapter download failed", ex);
+                   throw;
                  }
             }
         }
@@ -505,14 +565,17 @@ namespace Yomic.Core.Services
                 }
             }
             
-            // Visually update queued items to Paused? Optional, but good feedback.
-            foreach(var item in _queue)
+            // Visually update queued items to Paused
+            lock (_queueLock)
             {
-                 if (item.Status == "Queued")
-                 {
-                     item.Status = "Paused";
-                     StatusChanged?.Invoke(this, item);
-                 }
+                foreach(var item in _queue)
+                {
+                     if (item.Status == "Queued")
+                     {
+                         item.Status = "Paused";
+                         StatusChanged?.Invoke(this, item);
+                     }
+                }
             }
         }
 
@@ -521,13 +584,16 @@ namespace Yomic.Core.Services
             _isPaused = false;
             
             // Re-queue items that were Paused (if any are just stuck in Paused state in Queue)
-             foreach(var item in _queue)
+            lock (_queueLock)
             {
-                 if (item.Status == "Paused")
-                 {
-                     item.Status = "Queued";
-                     StatusChanged?.Invoke(this, item);
-                 }
+                foreach(var item in _queue)
+                {
+                     if (item.Status == "Paused")
+                     {
+                         item.Status = "Queued";
+                         StatusChanged?.Invoke(this, item);
+                     }
+                }
             }
             
             ProcessQueue();
@@ -553,34 +619,44 @@ namespace Yomic.Core.Services
                 StatusChanged?.Invoke(this, request); // Update UI
                 request.CancellationTokenSource.Cancel();
                 // It will be handled in catch/finally
+                return;
             }
-            // If in history
-            else 
+            
+            // Try to remove from history
+            bool removedFromHistory = false;
+            lock (_historyLock)
             {
-                bool removed = false;
-                lock (_historyLock)
+                if (_history.Contains(request))
                 {
-                    if (_history.Contains(request))
-                    {
-                         _history.Remove(request);
-                         removed = true;
-                    }
+                     _history.Remove(request);
+                     removedFromHistory = true;
                 }
-                
-                if (removed)
+            }
+            
+            if (removedFromHistory)
+            {
+                QueueChanged?.Invoke(this, request);
+                SaveQueue();
+                return;
+            }
+            
+            // Try to remove from queue
+            bool removedFromQueue = false;
+            lock (_queueLock)
+            {
+                if (_queue.Contains(request))
                 {
-                    QueueChanged?.Invoke(this, request);
-                    SaveQueue();
+                    _queue.Remove(request);
+                    removedFromQueue = true;
                 }
-                // If in queue
-                else
-                {
-                     // ...
-                     request.Status = "Cancelled";
-                     request.CancellationTokenSource.Cancel();
-                     StatusChanged?.Invoke(this, request); // Update UI so it shows as Cancelled/Removed
-                     SaveQueue();
-                }
+            }
+            
+            if (removedFromQueue)
+            {
+                request.Status = "Cancelled";
+                request.CancellationTokenSource.Cancel();
+                QueueChanged?.Invoke(this, request);
+                SaveQueue();
             }
         }
         public async Task<string> ExportToCbz(DownloadRequest request)

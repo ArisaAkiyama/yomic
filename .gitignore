@@ -29,6 +29,12 @@ Output/
 MyMangaApp/Plugins/
 MyMangaApp/bin_tool/
 *.db
+PackedExtensions/
+Extensions.zip
+
+# Submodules & Extensions
+extension-yomic/
+Yomic/Extensions/
 
 # Dev Scripts and Build Configs
 rename_content.py

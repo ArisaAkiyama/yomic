@@ -3,60 +3,98 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:Yomic.ViewModels"
+             xmlns:helpers="clr-namespace:Yomic.Views.Helpers"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Yomic.Views.HistoryView"
              x:Name="root"
              x:DataType="vm:HistoryViewModel"
              Background="{DynamicResource PrimaryBackground}">
 
+    <UserControl.Styles>
+
+        
+        <!-- Standard Header Action Button Style -->
+        <Style Selector="Button.header-action">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+        </Style>
+        <Style Selector="Button.header-action:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+        </Style>
+        <Style Selector="Button.header-action:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style Selector="Button.header-action:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#25FFFFFF"/>
+        </Style>
+        
+        <!-- Disable transitions for header buttons to avoid color "lag" -->
+        <Style Selector="Button.header-action TextBlock">
+            <Setter Property="Transitions" Value="{x:Null}"/>
+        </Style>
+        
+        <!-- Hazard/Clear Action Style (Transparent but keeps red icon/text) -->
+        <Style Selector="Button.hazard">
+            <Setter Property="Foreground" Value="#FF5555"/>
+        </Style>
+        <Style Selector="Button.hazard:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#20FF5555"/>
+        </Style>
+        <Style Selector="Button.header-action.hazard:pointerover">
+            <Setter Property="Foreground" Value="#FF7777"/>
+        </Style>
+    </UserControl.Styles>
+
     <Panel>
 
         <!-- Online Content -->
         <Panel IsVisible="{Binding !IsOffline}">
-            <ScrollViewer Padding="40" IsVisible="{Binding HasItems}">
-                <StackPanel>
-                    <!-- Header -->
-                    <StackPanel Margin="0,0,0,30">
-                        <StackPanel Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
-                            <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons" FontSize="28" 
-                                       Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
-                                       RenderOptions.TextRenderingMode="Antialias"/>
-                            <TextBlock Text="History" FontSize="32" FontWeight="Bold" 
-                                       Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
-                            
-                            <!-- Item Count Badge -->
-                             <Border Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="12,4" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding HistoryItems.Count, StringFormat='{}{0} Items'}" 
-                                           Foreground="{DynamicResource SecondaryText}" FontSize="12" VerticalAlignment="Center"/>
-                            </Border>
-                        </StackPanel>
-                        <TextBlock Text="Recently viewed manga" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" FontSize="14"/>
-
-                        <!-- Action Row -->
-                        <Grid ColumnDefinitions="*, Auto" Margin="0,20,0,0">
-                             
-                             <!-- Refresh/Clear Actions -->
-                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-                                 <Button Command="{Binding ClearHistoryCommand}"
-                                         Background="#FF4545" Foreground="White" CornerRadius="20" Padding="20,8" FontWeight="Bold"
-                                         ToolTip.Tip="Delete All History">
-                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                             <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
-                                             <TextBlock Text="Clear All" VerticalAlignment="Center"/>
-                                         </StackPanel>
-                                 </Button>
-                                 <Button Command="{Binding RefreshCommand}"
-                                         Background="{DynamicResource SidebarBackground}" Foreground="#FF9900" 
-                                         CornerRadius="20" Width="40" Height="40" Padding="0"
-                                         ToolTip.Tip="Refresh History">
-                                         <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
-                                                    FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                 </Button>
-                             </StackPanel>
-                        </Grid>
+            <Grid RowDefinitions="Auto, *">
+                <!-- Header (Fixed) -->
+                <StackPanel Grid.Row="0" Margin="30,30,30,20">
+                    <StackPanel Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons" FontSize="28" 
+                                   Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
+                                   RenderOptions.TextRenderingMode="Antialias"/>
+                        <TextBlock Text="History" FontSize="32" FontWeight="Bold" 
+                                   Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
+                        
+                        <!-- Item Count Badge -->
+                         <Border Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="12,4" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding HistoryItems.Count, StringFormat='{}{0} Items'}" 
+                                       Foreground="{DynamicResource SecondaryText}" FontSize="12" VerticalAlignment="Center"/>
+                        </Border>
                     </StackPanel>
+                    <TextBlock Text="Recently viewed manga" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" FontSize="14"/>
 
-                    <!-- Content -->
+                    <!-- Action Row -->
+                    <Grid ColumnDefinitions="*, Auto" Margin="0,20,0,0">
+                         
+                         <!-- Refresh/Clear Actions -->
+                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" IsVisible="{Binding HasItems}">
+                             <Button Command="{Binding ClearHistoryCommand}"
+                                     Classes="header-action"
+                                     ToolTip.Tip="Delete All History">
+                                     <StackPanel Orientation="Horizontal" Spacing="8">
+                                         <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="18" VerticalAlignment="Center"/>
+                                         <TextBlock Text="Clear All" VerticalAlignment="Center" FontSize="14" FontWeight="Medium"/>
+                                     </StackPanel>
+                             </Button>
+                             <Button Command="{Binding RefreshCommand}"
+                                     Classes="header-action"
+                                     ToolTip.Tip="Refresh History">
+                                     <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
+                                                FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                             </Button>
+                         </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Scrollable Content -->
+                <ScrollViewer Grid.Row="1" Padding="30,0,0,30" IsVisible="{Binding HasItems}">
                     <ItemsControl ItemsSource="{Binding HistoryItems}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -112,16 +150,26 @@
                                             </Border.Styles>
                                             
                                             <Grid>
-                                                <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill"/>
+                                                <Image helpers:SecureImageLoader.Url="{Binding CoverUrl}" Stretch="UniformToFill"/>
                                                 
-                                                <!-- Status Badge -->
-                                                <Border Background="{Binding StatusString, Converter={x:Static vm:StatusToColorConverter.Instance}}" 
-                                                        Opacity="0.95" CornerRadius="6" 
-                                                        HorizontalAlignment="Left" VerticalAlignment="Top"
-                                                        Margin="8" Padding="6,3">
-                                                    <TextBlock Text="{Binding StatusString}" Foreground="White" 
-                                                               FontSize="9" FontWeight="Bold"/>
-                                                </Border>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top" Spacing="4" Margin="8">
+                                                    <!-- NEW Badge -->
+                                                    <Border Background="#89B4FA" CornerRadius="6"
+                                                            Padding="6,2"
+                                                            IsVisible="{Binding IsNewBadgeVisible}">
+                                                        <TextBlock Text="NEW" Foreground="#1E1E2E"
+                                                                   FontSize="10" FontWeight="Bold"/>
+                                                    </Border>
+
+                                                    <!-- Status Badge -->
+                                                    <Border Background="{Binding StatusString, Converter={x:Static vm:StatusToColorConverter.Instance}}" 
+                                                            Opacity="0.95" CornerRadius="6" 
+                                                            Padding="6,3"
+                                                            IsVisible="{Binding StatusString, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                        <TextBlock Text="{Binding StatusString}" Foreground="White" 
+                                                                   FontSize="9" FontWeight="Bold"/>
+                                                    </Border>
+                                                </StackPanel>
                                                 
                                                 <!-- Last Read Badge -->
                                                 <Border Background="{DynamicResource OverlayBackground}" Opacity="0.9" CornerRadius="6" 
@@ -142,18 +190,26 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                </StackPanel>
-            </ScrollViewer>
+                </ScrollViewer>
 
-            <!-- Empty State -->
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" IsVisible="{Binding !HasItems}">
-                <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="#45475A" HorizontalAlignment="Center"/>
-                <StackPanel Spacing="8">
-                    <TextBlock Text="No History Yet" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
-                    <TextBlock Text="Read some manga to see them here." FontSize="14" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
+                <!-- Empty State -->
+                <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" IsVisible="{Binding !HasItems}">
+                    <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="#45475A" HorizontalAlignment="Center"/>
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="No History Yet" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Read some manga to see them here." FontSize="14" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
+                    </StackPanel>
                 </StackPanel>
-            </StackPanel>
+            </Grid>
         </Panel>
+
+        <!-- Sync Overlay -->
+        <Border Background="#80000000" IsVisible="{Binding IsRefreshing}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
+                 <ProgressBar IsIndeterminate="True" Foreground="#0078D7" Width="150" Height="2" Background="#33FFFFFF"/>
+                 <TextBlock Text="Refreshing History..." Foreground="White" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
+            </StackPanel>
+        </Border>
 
         <!-- Offline State -->
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" IsVisible="{Binding IsOffline}">

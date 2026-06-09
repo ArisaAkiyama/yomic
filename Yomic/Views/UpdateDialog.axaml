@@ -3,79 +3,109 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Yomic.ViewModels"
-        mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="380"
+        mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="400"
         x:Class="Yomic.Views.UpdateDialog"
-        Width="400" Height="380"
+        Width="450" Height="500"
         WindowStartupLocation="CenterOwner"
         SystemDecorations="None"
+        ShowInTaskbar="False"
+        CanResize="False"
         Background="Transparent"
-        TransparencyLevelHint="AcrylicBlur"
+        TransparencyLevelHint="Transparent"
         x:DataType="vm:UpdateDialogViewModel">
 
-    <Border Background="#CC1E1E2E" CornerRadius="24" BorderBrush="#313244" BorderThickness="1" Padding="0">
+    <Border Background="{DynamicResource PrimaryBackground}" CornerRadius="20" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1" Padding="0">
         <Grid RowDefinitions="Auto, *, Auto">
             
-            <!-- Top Close Button -->
-            <Button Grid.Row="0" Command="{Binding CloseCommand}"
-                    HorizontalAlignment="Right" Margin="15"
-                    Content="&#xE711;" FontFamily="Segoe Fluent Icons" 
-                    Background="Transparent" Foreground="#6C7086" FontSize="14"
-                    BorderThickness="0"/>
+            <!-- Header (Icon + Close) -->
+            <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="25,20,20,0">
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <TextBlock Text="&#xE777;" FontFamily="Segoe Fluent Icons" FontSize="18" Foreground="{DynamicResource SecondaryText}"/>
+                    <TextBlock Text="Software Update" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}"/>
+                </StackPanel>
+                
+                <Button Grid.Column="1" Command="{Binding CloseCommand}"
+                        Content="&#xE711;" FontFamily="Segoe Fluent Icons" 
+                        Background="Transparent" Foreground="{DynamicResource SecondaryText}" FontSize="14"
+                        BorderThickness="0" Cursor="Hand" Padding="8">
+                    <Button.Styles>
+                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                        </Style>
+                    </Button.Styles>
+                </Button>
+            </Grid>
 
             <!-- Main Content -->
             <StackPanel Grid.Row="1" Spacing="20" VerticalAlignment="Center" Margin="30,0">
                 
-                <!-- Status Icon Ring -->
-                <Border Width="80" Height="80" CornerRadius="40" Background="#252535"
-                        HorizontalAlignment="Center">
-                    <TextBlock Text="{Binding StatusIcon}" FontFamily="Segoe Fluent Icons" FontSize="32" 
+                <!-- Status Icon with Premium Halo Effect -->
+                <Grid Width="100" Height="100" HorizontalAlignment="Center" Margin="0,0,0,5">
+                    <Border Background="{Binding StatusColor}" Opacity="0.15" CornerRadius="50"/>
+                    <Border BorderBrush="{Binding StatusColor}" BorderThickness="1" Opacity="0.3" CornerRadius="50"/>
+                    <TextBlock Text="{Binding StatusIcon}" FontFamily="Segoe Fluent Icons" FontSize="48" 
                                Foreground="{Binding StatusColor}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
+                </Grid>
 
-                <!-- Status Text -->
-                <StackPanel Spacing="5">
-                    <TextBlock Text="{Binding StatusText}" FontSize="20" FontWeight="Bold" 
-                               Foreground="White" HorizontalAlignment="Center" TextAlignment="Center"/>
+                <!-- Status Text & Version Badge -->
+                <StackPanel Spacing="12">
+                    <TextBlock Text="{Binding StatusText}" FontSize="24" FontWeight="Bold" 
+                               Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center" TextAlignment="Center"/>
                     
-                    <TextBlock Text="{Binding LatestVersion}" 
-                               IsVisible="{Binding IsUpdateAvailable}"
-                               Foreground="{Binding StatusColor}" FontSize="14" FontWeight="SemiBold" 
-                               HorizontalAlignment="Center"/>
+                    <Border Background="{DynamicResource CardBackground}" 
+                            BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1"
+                            CornerRadius="12" Padding="15,5" 
+                            HorizontalAlignment="Center"
+                            IsVisible="{Binding IsUpdateAvailable}">
+                        <TextBlock Text="{Binding LatestVersion}" 
+                                   Foreground="{DynamicResource SecondaryText}" FontSize="13" FontWeight="SemiBold"/>
+                    </Border>
                 </StackPanel>
 
-                <!-- Loading Bar (Indeterminate) -->
-                <ProgressBar IsIndeterminate="True" Width="150" Height="4" 
-                             Foreground="{Binding StatusColor}" Background="#313244"
-                             IsVisible="{Binding IsLoading}" HorizontalAlignment="Center"/>
+                <!-- Loading Bar -->
+                <ProgressBar IsIndeterminate="True" Width="200" Height="4" Margin="0,10,0,0"
+                             Foreground="{Binding StatusColor}" Background="{DynamicResource SeparatorBrush}"
+                             IsVisible="{Binding IsLoading}" HorizontalAlignment="Center" CornerRadius="2"/>
 
-                <!-- Download Progress Bar -->
-                <StackPanel Spacing="5" IsVisible="{Binding IsDownloading}">
+                <!-- Download Progress -->
+                <StackPanel Spacing="10" IsVisible="{Binding IsDownloading}" Margin="0,10,0,0">
                     <ProgressBar Value="{Binding DownloadProgress}" Maximum="100" 
-                                 Width="200" Height="6" 
-                                 Foreground="{Binding StatusColor}" Background="#313244"
-                                 HorizontalAlignment="Center" ShowProgressText="False"/>
-                    <TextBlock Text="{Binding DownloadProgress, StringFormat='{} {0:0}%'}" 
-                               Foreground="#A6ADC8" FontSize="12" HorizontalAlignment="Center"/>
+                                 Width="340" Height="8" 
+                                 Foreground="{Binding StatusColor}" Background="{DynamicResource SeparatorBrush}"
+                                 HorizontalAlignment="Center" ShowProgressText="False" CornerRadius="4"/>
+                    <TextBlock Text="{Binding DownloadProgress, StringFormat='{}Downloading... {0:0}%'}" 
+                               Foreground="{DynamicResource SecondaryText}" FontSize="13" FontWeight="Medium" HorizontalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Release Notes (Subtle) -->
-                 <ScrollViewer VerticalScrollBarVisibility="Hidden" Height="60" IsVisible="{Binding !IsLoading}">
-                    <TextBlock Text="{Binding ReleaseNotes}" Foreground="#A6ADC8" 
-                               TextWrapping="Wrap" FontSize="13" LineHeight="20"
-                               HorizontalAlignment="Center" TextAlignment="Center" Opacity="0.8"/>
-                </ScrollViewer>
+                <!-- Release Notes (Modernized Card) -->
+                <StackPanel Spacing="12" IsVisible="{Binding !IsLoading}" Margin="0,10,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                        <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
+                        <TextBlock Text="What's New" FontSize="15" FontWeight="Bold" 
+                                   Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    
+                    <Border Background="{DynamicResource CardBackground}" CornerRadius="12" Padding="15" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1">
+                        <ScrollViewer MaxHeight="130" HorizontalScrollBarVisibility="Disabled">
+                            <SelectableTextBlock Text="{Binding ReleaseNotes}" Foreground="{DynamicResource SecondaryText}" 
+                                                TextWrapping="Wrap" FontSize="13" LineHeight="22"
+                                                HorizontalAlignment="Left" TextAlignment="Left"/>
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
             </StackPanel>
 
             <!-- Bottom Actions -->
             <StackPanel Grid.Row="2" Margin="30">
                 
                 <!-- Update Available Action -->
-                <Button Command="{Binding DownloadCommand}" Content="Install Now"
+                <Button Command="{Binding DownloadCommand}" Content="Update Now"
                         IsVisible="{Binding IsInstallButtonVisible}"
                         Background="{Binding StatusColor}" Foreground="White" 
-                        CornerRadius="12" Padding="20,12" FontWeight="Bold" FontSize="15"
-                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                        CornerRadius="10" Padding="0,12" FontWeight="Bold" FontSize="15"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Cursor="Hand">
                      <Button.Styles>
                         <Style Selector="Button:pointerover /template/ ContentPresenter">
                             <Setter Property="Opacity" Value="0.9"/>
@@ -83,15 +113,16 @@
                     </Button.Styles>
                 </Button>
 
-                <!-- No Update Action -->
+                <!-- No Update Action / Close -->
                  <Button Command="{Binding CloseCommand}" Content="Close"
                         IsVisible="{Binding !IsUpdateAvailable}"
-                        Background="#252535" Foreground="White" 
-                        CornerRadius="12" Padding="20,12" FontWeight="SemiBold" FontSize="14"
-                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                        Background="{DynamicResource CardBackground}" Foreground="{DynamicResource PrimaryText}" 
+                        CornerRadius="10" Padding="0,12" FontWeight="SemiBold" FontSize="15"
+                        BorderThickness="1" BorderBrush="{DynamicResource SeparatorBrush}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Cursor="Hand">
                       <Button.Styles>
                         <Style Selector="Button:pointerover /template/ ContentPresenter">
-                            <Setter Property="Background" Value="#313244"/>
+                            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
                         </Style>
                     </Button.Styles>
                 </Button>

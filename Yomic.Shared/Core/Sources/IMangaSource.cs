@@ -11,6 +11,16 @@ namespace Yomic.Core.Sources
         string BaseUrl { get; }
         string Language { get; } // e.g. "EN", "ID"
         bool IsHasMorePages { get; } // For pagination check
+        bool IsNsfw => false; // Default interface method so it doesn't break existing extensions
+
+        
+        // Metadata
+        string Version { get; }
+        string IconUrl { get; }
+        string Description { get; }
+        string Author { get; }
+        string IconBackground { get; } // Hex Color
+        string IconForeground { get; } // Hex Color
 
         // Fetching
         Task<List<Manga>> GetPopularMangaAsync(int page);

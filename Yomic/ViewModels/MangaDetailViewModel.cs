@@ -8,6 +8,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Yomic.Core.Services;
 using Yomic.Core.Helpers;
+using Avalonia.Collections;
 
 namespace Yomic.ViewModels
 {
@@ -18,6 +19,7 @@ namespace Yomic.ViewModels
         public float ChapterNumber { get; set; }
         public string Url { get; set; } = string.Empty;
         public string Date { get; set; } = string.Empty;
+        public long DateUpload { get; set; }
         private bool _isRead;
         public bool IsRead 
         { 
@@ -45,13 +47,6 @@ namespace Yomic.ViewModels
         }
         public Manga? MangaRef { get; set; }
 
-        private Bitmap? _coverBitmap;
-        public Bitmap? CoverBitmap
-        {
-            get => _coverBitmap;
-            set => this.RaiseAndSetIfChanged(ref _coverBitmap, value);
-        }
-
         private bool _isDownloaded;
         public bool IsDownloaded
         {
@@ -64,6 +59,13 @@ namespace Yomic.ViewModels
         {
             get => _isDownloading;
             set => this.RaiseAndSetIfChanged(ref _isDownloading, value);
+        }
+
+        private bool _isDeleting;
+        public bool IsDeleting
+        {
+            get => _isDeleting;
+            set => this.RaiseAndSetIfChanged(ref _isDeleting, value);
         }
 
         public ReactiveCommand<Unit, Unit> DownloadCommand { get; }
@@ -94,20 +96,25 @@ namespace Yomic.ViewModels
     // Header item for virtualization
     public class MangaDetailHeader { public MangaDetailViewModel ViewModel { get; } public MangaDetailHeader(MangaDetailViewModel vm) => ViewModel = vm; }
 
-    public class MangaDetailViewModel : ViewModelBase
+    public class MangaDetailViewModel : ViewModelBase, IDisposable
     {
         // ... (existing properties)
         public string Title { get; set; } = string.Empty;
         
         // Collection for UI (Header + Chapters)
-        private List<object> _displayItems = new();
-        public List<object> DisplayItems 
-        {
-            get => _displayItems;
-            set => this.RaiseAndSetIfChanged(ref _displayItems, value);
-        }
+        // Collection for UI (Header + Chapters)
+        // DisplayItems defined below as AvaloniaList
         public long SourceId => _model?.Source ?? 0;
+        public string SourceName => _sourceManager?.GetSource(SourceId)?.Name ?? "Unknown";
         public string Url => _model?.Url ?? string.Empty;
+        public string SourceIconUrl => _sourceManager?.GetSource(SourceId)?.IconUrl ?? string.Empty;
+
+        private Avalonia.Media.Imaging.Bitmap? _sourceIconBitmap;
+        public Avalonia.Media.Imaging.Bitmap? SourceIconBitmap
+        {
+            get => _sourceIconBitmap;
+            set => this.RaiseAndSetIfChanged(ref _sourceIconBitmap, value);
+        }
         
         private string _author = "Loading...";
         public string Author { get => _author; set => this.RaiseAndSetIfChanged(ref _author, value); }
@@ -121,7 +128,6 @@ namespace Yomic.ViewModels
         private bool _inLibrary;
         public bool InLibrary { get => _inLibrary; set => this.RaiseAndSetIfChanged(ref _inLibrary, value); }
         
-        public Avalonia.Media.Imaging.Bitmap? CoverBitmap { get; set; }
         public List<string> Tags { get; set; } = new();
         
         private List<string> _genres = new();
@@ -137,6 +143,8 @@ namespace Yomic.ViewModels
                 this.RaisePropertyChanged(nameof(IsExplicitContent));
             }
         }
+        
+        public string? ThumbnailUrl => _model?.ThumbnailUrl;
         
         // RED - Explicit/dangerous content (18+)
         private static readonly HashSet<string> ExplicitGenres = new(StringComparer.OrdinalIgnoreCase)
@@ -183,18 +191,69 @@ namespace Yomic.ViewModels
             }
         }
 
+        public AvaloniaList<object> DisplayItems { get; } = new();
+
         private void UpdateDisplayItems()
         {
-            var list = new List<object>();
-            list.Add(new MangaDetailHeader(this));
-            if (_chapters != null) list.AddRange(_chapters);
-            DisplayItems = list;
+            if (DisplayItems.Count == 0)
+            {
+                DisplayItems.Add(new MangaDetailHeader(this));
+            }
+
+            if (_chapters == null) return;
+
+            // Synchronize DisplayItems (starting at index 1) with _chapters
+            // This prevents scroll jumps by avoiding Clear() / Reset
+            
+            int displayIdx = 1;
+            int chapterIdx = 0;
+
+            while (chapterIdx < _chapters.Count)
+            {
+                if (displayIdx < DisplayItems.Count)
+                {
+                    // Existing slot: Replace if different
+                    if (DisplayItems[displayIdx] != _chapters[chapterIdx])
+                    {
+                        DisplayItems[displayIdx] = _chapters[chapterIdx];
+                    }
+                    displayIdx++;
+                }
+                else
+                {
+                    // Append remaining
+                    DisplayItems.Add(_chapters[chapterIdx]);
+                    displayIdx++;
+                }
+                chapterIdx++;
+            }
+
+            // Remove excess items if DisplayItems is longer than needed
+            if (displayIdx < DisplayItems.Count)
+            {
+                DisplayItems.RemoveRange(displayIdx, DisplayItems.Count - displayIdx);
+            }
         }
 
         public ReactiveCommand<Unit, Unit> ToggleLibraryCommand { get; }
         public ReactiveCommand<Unit, Unit> DownloadAllCommand { get; }
         public ReactiveCommand<Unit, Unit> StartReadingCommand { get; }
-        public ReactiveCommand<Unit, Unit> ResumeReadingCommand { get; }
+        public ReactiveCommand<ChapterItem?, Unit> ResumeReadingCommand { get; }
+        public ReactiveCommand<Unit, Unit> OpenWebViewCommand { get; }
+        
+        private bool _isBypassing;
+        public bool IsBypassing
+        {
+            get => _isBypassing;
+            set => this.RaiseAndSetIfChanged(ref _isBypassing, value);
+        }
+
+        private string _bypassMessage = string.Empty;
+        public string BypassMessage
+        {
+            get => _bypassMessage;
+            set => this.RaiseAndSetIfChanged(ref _bypassMessage, value);
+        }
 
         // Context Menu Commands moved to ChapterItem
 
@@ -210,6 +269,15 @@ namespace Yomic.ViewModels
         public bool IsLoadingChapters { get => _isLoadingChapters; set => this.RaiseAndSetIfChanged(ref _isLoadingChapters, value); }
 
         public bool IsOfflineAndNotDownloaded => !IsOnline && !InLibrary;
+
+        // Synopsis Expand/Collapse
+        private bool _isSynopsisExpanded;
+        public bool IsSynopsisExpanded 
+        { 
+            get => _isSynopsisExpanded; 
+            set => this.RaiseAndSetIfChanged(ref _isSynopsisExpanded, value); 
+        }
+        public ReactiveCommand<Unit, Unit> ToggleSynopsisCommand { get; }
 
         // Start/Resume Button Properties
         private bool _hasStartedReading;
@@ -231,16 +299,30 @@ namespace Yomic.ViewModels
             set 
             {
                 this.RaiseAndSetIfChanged(ref _lastReadChapterTitle, value);
+            }
+        }
+
+        private ChapterItem? _nextChapterToRead;
+        public ChapterItem? NextChapterToRead 
+        { 
+            get => _nextChapterToRead; 
+            set 
+            {
+                this.RaiseAndSetIfChanged(ref _nextChapterToRead, value);
                 this.RaisePropertyChanged(nameof(ResumeButtonText));
+                this.RaisePropertyChanged(nameof(CanResume));
             }
         }
 
         /// <summary>
         /// Text displayed on the Resume button with chapter info (e.g., "Resume Ch. 5")
         /// </summary>
-        public string ResumeButtonText => HasStartedReading && !string.IsNullOrEmpty(LastReadChapterTitle) 
-            ? $"Resume {LastReadChapterTitle}" 
-            : "Resume";
+        /// <summary>
+        /// Text displayed on the Resume button with chapter info (e.g., "Resume Ch. 5")
+        /// </summary>
+        public string ResumeButtonText => NextChapterToRead != null 
+            ? $"{(HasStartedReading ? "Resume" : "Start")} {NextChapterToRead.Title}" 
+            : (HasStartedReading ? "Resume" : "Start Reading");
 
         /// <summary>
         /// Whether Resume button should be visible/enabled (only if user has read history)
@@ -295,14 +377,83 @@ namespace Yomic.ViewModels
             };
 
             Title = item.Title;
-            CoverBitmap = item.CoverBitmap;
+            Title = item.Title;
+            _ = LoadSourceIcon();
             
             ToggleLibraryCommand = ReactiveCommand.CreateFromTask(ToggleLibrary);
             RefreshCommand = ReactiveCommand.CreateFromTask(RefreshAsync);
             DownloadAllCommand = ReactiveCommand.Create(DownloadAllChapters);
             StartReadingCommand = ReactiveCommand.Create(StartReading);
-            ResumeReadingCommand = ReactiveCommand.Create(ResumeReading);
+            StartReadingCommand = ReactiveCommand.Create(StartReading);
+            ResumeReadingCommand = ReactiveCommand.Create<ChapterItem?>(ResumeReading);
+            
+            OpenWebViewCommand = ReactiveCommand.CreateFromTask(async () => 
+            {
+                var url = _model.Url;
+                if (string.IsNullOrEmpty(url)) return;
+
+                // If URL is relative, prepend BaseUrl from source
+                if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                {
+                    var source = _sourceManager.GetSource(SourceId);
+                    if (source != null)
+                    {
+                        var baseUrl = source.BaseUrl.TrimEnd('/');
+                        if (!url.StartsWith("/")) url = "/" + url;
+                        url = baseUrl + url;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(url)) return;
+
+                IsBypassing = true;
+                BypassMessage = "Preparing...";
+
+                try
+                {
+                    Console.WriteLine($"[MangaDetailVM] Opening WebView for {Title} ({url})...");
+                    var (ua, cookies) = await CloudflareBypassService.Instance.SolveInteractiveAsync(url);
+
+                    if (!string.IsNullOrEmpty(ua) && cookies.Count > 0)
+                    {
+                        // Inject cookies into the source's HttpClient
+                        var source = _sourceManager.GetSource(SourceId);
+                        if (source is Core.Sources.HttpSource httpSource)
+                        {
+                            var targetHost = new Uri(url).Host;
+                            foreach (var kv in cookies)
+                            {
+                                httpSource.CookieContainer.Add(new System.Net.Cookie(kv.Key, kv.Value, "/", targetHost));
+                            }
+                            Console.WriteLine($"[MangaDetailVM] Injected {cookies.Count} cookies into {SourceName}");
+                            
+                            // Trigger refresh to load content that was blocked
+                            _ = RefreshAsync();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MangaDetailVM] WebView Error: {ex.Message}");
+                }
+                finally
+                {
+                    await System.Threading.Tasks.Task.Delay(1000);
+                    IsBypassing = false;
+                }
+            });
+
+            // Subscribe to Cloudflare bypass status updates
+            CloudflareBypassService.Instance.OnStatusUpdate += (msg) =>
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    BypassMessage = msg;
+                });
+            };
+
             ToggleSortCommand = ReactiveCommand.Create(() => { SortAscending = !SortAscending; });
+            ToggleSynopsisCommand = ReactiveCommand.Create(() => { IsSynopsisExpanded = !IsSynopsisExpanded; });
 
             UpdateDisplayItems(); // Init header
 
@@ -317,6 +468,8 @@ namespace Yomic.ViewModels
 
         private async System.Threading.Tasks.Task RefreshAsync()
         {
+             IsLoadingChapters = true; // Show loading immediately
+             
              // Create a fresh item from current model state to capture any URL updates
              var currentItem = new MangaItem 
              {
@@ -324,10 +477,12 @@ namespace Yomic.ViewModels
                  MangaUrl = _model.Url,
                  SourceId = _model.Source,
                  CoverUrl = _model.ThumbnailUrl,
-                 CoverBitmap = CoverBitmap
              };
              
-             await LoadDetails(currentItem, _sourceManager);
+             // Pass true to FORCE refresh (bypass cache)
+             await LoadDetails(currentItem, _sourceManager, forceRefresh: true);
+             
+             this.RaisePropertyChanged(nameof(ThumbnailUrl));
              _mainVM.ShowNotification("Manga updated");
         }
 
@@ -385,6 +540,7 @@ namespace Yomic.ViewModels
                      {
                           Name = c.Title,
                           Url = c.Url,
+                          DateUpload = c.DateUpload,
                           // Date is display string, original DateUpload unavailable in VM Item?
                           // Wait, ChapterItem doesn't store DateUpload (long).
                           // It stores string "Date". 
@@ -403,174 +559,15 @@ namespace Yomic.ViewModels
                      await _libraryService.UpdateChaptersAsync(_model, dbChapters, isInitialLoad: true);
                  }
 
-                 // Download and cache cover image for offline use
-                 _ = DownloadAndCacheCoverAsync();
+
              }
         }
 
-        private static readonly System.Net.Http.HttpClient _coverHttpClient = new();
-        
-        static MangaDetailViewModel()
+
+
+        private async System.Threading.Tasks.Task LoadDetails(MangaItem item, SourceManager sourceManager, bool forceRefresh = false)
         {
-             _coverHttpClient.DefaultRequestHeaders.Add("Referer", "https://komiku.org/");
-             _coverHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        }
-        
-        private async System.Threading.Tasks.Task DownloadAndCacheCoverAsync()
-        {
-            if (string.IsNullOrEmpty(_model.ThumbnailUrl)) return;
-            
-            try
-            {
-                var appData = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
-                var cacheFolder = System.IO.Path.Combine(appData, "Yomic", "covers");
-                
-                if (!System.IO.Directory.Exists(cacheFolder))
-                {
-                    System.IO.Directory.CreateDirectory(cacheFolder);
-                }
-                
-                // Use MD5 hash for cache key (Must match LibraryViewModel)
-                string cacheKey;
-                using (var md5 = System.Security.Cryptography.MD5.Create())
-                {
-                    var inputBytes = System.Text.Encoding.ASCII.GetBytes(_model.ThumbnailUrl);
-                    var hashBytes = md5.ComputeHash(inputBytes);
-                    var sb = new System.Text.StringBuilder();
-                    for (int i = 0; i < hashBytes.Length; i++) sb.Append(hashBytes[i].ToString("X2"));
-                    
-                    var ext = System.IO.Path.GetExtension(new System.Uri(_model.ThumbnailUrl).AbsolutePath);
-                    if (string.IsNullOrEmpty(ext)) ext = ".jpg";
-                    cacheKey = $"{sb}{ext}";
-                }
-
-                var cachePath = System.IO.Path.Combine(cacheFolder, cacheKey);
-                
-                // Check cache
-                if (System.IO.File.Exists(cachePath))
-                {
-                    System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Cover already cached: {cacheKey}");
-                    Dispatcher.UIThread.Post(() => 
-                    {
-                         try
-                         {
-                             using var stream = System.IO.File.OpenRead(cachePath);
-                             var bitmap = new Avalonia.Media.Imaging.Bitmap(stream);
-                             CoverBitmap = bitmap;
-                             
-                             // REALTIME SYNC: Update cached image service and source item
-                             _imageCacheService.AddImage(_model.ThumbnailUrl, bitmap);
-                             if (_sourceItem != null) _sourceItem.CoverBitmap = bitmap;
-                         } 
-                         catch { }
-                    });
-                    return;
-                }
-                
-                // Parse Custom Headers: url|Key=Value&Key2=Value2
-                string requestUrl = _model.ThumbnailUrl;
-                var customHeaders = new System.Collections.Generic.Dictionary<string, string>();
-                
-                if (_model.ThumbnailUrl.Contains("|"))
-                {
-                    var parts = _model.ThumbnailUrl.Split('|', 2);
-                    requestUrl = parts[0];
-                    if (parts.Length > 1)
-                    {
-                        var headers = parts[1].Split('&');
-                        foreach (var header in headers)
-                        {
-                            var pair = header.Split('=', 2);
-                            if (pair.Length == 2)
-                            {
-                                customHeaders[pair[0].Trim()] = pair[1].Trim();
-                            }
-                        }
-                    }
-                }
-                
-                // Use hash of the CLEAN url (requestUrl) or original?
-                // Using original keeps it unique per header config, but clean might be better for dedup...
-                // Let's use ORIGINAL for safety so different sources don't clash? 
-                // Actually cache key generation uses _model.ThumbnailUrl (original), so we are consistent.
-
-                System.Console.WriteLine($"[MangaDetailVM] Downloading cover: {requestUrl}");
-                
-                var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, requestUrl);
-                
-                if (customHeaders.ContainsKey("Referer")) 
-                {
-                    req.Headers.Referrer = new System.Uri(customHeaders["Referer"]);
-                    System.Console.WriteLine($"[MangaDetailVM] Using Referer from pipe: {customHeaders["Referer"]}");
-                }
-                else 
-                {
-                    // Dynamic Fallback based on Source
-                    if (_model.Source == 2) // KomikCast
-                    {
-                        req.Headers.Referrer = new System.Uri("https://komikcast.ch/");
-                    }
-                    else if (_model.Source == 6) // Mangabats (ID=6)
-                    {
-                        req.Headers.Referrer = new System.Uri("https://www.mangabats.com/");
-                    }
-                    else if (_model.Source == 5) // MangaDex (ID=5)
-                    {
-                        req.Headers.Referrer = new System.Uri("https://mangadex.org/");
-                        System.Console.WriteLine($"[MangaDetailVM] Using Fallback Referer for MangaDex");
-                    }
-                    else 
-                    {
-                        req.Headers.Referrer = new System.Uri("https://komiku.org/");
-                    }
-                }
-
-                if (customHeaders.ContainsKey("User-Agent")) req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
-
-                // Download
-                using var client = _networkService.CreateOptimizedHttpClient();
-                using var response = await client.SendAsync(req); // Restore definition
-                
-                if (!response.IsSuccessStatusCode)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Failed to download cover. Status: {response.StatusCode}");
-                    return;
-                }
-
-                var data = await response.Content.ReadAsByteArrayAsync();
-                if (data.Length == 0) return;
-
-                await System.IO.File.WriteAllBytesAsync(cachePath, data);
-                System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Cover cached: {cacheKey}");
-                
-                // Set Bitmap
-                Dispatcher.UIThread.Post(() => 
-                {
-                    try
-                    {
-                        using var ms = new System.IO.MemoryStream(data);
-                        var bitmap = new Avalonia.Media.Imaging.Bitmap(ms);
-                        CoverBitmap = bitmap;
-                        
-                        // REALTIME SYNC: Update cached image service and source item
-                        _imageCacheService.AddImage(_model.ThumbnailUrl, bitmap);
-                        if (_sourceItem != null) _sourceItem.CoverBitmap = bitmap;
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Error creating bitmap: {ex.Message}");
-                    }
-                });
-            }
-            catch (System.Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Failed to cache cover: {ex.Message}");
-            }
-        }
-
-        private async System.Threading.Tasks.Task LoadDetails(MangaItem item, SourceManager sourceManager)
-        {
-            Console.WriteLine($"[MangaDetailVM] LoadDetails called for '{item.Title}' Url: '{item.MangaUrl}' Source: '{item.SourceId}'");
+            Console.WriteLine($"[MangaDetailVM] LoadDetails called for '{item.Title}' Url: '{item.MangaUrl}' Source: '{item.SourceId}' Force: {forceRefresh}");
             IsLoadingChapters = true;
             try 
             {
@@ -614,6 +611,11 @@ namespace Yomic.ViewModels
                                 var safeChapterName = string.Join("_", ch.Name.Split(System.IO.Path.GetInvalidFileNameChars()));
                                 var chapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", existing.Source.ToString(), safeMangaTitle, safeChapterName);
                                 isDownloaded = System.IO.Directory.Exists(chapterDir) && System.IO.Directory.GetFiles(chapterDir).Length > 0;
+                                if (!isDownloaded)
+                                {
+                                    var fallbackChapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", existing.Source.ToString(), "Unknown", safeChapterName);
+                                    isDownloaded = System.IO.Directory.Exists(fallbackChapterDir) && System.IO.Directory.GetFiles(fallbackChapterDir).Length > 0;
+                                }
                             }
                             
                             // Create minimal chapter for download request
@@ -631,6 +633,7 @@ namespace Yomic.ViewModels
                                 ChapterNumber = ch.ChapterNumber,
                                 Url = ch.Url,
                                 Date = ch.DateUpload > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(ch.DateUpload).ToString("dd MMM yyyy") : "", 
+                                DateUpload = ch.DateUpload,
                                 IsRead = ch.Read,
                                 IsNewRelease = ch.IsNew,
                                 IsDownloaded = isDownloaded
@@ -651,29 +654,58 @@ namespace Yomic.ViewModels
                             Chapters = sortedChapters;
                             HasStartedReading = hasStartedReading;
                             LastReadChapterTitle = lastReadTitle;
+
+                            // Calculate Next Chapter (Ascending Sort)
+                            var ascComparer = new NaturalStringComparer(false);
+                            var sortAsc = vmChapters.OrderBy(x => x.Title, ascComparer).ToList();
+                            
+                            if (lastRead != null)
+                            {
+                                var idx = sortAsc.IndexOf(lastRead);
+                                if (idx >= 0 && idx < sortAsc.Count - 1)
+                                {
+                                    NextChapterToRead = sortAsc[idx + 1];
+                                }
+                                else
+                                {
+                                    NextChapterToRead = lastRead; // End of series or just re-read last
+                                }
+                            }
+                            else
+                            {
+                                NextChapterToRead = sortAsc.FirstOrDefault();
+                            }
                             
                             this.RaisePropertyChanged(nameof(ResumeButtonText));
                             this.RaisePropertyChanged(nameof(CanResume));
-                            IsLoadingChapters = false;
+                            
+                            // Only hide loading if NOT adhering to forceRefresh
+                            if (!forceRefresh) IsLoadingChapters = false;
                         });
                     }
                     else
                     {
-                         Dispatcher.UIThread.Post(() => IsLoadingChapters = false);
+                         // Only hide loading if NOT adhering to forceRefresh
+                         if (!forceRefresh) Dispatcher.UIThread.Post(() => IsLoadingChapters = false);
                     }
                     
                     // ONLY return early if we have chapters cached AND it's in the library. 
-                    // For History items (not in library), we want to fetch fresh chapters but keep read status.
-                    if (existing.Favorite && existing.Chapters != null && existing.Chapters.Count > 0)
+                    // CRITICAL FIX: Also check if metadata is complete. If "Unknown" author or default description, FORCE UPDATE.
+                    bool isMetadataIncomplete = 
+                        (existing.Title == "Unknown") ||
+                        (existing.Author == "Unknown" || existing.Author == "Loading...") || 
+                        (existing.Description == "Loading details..." || string.IsNullOrEmpty(existing.Description));
+
+                    // IF FORCE REFRESH IS TRUE, WE SKIP THIS RETURN BLOCK AND FETCH ONLINE
+                    if (existing.Favorite && existing.Chapters != null && existing.Chapters.Count > 0 && !isMetadataIncomplete && !forceRefresh)
                     {
                         System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Loaded {existing.Chapters.Count} chapters from DB (Library) for: {item.Title}");
-                        // Try to load cover if missing
-                        if (CoverBitmap == null) _ = DownloadAndCacheCoverAsync();
+
                         return;
                     }
                     
-                    // No chapters cached or just History item - fall through to fetch online if connected
-                    System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Fetching online for: {item.Title} (InLibrary: {existing.Favorite})");
+                    // No chapters cached, or History item, OR metadata incomplete - fall through to fetch online if connected
+                    System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Fetching online for: {item.Title} (InLibrary: {existing.Favorite}, Incomplete: {isMetadataIncomplete}, Force: {forceRefresh})");
                 }
                 
                 // If we get here, we need to fetch chapters online (either not in DB, or in DB without chapters)
@@ -700,10 +732,17 @@ namespace Yomic.ViewModels
                 _model.Status = manga.Status;
                 _model.Description = manga.Description;
                 _model.Genre = manga.Genre;
-                if (!string.IsNullOrEmpty(manga.ThumbnailUrl)) _model.ThumbnailUrl = manga.ThumbnailUrl;
+                _model.Description = manga.Description;
+                _model.Genre = manga.Genre;
                 
-                // Trigger Cover Download/Load
-                _ = DownloadAndCacheCoverAsync();
+                // FORCE Update Thumbnail from Source if available, even if we have one
+                if (!string.IsNullOrEmpty(manga.ThumbnailUrl)) 
+                {
+                    System.Console.WriteLine($"[MangaDetailVM] Fresh cover from source: {manga.ThumbnailUrl}");
+                    _model.ThumbnailUrl = manga.ThumbnailUrl;
+                }
+                
+
                 
                 Dispatcher.UIThread.Post(() => 
                 {
@@ -712,6 +751,9 @@ namespace Yomic.ViewModels
                     Description = manga.Description ?? "No description.";
                     Status = StatusToString(manga.Status);
                     Genres = manga.Genre ?? new List<string>();
+                    
+                    // Notify ThumbnailUrl changed
+                    this.RaisePropertyChanged(nameof(ThumbnailUrl));
                 });
 
                 // 2. Fetch Chapters
@@ -744,6 +786,8 @@ namespace Yomic.ViewModels
                     manga.ThumbnailUrl = item.CoverUrl;
                 }
 
+                // Force update history with the FRESH details (including new Cover)
+                // This ensures the DB gets the new high-quality cover if it was using the fallback
                 await _libraryService.UpdateHistoryAsync(manga);
 
                 // Auto-update DB if in library (NOW we have chapter count)
@@ -789,6 +833,12 @@ namespace Yomic.ViewModels
                             var safeChapterName = string.Join("_", ch.Name.Split(System.IO.Path.GetInvalidFileNameChars()));
                             var chapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", _model.Source.ToString(), safeMangaTitle, safeChapterName);
                             isDownloaded = System.IO.Directory.Exists(chapterDir) && System.IO.Directory.GetFiles(chapterDir).Length > 0;
+                            
+                            if (!isDownloaded)
+                            {
+                                var fallbackChapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", _model.Source.ToString(), "Unknown", safeChapterName);
+                                isDownloaded = System.IO.Directory.Exists(fallbackChapterDir) && System.IO.Directory.GetFiles(fallbackChapterDir).Length > 0;
+                            }
                         }
 
                         // Create minimal chapter for download request
@@ -806,8 +856,9 @@ namespace Yomic.ViewModels
                             ChapterNumber = ch.ChapterNumber,
                             Url = ch.Url,
                             Date = DateTimeOffset.FromUnixTimeMilliseconds(ch.DateUpload).ToString("dd MMM yyyy"),
+                            DateUpload = ch.DateUpload,
                             IsRead = dbRead,
-                            IsNewRelease = ch.IsNew,
+                            IsNewRelease = (DateTimeOffset.Now - DateTimeOffset.FromUnixTimeMilliseconds(ch.DateUpload)).TotalDays <= 3,
                             IsDownloaded = isDownloaded
                         };
                         vmChapters.Add(newOnlineItem);
@@ -821,14 +872,7 @@ namespace Yomic.ViewModels
                     Dispatcher.UIThread.Post(() => 
                     {
                         Chapters = sortedChapters;
-                        if (_model.Source == 4)
-                    {
-                        Status = StatusToString(manga.Status);
-                    }
-                    else
-                    {
-                        Status = $"{StatusToString(manga.Status)} ({chapters.Count} Ch)";
-                    }
+                    Status = StatusToString(manga.Status);
                     IsLoadingChapters = false;
                 });
                 }
@@ -929,20 +973,27 @@ namespace Yomic.ViewModels
         
         private async void DeleteChapterDownload(Core.Models.Chapter chapter, string chapterUrl)
         {
+            var item = Chapters.FirstOrDefault(x => x.Url == chapterUrl);
+            if (item == null) return;
+
             try
             {
-                 // Update UI immediately (Optimistic)
-                 var item = Chapters.FirstOrDefault(x => x.Url == chapterUrl);
-                 if (item != null) item.IsDownloaded = false;
+                 item.IsDeleting = true;
+                 // Simulate small delay for animation if needed, or just await the real task
+                 await System.Threading.Tasks.Task.Delay(500); // Visual feedback
                  
                  await _libraryService.DeleteChapterDownloadAsync(_model, chapter);
+                 item.IsDownloaded = false;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Error deleting chapter: {ex}");
                 // Revert UI if failed
-                var item = Chapters.FirstOrDefault(x => x.Url == chapterUrl);
-                if (item != null) item.IsDownloaded = true;
+                item.IsDownloaded = true;
+            }
+            finally
+            {
+                item.IsDeleting = false;
             }
         }
 
@@ -991,7 +1042,7 @@ namespace Yomic.ViewModels
         /// Resume reading from the last read chapter.
         /// If no reading history exists, this will behave like StartReading.
         /// </summary>
-        private void ResumeReading()
+        private void ResumeReading(ChapterItem? targetChapter)
         {
             if (Chapters == null || Chapters.Count == 0)
             {
@@ -999,30 +1050,13 @@ namespace Yomic.ViewModels
                 return;
             }
 
-            ChapterItem? targetChapter = null;
-
-            if (HasStartedReading)
+            // Fallback if binding failed or null passed
+            if (targetChapter == null)
             {
-                // Find the last read chapter (chapters are ordered newest first, so we want the LAST read one chronologically)
-                // i.e., the one closest to the end of the list that is marked as read
-                var readChapters = Chapters.Where(c => c.IsRead).ToList();
-                
-                if (readChapters.Any())
-                {
-                    // Get the most recent read chapter (lowest index = newest chapter that was read)
-                    var lastRead = readChapters.First();
-                    var lastReadIndex = Chapters.IndexOf(lastRead);
-                    
-                    // Check if there's an unread chapter after the last read one (to continue reading)
-                    var nextUnread = Chapters.Skip(lastReadIndex + 1).FirstOrDefault(c => !c.IsRead);
-                    
-                    // If there's an unread chapter after, go there; otherwise stay on last read
-                    targetChapter = nextUnread ?? lastRead;
-                }
+                // Logic replication (just in case)
+                // Default to first chapter
+                targetChapter = NextChapterToRead ?? Chapters.OrderBy(c => c.Title, new NaturalStringComparer(false)).FirstOrDefault();
             }
-
-            // Fallback to first chapter if no reading history
-            targetChapter ??= Chapters.LastOrDefault();
 
             if (targetChapter != null)
             {
@@ -1068,6 +1102,27 @@ namespace Yomic.ViewModels
                         // Find the last read chapter for visual cue
                         var lastRead = Chapters.FirstOrDefault(c => c.IsRead);
                         LastReadChapterTitle = lastRead?.Title ?? string.Empty;
+
+                        // Calculate Next Chapter (Ascending Sort)
+                        var ascComparer = new NaturalStringComparer(false);
+                        var sortAsc = Chapters.OrderBy(x => x.Title, ascComparer).ToList();
+                        
+                        if (lastRead != null)
+                        {
+                            var idx = sortAsc.IndexOf(lastRead);
+                            if (idx >= 0 && idx < sortAsc.Count - 1)
+                            {
+                                NextChapterToRead = sortAsc[idx + 1];
+                            }
+                            else
+                            {
+                                NextChapterToRead = lastRead; // End of series
+                            }
+                        }
+                        else
+                        {
+                            NextChapterToRead = sortAsc.FirstOrDefault();
+                        }
                         
                         this.RaisePropertyChanged(nameof(ResumeButtonText));
                         this.RaisePropertyChanged(nameof(CanResume));
@@ -1116,6 +1171,57 @@ namespace Yomic.ViewModels
                     IsLoadingChapters = false;
                 });
             });
+        }
+        private async System.Threading.Tasks.Task LoadSourceIcon()
+        {
+            var iconUrl = SourceIconUrl;
+            if (string.IsNullOrEmpty(iconUrl)) return;
+
+            // Check memory cache
+            var cached = _imageCacheService.GetImage(iconUrl);
+            if (cached != null)
+            {
+                SourceIconBitmap = cached;
+                return;
+            }
+
+            if (!IsOnline) return;
+
+            // Download
+            try
+            {
+                using var client = _networkService.CreateOptimizedHttpClient();
+                var data = await client.GetByteArrayAsync(iconUrl);
+                using var stream = new System.IO.MemoryStream(data);
+                var bitmap = new Avalonia.Media.Imaging.Bitmap(stream);
+                
+                _imageCacheService.AddImage(iconUrl, bitmap);
+                
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => SourceIconBitmap = bitmap);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load source icon: {ex.Message}");
+            }
+        }
+
+        public void Dispose()
+        {
+            // Release large bitmap references
+            SourceIconBitmap = null;
+            
+            if (_chapters != null)
+            {
+                foreach (var chapter in _chapters)
+                {
+                    chapter.MangaRef = null;
+                }
+                _chapters.Clear();
+            }
+
+            DisplayItems?.Clear();
+            
+            System.Diagnostics.Debug.WriteLine("[MangaDetailVM] Disposed and memory references cleared.");
         }
     }
 }

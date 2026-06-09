@@ -8,15 +8,20 @@ using Yomic.Core.Models;
 using System.Linq;
 using System.Reactive.Linq;
 using Yomic.Core.Services;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 
 namespace Yomic.ViewModels
 {
-    public class SourceFeedViewModel : ViewModelBase
+    public class SourceFeedViewModel : ViewModelBase, IDisposable
     {
         private readonly IMangaSource _source;
         private readonly MainWindowViewModel _mainVm;
         private readonly SourceManager _sourceManager;
         private readonly ImageCacheService _imageCacheService;
+        
+        private readonly Bitmap? _gbFlag;
+        private readonly Bitmap? _idFlag;
         
         private string _searchText = "";
         public string SearchText 
@@ -29,7 +34,11 @@ namespace Yomic.ViewModels
         public bool IsLoading
         {
             get => _isLoading;
-            set => this.RaiseAndSetIfChanged(ref _isLoading, value);
+            set 
+            {
+                this.RaiseAndSetIfChanged(ref _isLoading, value);
+                this.RaisePropertyChanged(nameof(IsPaginationVisible));
+            }
         }
 
         private string? _errorMessage;
@@ -57,6 +66,22 @@ namespace Yomic.ViewModels
             }
         }
 
+        private bool _isRefreshing;
+        public bool IsRefreshing
+        {
+            get => _isRefreshing;
+            set => this.RaiseAndSetIfChanged(ref _isRefreshing, value);
+        }
+
+        // IsBusy: Controls the full-screen blocking overlay (Initial Load, Refresh, Search)
+        // Does NOT track background pagination (infinite scroll)
+        private bool _isBusy;
+        public bool IsBusy
+        {
+            get => _isBusy;
+            set => this.RaiseAndSetIfChanged(ref _isBusy, value);
+        }
+
         public ReactiveCommand<Unit, Unit> OpenSettingsCommand { get; }
 
         // Pagination Properties
@@ -74,20 +99,32 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _totalPages, value);
         }
 
-        public string PageInfo => $"Halaman {CurrentPage} dari {TotalPages}";
+        public string PageInfo => $"Page {CurrentPage} of {TotalPages}";
         public bool HasPrevPage => CurrentPage > 1;
         public bool HasNextPage => CurrentPage < TotalPages;
+        
+        private string _targetPageInput = "";
+        public string TargetPageInput
+        {
+            get => _targetPageInput;
+            set => this.RaiseAndSetIfChanged(ref _targetPageInput, value);
+        }
 
         public ObservableCollection<MangaItem> MangaList { get; } = new();
+        public bool IsSourceEmpty => MangaList.Count == 0;
 
         public ReactiveCommand<Unit, Unit> SearchCommand { get; }
         public ReactiveCommand<MangaItem, Unit> OpenMangaCommand { get; }
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
         public ReactiveCommand<Unit, Unit> PrevPageCommand { get; }
         public ReactiveCommand<Unit, Unit> NextPageCommand { get; }
-        public ReactiveCommand<Unit, Unit> FilterCommand { get; }
+        public ReactiveCommand<Unit, Unit> GoToPageCommand { get; }
         public ReactiveCommand<Unit, Unit> LatestModeCommand { get; }
         public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
+
+        public ReactiveCommand<Unit, Unit> CloseErrorCommand { get; }
+        public ReactiveCommand<Unit, Unit> ContactDevCommand { get; }
+        public ReactiveCommand<Unit, Unit> DownloadUpdateCommand { get; }
 
         public string SourceName => _source.Name;
         
@@ -104,11 +141,13 @@ namespace Yomic.ViewModels
                 this.RaiseAndSetIfChanged(ref _isEnglish, value);
                 this.RaisePropertyChanged(nameof(LanguageFlag));
                 this.RaisePropertyChanged(nameof(LanguageCode));
+                this.RaisePropertyChanged(nameof(LanguageFlagBitmap));
             }
         }
         
         public string LanguageFlag => IsEnglish ? "🇬🇧" : "🇮🇩";
         public string LanguageCode => IsEnglish ? "EN" : "ID";
+        public Bitmap? LanguageFlagBitmap => IsEnglish ? _gbFlag : _idFlag;
         public ReactiveCommand<Unit, Unit> ToggleLanguageCommand { get; }
 
         private bool _isLatestMode = false; // Default: Directory Mode (false) vs Pustaka Mode (true)
@@ -117,20 +156,7 @@ namespace Yomic.ViewModels
             get => _isLatestMode; 
             set => this.RaiseAndSetIfChanged(ref _isLatestMode, value); 
         }
-        public bool IsPaginationVisible => !_isLatestMode && !IsMangaDexBlocked;
-
-        // Filter Dialog
-        private FilterDialogViewModel? _filterVM;
-        public FilterDialogViewModel FilterVM => _filterVM ??= new FilterDialogViewModel();
-
-        private bool _isFilterOpen;
-        public bool IsFilterOpen
-        {
-            get => _isFilterOpen;
-            set => this.RaiseAndSetIfChanged(ref _isFilterOpen, value);
-        }
-
-        public ReactiveCommand<Unit, Unit> CloseFilterCommand { get; }
+        public bool IsPaginationVisible => !_isLatestMode && !IsMangaDexBlocked && !IsLoading;
 
         private readonly NetworkService _networkService;
         
@@ -142,55 +168,66 @@ namespace Yomic.ViewModels
             _imageCacheService = imageCacheService;
             _networkService = networkService; // Store for usage
 
+            try
+            {
+                _gbFlag = new Bitmap(AssetLoader.Open(new Uri("avares://Yomic/Assets/Flags/gb.png")));
+                _idFlag = new Bitmap(AssetLoader.Open(new Uri("avares://Yomic/Assets/Flags/id.png")));
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("SourceFeedVM", "Failed to load flag icons", ex);
+                // Fallback or handle nulls if necessary, but for now we assume assets exist
+            }
+
             SearchCommand = ReactiveCommand.CreateFromTask(async () => await PerformSearch());
             OpenMangaCommand = ReactiveCommand.Create<MangaItem>(OpenManga);
+            
+            MangaList.CollectionChanged += (s, e) => this.RaisePropertyChanged(nameof(IsSourceEmpty));
 
-            BackCommand = ReactiveCommand.Create(() => { _mainVm.GoToBrowse(); });
+            BackCommand = ReactiveCommand.Create(() => 
+            { 
+                // Clear all cache for this source when leaving
+                ClearSourceCache();
+                _mainVm.GoToBrowse(); 
+            });
             OpenSettingsCommand = ReactiveCommand.Create(() => { _mainVm.GoToSettings(); });
 
 
             // Refresh: Force reload ignoring cache (except for Latest mode where API is inconsistent)
             RefreshCommand = ReactiveCommand.CreateFromTask(async () => 
             {
-                // COMPLETELY SKIP refresh for Latest mode - KomikCast API returns inconsistent data
-                // Exception: If we are in an error/blocked state, we MUST allow refresh to retry connection
-                if (_isLatestMode && !HasError && !IsMangaDexBlocked)
-                {
-                    // Latest mode (Healthy): DO NOTHING - preserve existing data
-                    // User can toggle Latest off/on to get fresh data if needed
-                    return;
-                }
                 
-                // Directory mode: normal refresh behavior
-                string cacheKey = GetCacheKey();
-                _sourceManager.InvalidateCache(cacheKey); 
-                await LoadMangaList(append: false, forceRefresh: true);
+                IsRefreshing = true;
+                try 
+                {
+                    // Directory mode: normal refresh behavior
+                    string cacheKey = GetCacheKey();
+                    _sourceManager.InvalidateCache(cacheKey); 
+                    await LoadMangaList(append: false, forceRefresh: true);
+                }
+                finally
+                {
+                    IsRefreshing = false;
+                }
             });
 
-            // Open Filter Popup
-            FilterCommand = ReactiveCommand.Create(() => 
+            // Extension Error Banner Commands
+            CloseErrorCommand = ReactiveCommand.Create(() => 
             {
-                IsFilterOpen = true;
+                HasError = false;
+                ErrorMessage = null;
             });
 
-            // Close Filter Popup
-            CloseFilterCommand = ReactiveCommand.Create(() =>
+            ContactDevCommand = ReactiveCommand.Create(() => 
             {
-                IsFilterOpen = false;
+                _mainVm.RequestFeedbackDialog?.Invoke();
             });
 
-            // Wire up filter dialog events
-            FilterVM.OnApply += () =>
+            DownloadUpdateCommand = ReactiveCommand.Create(() => 
             {
-                IsFilterOpen = false;
-                CurrentPage = 1;
-                _ = LoadMangaList(append: false);
-            };
+                _mainVm.ShowUpdateDialog();
+            });
 
-            FilterVM.OnClose += () =>
-            {
-                IsFilterOpen = false;
-            };
 
             // Latest Updates Toggle
             LatestModeCommand = ReactiveCommand.Create(() => 
@@ -213,11 +250,11 @@ namespace Yomic.ViewModels
                 if (langProp != null)
                 {
                     langProp.SetValue(null, newLang);
-                    System.Console.WriteLine($"[SourceFeed] Set MangaDex language to: {newLang}");
+                    LogService.Info("SourceFeed", $"Set MangaDex language to: {newLang}");
                 }
                 else
                 {
-                    System.Console.WriteLine($"[SourceFeed] WARNING: Could not find SelectedLanguage property on {sourceType.Name}");
+                    LogService.Warning("SourceFeed", $"Could not find SelectedLanguage property on {sourceType.Name}");
                 }
                 
                 // Invalidate ALL caches for this source to force fresh data with new language
@@ -249,6 +286,23 @@ namespace Yomic.ViewModels
                 }
             });
 
+            GoToPageCommand = ReactiveCommand.Create(() => 
+            {
+                if (int.TryParse(TargetPageInput, out int target))
+                {
+                    // Clamp to valid bounds
+                    if (target < 1) target = 1;
+                    if (target > TotalPages) target = TotalPages;
+                    
+                    if (CurrentPage != target)
+                    {
+                        CurrentPage = target;
+                        _ = LoadMangaList(append: false); // Direct jump replaces content
+                    }
+                }
+                TargetPageInput = ""; // Clear input after go
+            });
+
             // Initial Load (Fire and forget safely)
             System.Threading.Tasks.Task.Run(async () => await LoadMangaList(append: false));
 
@@ -257,7 +311,7 @@ namespace Yomic.ViewModels
             {
                 if (isOnline && IsMangaDexBlocked)
                 {
-                    System.Diagnostics.Debug.WriteLine("[SourceFeedVM] Network recovered while blocked. Auto-refreshing...");
+                    LogService.Debug("SourceFeedVM", "Network recovered while blocked. Auto-refreshing...");
                     Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                     {
                         RefreshCommand.Execute().Subscribe();
@@ -291,12 +345,13 @@ namespace Yomic.ViewModels
 
             MonitorLoadingSpeed();
             IsLoading = true;
+            IsBusy = true; // Block UI for search
             HasError = false;
             ErrorMessage = null;
 
-            // Reset pagination for search (since interface doesn't support search pagination yet)
+            // Reset pagination for search
             CurrentPage = 1;
-            TotalPages = 1;
+            TotalPages = 1; // Search results are currently flat 1-page lists in most sources
             
             // Only clear if query is still valid
             if (SearchText != query) return;
@@ -307,14 +362,14 @@ namespace Yomic.ViewModels
             this.RaisePropertyChanged(nameof(HasPrevPage));
             this.RaisePropertyChanged(nameof(HasNextPage));
 
-            System.Diagnostics.Debug.WriteLine($"[SourceFeedVM] Searching for: {query}");
+            LogService.Debug("SourceFeedVM", $"Searching for: {query}");
 
             // Try Cache for Search
             string cacheKey = $"SEARCH:{_source.Id}:{query}:{CurrentPage}";
             var cached = _sourceManager.GetCachedResult(cacheKey);
             if (cached != null)
             {
-                System.Diagnostics.Debug.WriteLine($"[SourceFeedVM] Search Cache Hit: {cacheKey}");
+                LogService.Debug("SourceFeedVM", $"Search Cache Hit: {cacheKey}");
                 Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                 {
                     foreach (var m in cached.Items)
@@ -322,6 +377,7 @@ namespace Yomic.ViewModels
                         MangaList.Add(ConvertToVm(m, token));
                     }
                     IsLoading = false;
+                    IsBusy = false;
                 });
                 return;
             }
@@ -333,7 +389,7 @@ namespace Yomic.ViewModels
                 // STALENESS CHECK: If user typed more while we were waiting, discard result
                 if (SearchText != query) 
                 {
-                     System.Diagnostics.Debug.WriteLine($"[SourceFeedVM] Discarding stale result for '{query}' (Current: '{SearchText}')");
+                     LogService.Debug("SourceFeedVM", $"Discarding stale result for '{query}' (Current: '{SearchText}')");
                      return;
                 }
 
@@ -370,6 +426,7 @@ namespace Yomic.ViewModels
                 if (SearchText == query)
                 {
                     IsLoading = false;
+                    IsBusy = false;
                 }
             }
         }
@@ -383,10 +440,8 @@ namespace Yomic.ViewModels
 
         private string GetCacheKey()
         {
-             // Key format: "SourceId:Page:Mode:FilterHash" [Search is handled separately]
-             int statusFilter = FilterVM.GetStatusFilter();
-             int typeFilter = FilterVM.GetTypeFilter();
-             return $"{_source.Id}:{CurrentPage}:{IsLatestMode}:{statusFilter}:{typeFilter}";
+             // Key format: "SourceId:Page:Mode" [Search is handled separately]
+             return $"{_source.Id}:{CurrentPage}:{IsLatestMode}";
         }
 
         private async Task LoadMangaList(bool append = false, bool forceRefresh = false)
@@ -403,6 +458,7 @@ namespace Yomic.ViewModels
 
             MonitorLoadingSpeed();
             IsLoading = true;
+            if (!append) IsBusy = true; // Block UI on initial load or full refresh, but NOT on append
             HasError = false;
             ErrorMessage = null;
             IsMangaDexBlocked = false; // Reset blocking flag behavior
@@ -437,12 +493,19 @@ namespace Yomic.ViewModels
                             MangaList.Add(ConvertToVm(m, token));
                         }
                         IsLoading = false;
+                        IsBusy = false;
                      });
                      
                      // Helper: Pre-fill next page if list is small in Latest Mode
                      if (_isLatestMode && cached.Items.Count < 20 && HasNextPage)
                      {
-                         // Trigger next page logic (simplified)
+                         // Trigger next page logic
+                          Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+                          {
+                             // Explicitly use Unit.Default and Observer
+                             NextPageCommand.Execute(System.Reactive.Unit.Default)
+                                            .Subscribe(System.Reactive.Observer.Create<System.Reactive.Unit>(_ => { }));
+                          });
                      }
                      return;
                 }
@@ -455,35 +518,13 @@ namespace Yomic.ViewModels
                 {
                     System.Collections.Generic.List<Manga> items;
                     int totalPages;
-
-                    // Get filter values
-                    int statusFilter = FilterVM.GetStatusFilter();
-                    int typeFilter = FilterVM.GetTypeFilter();
-                    
-                    // Use filtered endpoint if filters are active (status 1-2 for Ongoing/Completed, or type)
-                    bool hasServerFilter = (statusFilter >= 1 && statusFilter <= 2) || typeFilter > 0;
-                    
-                    if (hasServerFilter)
-                    {
-                        // Use server-side filtering via pustaka endpoint
-                        (items, totalPages) = await filterable.GetFilteredMangaAsync(CurrentPage, statusFilter, typeFilter);
-                    }
-                    else if (_isLatestMode)
+                    if (_isLatestMode)
                     {
                         (items, totalPages) = await filterable.GetLatestMangaAsync(CurrentPage);
                     }
                     else
                     {
-                        (items, totalPages) = await filterable.GetMangaListAsync(CurrentPage); // Rename to GetMangaDirectoryAsync? Or just use GetPopularMangaAsync?
-                        // KomikuSource.GetPopularMangaAsync -> uses Pustaka/page/X (This IS what GetMangaListAsync did essentially, but GetMangaListAsync returns tuple with totalPages!)
-                        // Standard GetPopularMangaAsync returns only List<Manga>.
-                        // So IFilterableMangaSource gives us (List, int TotalPages).
-                    }
-                    
-                    // Apply remaining client-side filters (status 3-6 not supported by server)
-                    if (statusFilter > 2)
-                    {
-                        items = items.Where(m => m.Status == statusFilter).ToList();
+                        (items, totalPages) = await filterable.GetMangaListAsync(CurrentPage);
                     }
                     
                     // Update Cache
@@ -506,7 +547,7 @@ namespace Yomic.ViewModels
                         }
                     });
                     
-                    System.Diagnostics.Debug.WriteLine($"[SourceFeedVM] Fetched {items.Count} items, Total Pages: {totalPages}");
+                    LogService.Debug("SourceFeedVM", $"Fetched {items.Count} items, Total Pages: {totalPages}");
                 }
                 else
                 {
@@ -514,17 +555,36 @@ namespace Yomic.ViewModels
                     var mangas = await _source.GetPopularMangaAsync(CurrentPage);
                     Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                     {
+                        if (mangas.Count == 0)
+                        {
+                            TotalPages = CurrentPage; // Hit the end!
+                        }
+                        else
+                        {
+                            TotalPages = _source.IsHasMorePages ? 999 : CurrentPage;
+                        }
+                        
+                        this.RaisePropertyChanged(nameof(PageInfo));
+                        this.RaisePropertyChanged(nameof(HasPrevPage));
+                        this.RaisePropertyChanged(nameof(HasNextPage));
+
                         foreach (var m in mangas)
                         {
-                            MangaList.Add(ConvertToVm(m, token));
+                            // Avoid duplicates when appending
+                            if (!append || !MangaList.Any(x => x.MangaUrl == m.Url))
+                            {
+                                MangaList.Add(ConvertToVm(m, token));
+                            }
                         }
                     });
+                    
+                    LogService.Debug("SourceFeedVM", $"Fetched {mangas.Count} items, Total Pages: {TotalPages}");
                 }
             }
 
             catch (System.Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SourceFeedVM] Error loading manga list: {ex}");
+                LogService.Error("SourceFeedVM", $"Error loading manga list: {ex.Message}", ex);
                 var innerMsg = ex.InnerException != null ? $"\nDetails: {ex.InnerException.Message}" : "";
                 ErrorMessage = $"Failed to load content: {ex.Message}{innerMsg}";
                 HasError = true;
@@ -539,21 +599,17 @@ namespace Yomic.ViewModels
             finally
             {
                 IsLoading = false;
-                System.Diagnostics.Debug.WriteLine($"[SourceFeedVM] LoadMangaList finished. IsLoading = {IsLoading}");
+                if (!append) IsBusy = false;
+                LogService.Debug("SourceFeedVM", $"LoadMangaList finished. IsLoading = {IsLoading}");
 
                 // 3. Detection Logic (Empty List Case) behavior
-                // Only treat as blocked if VPN is NOT running.
-                if (IsMangaDex && !HasError && MangaList.Count == 0 && _networkService.IsOnline && !SingboxService.Instance.IsRunning)
-                {
-                     // If we are online, it's MangaDex, and empty result => Likely blocked
-                     IsMangaDexBlocked = true;
-                }
+                // REMOVED: Do not assume empty list means blocked. It could just be no results.
 
                 // PRE-FILL Logic: If in Latest Mode (Infinite Scroll) and list is small, load next page automatically
                 // This ensures enough content to enable scrolling
                 if (_isLatestMode && MangaList.Count < 20 && HasNextPage)
                 {
-                     System.Diagnostics.Debug.WriteLine($"[SourceFeedVM] Pre-filling: List count {MangaList.Count} is low. Loading Page {CurrentPage + 1}...");
+                     LogService.Debug("SourceFeedVM", $"Pre-filling: List count {MangaList.Count} is low. Loading Page {CurrentPage + 1}...");
                      // Trigger Next Page Command safely on UI thread
                      Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                      {
@@ -571,141 +627,14 @@ namespace Yomic.ViewModels
             {
                 Title = m.Title,
                 CoverUrl = m.ThumbnailUrl,
-                SourceId = m.Source,
+                SourceId = _source.Id,
                 MangaUrl = m.Url,
-                LastUpdate = m.LastUpdate 
+                LastUpdate = m.LastUpdate,
+                Status = m.Status
             };
             
-            // Trigger background image load with cancellation
-            _ = LoadCoverAsync(vm, token);
             
             return vm;
-        }
-
-        private async Task LoadCoverAsync(MangaItem item, System.Threading.CancellationToken token)
-        {
-            if (string.IsNullOrEmpty(item.CoverUrl)) return;
-            
-            // 1. Check Memory Cache
-            var cachedBitmap = _imageCacheService.GetImage(item.CoverUrl);
-            if (cachedBitmap != null)
-            {
-                 item.CoverBitmap = cachedBitmap;
-                 return;
-            }
-
-            try
-            {
-                token.ThrowIfCancellationRequested();
-
-                string requestUrl = item.CoverUrl;
-                var customHeaders = new System.Collections.Generic.Dictionary<string, string>();
-
-                // Parse Custom Headers: url|Key=Value&Key2=Value2
-                if (item.CoverUrl.Contains("|"))
-                {
-                    var parts = item.CoverUrl.Split('|', 2);
-                    requestUrl = parts[0];
-                    if (parts.Length > 1)
-                    {
-                        var headers = parts[1].Split('&');
-                        foreach (var header in headers)
-                        {
-                            var pair = header.Split('=', 2);
-                            if (pair.Length == 2)
-                            {
-                                customHeaders[pair[0].Trim()] = pair[1].Trim();
-                            }
-                        }
-                    }
-                }
-
-                // Create Optimized Client (Using NetworkService logic)
-                using var client = _networkService.CreateOptimizedHttpClient();
-                
-                // Create request
-                var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, requestUrl);
-                
-                // Apply Headers
-                if (customHeaders.ContainsKey("Referer"))
-                {
-                    req.Headers.Referrer = new System.Uri(customHeaders["Referer"]);
-                }
-                else if (!requestUrl.Contains("envira-cdn"))
-                {
-                    // Default Fallback (Skip for Envira CDN as it fails with cross-origin referer)
-                    try 
-                    {
-                        req.Headers.Referrer = new System.Uri(_source.BaseUrl);
-                    }
-                    catch (Exception refEx)
-                    {
-                        Console.WriteLine($"[SourceFeedVM] Warning: Failed to set default referer: {refEx.Message}");
-                    }
-                }
-
-                if (customHeaders.ContainsKey("User-Agent"))
-                {
-                     req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
-                }
-
-                // Use ResponseHeadersRead to avoid buffering entire image before processing
-                using var resp = await client.SendAsync(req, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, token);
-                
-                if (resp.IsSuccessStatusCode)
-                {
-                    // Copy to memory stream
-                    using var networkStream = await resp.Content.ReadAsStreamAsync(token);
-                    using var memoryStream = new System.IO.MemoryStream();
-                    await networkStream.CopyToAsync(memoryStream, token);
-                    memoryStream.Position = 0;
-                    
-                    token.ThrowIfCancellationRequested();
-
-                    // Decode bitmap (heavy op) on thread pool
-                    var bitmap = await Task.Run(() => new Avalonia.Media.Imaging.Bitmap(memoryStream), token);
-                    
-                    // SAVE TO CACHE (Use original full URL as key to match)
-                    _imageCacheService.AddImage(item.CoverUrl, bitmap);
-
-                    // UI Update
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() => 
-                    {
-                        if (!token.IsCancellationRequested)
-                            item.CoverBitmap = bitmap;
-                    });
-                }
-                else
-                {
-                     Console.WriteLine($"[CoverImage] Failed: {item.Title} - {resp.StatusCode} ({requestUrl})");
-                }
-            }
-            catch (System.OperationCanceledException)
-            {
-                // Expected on scroll
-            }
-            catch (System.Exception ex)
-            {
-                Console.WriteLine($"[SourceFeedVM] Image load error for '{item.Title}': {ex.Message}");
-            }
-        }
-
-        // Helper methods for type filtering
-        private bool IsManhwa(Manga m)
-        {
-            var title = m.Title?.ToLower() ?? "";
-            var url = m.Url?.ToLower() ?? "";
-            return title.Contains("manhwa") || url.Contains("manhwa") || 
-                   title.Contains("korean") || title.Contains("webtoon");
-        
-        }
-
-        private bool IsManhua(Manga m)
-        {
-            var title = m.Title?.ToLower() ?? "";
-            var url = m.Url?.ToLower() ?? "";
-            return title.Contains("manhua") || url.Contains("manhua") || 
-                   title.Contains("chinese") || title.Contains("cultivation");
         }
 
         private bool _hasShownVpnTip = false;
@@ -728,6 +657,47 @@ namespace Yomic.ViewModels
                      });
                 }
             });
+        }
+
+        /// <summary>
+        /// Clears all cache (images and data) for the current source.
+        /// Called when navigating back to free up memory.
+        /// </summary>
+        private void ClearSourceCache()
+        {
+            try
+            {
+                // 1. Clear image cache for this source
+                _imageCacheService.ClearForSource(_source.BaseUrl);
+                
+                // 2. Clear data cache from SourceManager
+                _sourceManager.InvalidateAllCachesForSource(_source.Id);
+                
+                // 3. Clear MangaList
+                MangaList.Clear();
+                
+                // Force GC to reclaim memory
+                GC.Collect(0, GCCollectionMode.Optimized);
+                
+                LogService.Info("SourceFeed", $"Cleared cache for source: {_source.Name}");
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("SourceFeed", $"Error clearing cache: {ex.Message}", ex);
+            }
+        }
+
+        public void Dispose()
+        {
+            // Fully purge source cache and bitmaps when disposed
+            ClearSourceCache();
+            _cts?.Cancel();
+            _cts?.Dispose();
+            
+            _gbFlag?.Dispose();
+            _idFlag?.Dispose();
+
+            System.Diagnostics.Debug.WriteLine("[SourceFeedVM] Disposed and memory references cleared.");
         }
     }
 }

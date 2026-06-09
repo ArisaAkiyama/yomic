@@ -3,7 +3,13 @@ using Avalonia.Interactivity;
 using Avalonia.ReactiveUI; // Added for WhenAnyValue
 using ReactiveUI; // Added for WhenAnyValue
 using Yomic.ViewModels;
+using Yomic.Core.Services;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
+using Avalonia.Media.Imaging;
+using Avalonia.Styling;
 using System;
+using System.Threading.Tasks;
 
 namespace Yomic.Views
 {
@@ -13,6 +19,35 @@ namespace Yomic.Views
         {
             InitializeComponent();
             DataContextChanged += OnDataContextChanged;
+            
+            // Check daily extension reminder on startup
+            CheckExtensionReminder();
+        }
+        
+        /// <summary>
+        /// Shows extension health check notification once per day
+        /// </summary>
+        private void CheckExtensionReminder()
+        {
+            try
+            {
+                var settings = App.SettingsService;
+                if (settings != null && DateTime.Now.Date > settings.LastExtensionReminderDate.Date)
+                {
+                    // Show notification
+                    ExtensionReminder.Show();
+                    
+                    // Update last reminder date and save
+                    settings.LastExtensionReminderDate = DateTime.Now;
+                    settings.Save();
+                    
+                    LogService.Info("MainWindow", "Extension reminder shown for today");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("MainWindow", "Error checking extension reminder", ex);
+            }
         }
 
         private void OnDataContextChanged(object? sender, EventArgs e)
@@ -25,6 +60,108 @@ namespace Yomic.Views
                   {
                       SetFullscreen(vm, isFullscreen);
                   });
+
+                // Subscribe to Update Dialog Request
+                vm.RequestUpdateDialog -= ShowUpdateDialog;
+                vm.RequestUpdateDialog += ShowUpdateDialog;
+
+                // Subscribe to Feedback Dialog Request
+                vm.RequestFeedbackDialog -= ShowFeedbackDialog;
+                vm.RequestFeedbackDialog += ShowFeedbackDialog;
+
+                // Subscribe to Theme Change Request
+                vm.RequestThemeChange -= OnThemeChangeRequested;
+                vm.RequestThemeChange += OnThemeChangeRequested;
+            }
+        }
+
+        private async void OnThemeChangeRequested(bool isDark)
+        {
+            await CrossfadeThemeChangeAsync(isDark);
+        }
+
+        private async Task CrossfadeThemeChangeAsync(bool isDark)
+        {
+            if (Avalonia.Application.Current == null) return;
+            var themeVariant = isDark ? ThemeVariant.Dark : ThemeVariant.Light;
+            if (Avalonia.Application.Current.RequestedThemeVariant == themeVariant) return;
+
+            try
+            {
+                // 1. Capture screenshot
+                var pixelSize = new Avalonia.PixelSize((int)Bounds.Width, (int)Bounds.Height);
+                using var bitmap = new RenderTargetBitmap(pixelSize, new Avalonia.Vector(96, 96));
+                bitmap.Render(this);
+
+                // 2. Set the image and make it visible
+                ThemeTransitionOverlay.Source = bitmap;
+                ThemeTransitionOverlay.Opacity = 1;
+                ThemeTransitionOverlay.IsVisible = true;
+
+                // 3. Change theme underneath
+                Avalonia.Application.Current.RequestedThemeVariant = themeVariant;
+
+                // 4. Wait a tiny bit for Avalonia to apply resources
+                await Task.Delay(50);
+
+                // 5. Animate fade out
+                var animation = new Animation
+                {
+                    Duration = TimeSpan.FromMilliseconds(400),
+                    Easing = new SineEaseInOut(),
+                    FillMode = FillMode.Forward,
+                    Children =
+                    {
+                        new KeyFrame
+                        {
+                            Cue = new Cue(0d),
+                            Setters = { new Setter(Image.OpacityProperty, 1.0d) }
+                        },
+                        new KeyFrame
+                        {
+                            Cue = new Cue(1d),
+                            Setters = { new Setter(Image.OpacityProperty, 0.0d) }
+                        }
+                    }
+                };
+
+                await animation.RunAsync(ThemeTransitionOverlay);
+            }
+            finally
+            {
+                // 6. Cleanup
+                ThemeTransitionOverlay.IsVisible = false;
+                ThemeTransitionOverlay.Source = null;
+            }
+        }
+
+        private async void ShowUpdateDialog(Core.Services.UpdateService.UpdateInfo? info)
+        {
+            var dialog = new UpdateDialog
+            {
+                DataContext = new Yomic.ViewModels.UpdateDialogViewModel(null, info)
+            };
+
+            if (DataContext is MainWindowViewModel mainVM)
+            {
+                mainVM.IsDialogOverlayVisible = true;
+                await dialog.ShowDialog(this);
+                mainVM.IsDialogOverlayVisible = false;
+            }
+        }
+
+        private async void ShowFeedbackDialog()
+        {
+            if (DataContext is MainWindowViewModel mainVM)
+            {
+                var dialog = new FeedbackDialog
+                {
+                    DataContext = new Yomic.ViewModels.FeedbackDialogViewModel(mainVM.ShowNotification)
+                };
+
+                mainVM.IsDialogOverlayVisible = true;
+                await dialog.ShowDialog(this);
+                mainVM.IsDialogOverlayVisible = false;
             }
         }
 
@@ -34,6 +171,49 @@ namespace Yomic.Views
 
             if (DataContext is MainWindowViewModel vm)
             {
+                // Forward Arrow Keys to ReaderViewModel if active
+                if (vm.CurrentPage is ReaderViewModel readerVM)
+                {
+                    if (e.Key == Avalonia.Input.Key.Right)
+                    {
+                        if (readerVM.IsWebtoon)
+                            readerVM.NextChapterCommand.Execute().Subscribe(_ => { });
+                        else
+                            readerVM.NextPageCommand.Execute().Subscribe(_ => { });
+                            
+                        e.Handled = true;
+                        return;
+                    }
+                    else if (e.Key == Avalonia.Input.Key.Left)
+                    {
+                        if (readerVM.IsWebtoon)
+                            readerVM.PrevChapterCommand.Execute().Subscribe(_ => { });
+                        else
+                            readerVM.PrevPageCommand.Execute().Subscribe(_ => { });
+    
+                        e.Handled = true;
+                        return;
+                    }
+                    else if (e.Key == Avalonia.Input.Key.Space)
+                    {
+                        readerVM.ToggleMenuCommand.Execute().Subscribe(_ => { });
+                        e.Handled = true;
+                        return;
+                    }
+                    else if (e.Key == Avalonia.Input.Key.PageUp)
+                    {
+                         readerVM.ScrollUpCommand.Execute().Subscribe(_ => { });
+                         e.Handled = true;
+                         return;
+                    }
+                    else if (e.Key == Avalonia.Input.Key.PageDown)
+                    {
+                         readerVM.ScrollDownCommand.Execute().Subscribe(_ => { });
+                         e.Handled = true;
+                         return;
+                    }
+                }
+
                 if (e.Key == Avalonia.Input.Key.F11)
                 {
                     ToggleFullscreen(vm);
@@ -60,24 +240,31 @@ namespace Yomic.Views
             SetFullscreen(vm, newState);
         }
 
+        private Avalonia.Controls.WindowState _previousWindowState = Avalonia.Controls.WindowState.Normal;
+
         private void SetFullscreen(MainWindowViewModel vm, bool isFullscreen)
         {
             vm.IsFullscreen = isFullscreen;
             
             if (isFullscreen)
             {
+                if (WindowState != Avalonia.Controls.WindowState.FullScreen)
+                {
+                    _previousWindowState = WindowState;
+                }
+
                 // Strict Fullscreen Mode: Remove borders, padding, and transparency
                 SystemDecorations = SystemDecorations.None;
-                WindowState = WindowState.FullScreen;
+                WindowState = Avalonia.Controls.WindowState.FullScreen;
                 Padding = new Avalonia.Thickness(0);
                 Background = Avalonia.Media.Brushes.Black;
                 ExtendClientAreaToDecorationsHint = false; // Disable custom chrome to remove potential top bar reservation
             }
             else
             {
-                // Restore Normal Mode
+                // Restore previous State
                 SystemDecorations = SystemDecorations.Full;
-                WindowState = WindowState.Normal;
+                WindowState = _previousWindowState == Avalonia.Controls.WindowState.FullScreen ? Avalonia.Controls.WindowState.Normal : _previousWindowState;
                 Padding = new Avalonia.Thickness(0); // WindowState=Maximized style handle this via XAML, but standard is 0 for Normal
                 Background = Avalonia.Media.Brushes.Transparent;
                 ExtendClientAreaToDecorationsHint = true;
@@ -128,6 +315,22 @@ namespace Yomic.Views
             catch (Exception ex)
             {
                 Console.WriteLine($"Navigation Error: {ex}");
+            }
+        }
+
+        private void OnFeedbackClick(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (DataContext is MainWindowViewModel vm)
+                {
+                    // Trigger the dialog event
+                    vm.RequestFeedbackDialog?.Invoke();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Feedback Error: {ex}");
             }
         }
 

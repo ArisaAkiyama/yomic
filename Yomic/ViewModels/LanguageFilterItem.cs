@@ -1,0 +1,1 @@
+namespace Yomic.ViewModels { public class LanguageFilterItem { public string Name { get; set; } = string.Empty; public string Code { get; set; } = string.Empty; } }

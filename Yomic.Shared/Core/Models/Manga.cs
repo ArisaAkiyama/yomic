@@ -41,5 +41,21 @@ namespace Yomic.Core.Models
         public const int PUBLISHING_FINISHED = 4;
         public const int CANCELLED = 5;
         public const int ON_HIATUS = 6;
+
+        // Flags
+        public const long MASK_HAS_NEW_CHAPTERS = 1L << 60;
+
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public bool HasNewChapters
+        {
+            get => (ViewerFlags & MASK_HAS_NEW_CHAPTERS) != 0;
+            set
+            {
+                if (value)
+                    ViewerFlags |= MASK_HAS_NEW_CHAPTERS;
+                else
+                    ViewerFlags &= ~MASK_HAS_NEW_CHAPTERS;
+            }
+        }
     }
 }

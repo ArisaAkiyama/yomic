@@ -2,6 +2,20 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [1.3.0] - Major Update & UI Overhaul
+
+Update Details：
+◆ Add the ability to backup and restore user data, including library, read history, and app settings, into a single secure `.yomic` file.
+◆ Add DNS over HTTPS configuration in Settings with multiple providers (Google DNS set as default) to improve connectivity and bypass restrictions.
+◆ Improve the overall UI of the Settings page by introducing a more modern, premium aesthetic with rounded borders, soft shadows, and clean layouts.
+◆ Improve the Sidebar Navigation by implementing a dedicated `SidebarBtn` style featuring a Windows 11 Fluent UI style pill selection indicator.
+◆ Improve the layout and alignment of the "About" section in the Settings page, ensuring the "Check for Updates" and version number display (`v1.3.0`) are perfectly positioned.
+◆ Fix a widespread visual bug where standard navigation buttons (like Back, Refresh, and Reader Next/Prev) incorrectly inherited a square gray/blue hover box from the Sidebar.
+◆ Fix a bug where clicking on Fluent Icons inside buttons would sometimes trigger text selection, causing a solid blue background box to appear.
+◆ Fix button border radius inheritance in `ReaderView`, ensuring all small icon buttons return to their intended smooth, circular hover effects.
+◆ Fix the layout alignment and spacing logic for the backup data action buttons within `SettingsView.axaml`.
+◆ Improve localization and consistency of button states across Dark and Light mode themes.
+
 ## [1.2.0] - 2026-03-25
 
 ### Added

@@ -19,14 +19,10 @@ namespace Yomic.Core.Services
     {
         private readonly List<IMangaSource> _sources;
         private readonly object _sourcesLock = new();
-        private readonly string _extensionsFilePath;
-        private readonly string _pluginsDir;
-        private readonly string _localPluginsDir;
+        private readonly string _localPluginsDir; // Bundled (Program Files)
+        private readonly string _userPluginsDir;  // User (AppData)
         
-        // Track loaded paths to avoid duplicates and for saving
-        private readonly HashSet<string> _loadedExtensionPaths = new();
-
-        // Track source ID to file path mapping (needed because LoadFromStream loses Assembly.Location)
+        // Track source ID to file path mapping
         private readonly Dictionary<long, string> _sourceIdToPath = new();
 
         // Simple in-memory cache: Key -> Entry
@@ -34,21 +30,21 @@ namespace Yomic.Core.Services
         private readonly TimeSpan _cacheDuration = TimeSpan.FromMinutes(30);
 
         public event Action? OnSourcesChanged;
-
+        
         public SourceManager()
         {
             _sources = new List<IMangaSource>();
             
-            // Define path in AppData
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var appDir = System.IO.Path.Combine(appData, "Yomic");
-            if (!System.IO.Directory.Exists(appDir)) System.IO.Directory.CreateDirectory(appDir);
-            
-            _extensionsFilePath = System.IO.Path.Combine(appDir, "extensions.json");
-            _pluginsDir = System.IO.Path.Combine(appDir, "Plugins");
-            if (!System.IO.Directory.Exists(_pluginsDir)) System.IO.Directory.CreateDirectory(_pluginsDir);
-            
+            // 1. Define Bundled Plugins Path (App Directory)
             _localPluginsDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Plugins");
+            if (!System.IO.Directory.Exists(_localPluginsDir)) System.IO.Directory.CreateDirectory(_localPluginsDir);
+
+            // 2. Define User Plugins Path (AppData)
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            _userPluginsDir = System.IO.Path.Combine(appData, "Yomic", "Plugins");
+            if (!System.IO.Directory.Exists(_userPluginsDir)) System.IO.Directory.CreateDirectory(_userPluginsDir);
+            
+            LoadExtensions();
         }
 
         #region Core Management (Thread Safe)
@@ -81,6 +77,32 @@ namespace Yomic.Core.Services
             }
         }
 
+        private void SafeDeleteFile(string path)
+        {
+            if (System.IO.File.Exists(path))
+            {
+                try
+                {
+                    System.IO.File.Delete(path);
+                    LogService.Success("SourceManager", $"Deleted plugin: {System.IO.Path.GetFileName(path)}");
+                }
+                catch (Exception ex)
+                {
+                    try
+                    {
+                        var deletedPath = path + ".deleted";
+                        if (System.IO.File.Exists(deletedPath)) System.IO.File.Delete(deletedPath);
+                        System.IO.File.Move(path, deletedPath);
+                        LogService.Success("SourceManager", $"Marked plugin for deletion: {System.IO.Path.GetFileName(path)}");
+                    }
+                    catch
+                    {
+                        LogService.Error("SourceManager", $"Failed to delete or rename plugin file: {ex.Message}");
+                    }
+                }
+            }
+        }
+
         public void RemoveSource(long id)
         {
             lock (_sourcesLock)
@@ -90,120 +112,106 @@ namespace Yomic.Core.Services
                 {
                     _sources.Remove(source);
                     
-                    // Remove from persistence and DELETE file if plugin
-                    try
+                    // 1. Delete the path currently tracked
+                    if (_sourceIdToPath.TryGetValue(id, out var path))
                     {
-                        string? path = null;
-                        if (_sourceIdToPath.TryGetValue(id, out path) || 
-                            (!string.IsNullOrEmpty(source.GetType().Assembly.Location) && (path = source.GetType().Assembly.Location) != null))
-                        {
-                             // 1. Remove from persistence list
-                            if (_loadedExtensionPaths.Contains(path))
-                            {
-                                _loadedExtensionPaths.Remove(path);
-                                SaveExtensions();
-                            }
-                            
-                            // 2. Delete file if it is in Plugins folder
-                            // Check if path is inside Plugins directory
-                            var fullPath = System.IO.Path.GetFullPath(path);
-                            var pluginsPath = System.IO.Path.GetFullPath(_pluginsDir);
-                            var localPluginsPath = System.IO.Path.GetFullPath(_localPluginsDir);
-                            
-                            if (fullPath.StartsWith(pluginsPath, StringComparison.OrdinalIgnoreCase) || 
-                                fullPath.StartsWith(localPluginsPath, StringComparison.OrdinalIgnoreCase))
-                            {
-                                System.Diagnostics.Debug.WriteLine($"[SourceManager] Deleting plugin file: {fullPath}");
-                                try
-                                {
-                                    if (System.IO.File.Exists(fullPath))
-                                    {
-                                        System.IO.File.Delete(fullPath);
-                                    }
-                                }
-                                catch (Exception deleteEx)
-                                {
-                                     System.Diagnostics.Debug.WriteLine($"[SourceManager] Failed to delete file {fullPath}: {deleteEx.Message}");
-                                }
-                            }
-
-                            if (_sourceIdToPath.ContainsKey(id)) _sourceIdToPath.Remove(id);
-                        }
+                        SafeDeleteFile(System.IO.Path.GetFullPath(path));
+                        _sourceIdToPath.Remove(id);
                     }
-                    catch (Exception ex)
+
+                    // 2. Also aggressively delete from both plugin directories using the Assembly Name
+                    // This handles cases where a downloaded plugin shadows a local plugin, and uninstalling
+                    // should wipe both so it doesn't reappear on restart.
+                    string dllName = source.GetType().Assembly.GetName().Name + ".dll";
+                    if (!string.IsNullOrEmpty(dllName))
                     {
-                        System.Diagnostics.Debug.WriteLine($"[SourceManager] Failed to remove persistence for source {id}: {ex.Message}");
+                        SafeDeleteFile(System.IO.Path.Combine(_localPluginsDir, dllName));
+                        SafeDeleteFile(System.IO.Path.Combine(_userPluginsDir, dllName));
                     }
 
                     OnSourcesChanged?.Invoke();
                 }
             }
         }
+        
+        // Helper to check if a source is System (Bundled)
+        public bool IsSystemSource(long id)
+        {
+             if (_sourceIdToPath.TryGetValue(id, out var path))
+             {
+                 var fullPath = System.IO.Path.GetFullPath(path);
+                 var fullLocalDir = System.IO.Path.GetFullPath(_localPluginsDir);
+                 return fullPath.StartsWith(fullLocalDir, StringComparison.OrdinalIgnoreCase);
+             }
+             return false;
+        }
+
+        // Helper to check if a source is actually installed (System or User) vs just loaded from random path
+        public bool IsInstalledSource(long id)
+        {
+             if (_sourceIdToPath.TryGetValue(id, out var path))
+             {
+                 var fullPath = System.IO.Path.GetFullPath(path);
+                 var fullUserDir = System.IO.Path.GetFullPath(_userPluginsDir);
+                 var fullLocalDir = System.IO.Path.GetFullPath(_localPluginsDir);
+                 
+                 return fullPath.StartsWith(fullUserDir, StringComparison.OrdinalIgnoreCase) ||
+                        fullPath.StartsWith(fullLocalDir, StringComparison.OrdinalIgnoreCase);
+             }
+             return false;
+        }
+        
+        public string? GetSourcePath(long id)
+        {
+            if (_sourceIdToPath.TryGetValue(id, out var path)) return path;
+            return null;
+        }
 
         #endregion
 
-        #region Extension Persistence & Loading
+        #region Extension Loading
 
-        public void LoadExtensions()
+        private void LoadExtensions()
         {
             try
             {
-                // 1. Load from JSON (User added external paths)
-                if (System.IO.File.Exists(_extensionsFilePath))
+                // Clean up .deleted files first
+                var dirsToScan = new[] { _localPluginsDir, _userPluginsDir };
+                foreach (var dir in dirsToScan)
                 {
-                    var json = System.IO.File.ReadAllText(_extensionsFilePath);
-                    var paths = Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(json);
-                    
-                    if (paths != null)
+                    if (System.IO.Directory.Exists(dir))
                     {
-                        var validPaths = new List<string>();
-                        bool changed = false;
-
-                        foreach (var path in paths)
+                        var deletedFiles = System.IO.Directory.GetFiles(dir, "*.deleted");
+                        foreach (var f in deletedFiles)
                         {
-                            if (System.IO.File.Exists(path))
-                            {
-                                LoadExtensionAssembly(path, saveAfter: false);
-                                validPaths.Add(path);
-                            }
-                            else
-                            {
-                                changed = true;
-                            }
-                        }
-
-                        if (changed)
-                        {
-                            _loadedExtensionPaths.Clear();
-                            foreach (var p in validPaths) _loadedExtensionPaths.Add(p);
-                            SaveExtensions();
+                            try { System.IO.File.Delete(f); } catch { }
                         }
                     }
                 }
-                
-                // 2. Scan Plugins Directory (User)
-                if (System.IO.Directory.Exists(_pluginsDir))
-                {
-                    var dlls = System.IO.Directory.GetFiles(_pluginsDir, "*.dll");
-                    foreach (var dll in dlls)
-                    {
-                        LoadExtensionAssembly(dll, saveAfter: false);
-                    }
-                }
 
-                // 3. Scan Bundled Plugins
+                // 1. Scan Bundled Plugins (Program Files)
                 if (System.IO.Directory.Exists(_localPluginsDir))
                 {
                     var dlls = System.IO.Directory.GetFiles(_localPluginsDir, "*.dll");
                     foreach (var dll in dlls)
                     {
-                        LoadExtensionAssembly(dll, saveAfter: false);
+                        LoadExtensionAssembly(dll);
+                    }
+                }
+
+                // 2. Scan User Plugins (AppData)
+                if (System.IO.Directory.Exists(_userPluginsDir))
+                {
+                    var dlls = System.IO.Directory.GetFiles(_userPluginsDir, "*.dll");
+                    foreach (var dll in dlls)
+                    {
+                        LoadExtensionAssembly(dll);
                     }
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SourceManager] Failed to load extensions: {ex.Message}");
+                LogService.Error("SourceManager", $"Failed to load extensions", ex);
             }
         }
 
@@ -213,59 +221,30 @@ namespace Yomic.Core.Services
             {
                 if (!System.IO.File.Exists(sourcePath)) return null;
 
-                // 1. Check if it's already in the plugins folder
-                var fullSourcePath = System.IO.Path.GetFullPath(sourcePath);
-                var fullPluginsDir = System.IO.Path.GetFullPath(_pluginsDir);
+                // Copy to User Plugins Directory
+                var fileName = System.IO.Path.GetFileName(sourcePath);
+                var destPath = System.IO.Path.Combine(_userPluginsDir, fileName);
 
-                string destPath = sourcePath;
+                // If verifying existence or overwrite needed
+                System.IO.File.Copy(sourcePath, destPath, overwrite: true);
 
-                if (!fullSourcePath.StartsWith(fullPluginsDir, StringComparison.OrdinalIgnoreCase))
-                {
-                    // It's an external file, copy it!
-                    var fileName = System.IO.Path.GetFileName(sourcePath);
-                    // Try to install to Program Files (Local) first
-                    try 
-                    {
-                        if (!System.IO.Directory.Exists(_localPluginsDir)) System.IO.Directory.CreateDirectory(_localPluginsDir);
-                        destPath = System.IO.Path.Combine(_localPluginsDir, fileName);
-                        System.IO.File.Copy(sourcePath, destPath, overwrite: true);
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        // Fallback to AppData if no permission
-                        if (!System.IO.Directory.Exists(_pluginsDir)) System.IO.Directory.CreateDirectory(_pluginsDir);
-                        destPath = System.IO.Path.Combine(_pluginsDir, fileName);
-                        System.IO.File.Copy(sourcePath, destPath, overwrite: true);
-                    }
-                    catch (Exception)
-                    {
-                         // General fallback
-                        if (!System.IO.Directory.Exists(_pluginsDir)) System.IO.Directory.CreateDirectory(_pluginsDir);
-                        destPath = System.IO.Path.Combine(_pluginsDir, fileName);
-                        System.IO.File.Copy(sourcePath, destPath, overwrite: true);
-                    }
-                }
-
-                // 2. Load from the (new) location
-                // saveAfter=false is redundant because LoadExtensionAssembly detects it's in Plugins dir, 
-                // but explicit is fine.
-                return LoadExtensionAssembly(destPath, saveAfter: false);
+                // Load from the NEW location
+                return LoadExtensionAssembly(destPath);
             }
-            catch (Exception ex)
+            catch (Exception ex) 
             {
-                System.Diagnostics.Debug.WriteLine($"[SourceManager] Failed to install plugin {sourcePath}: {ex.Message}");
-                return null;
+                 LogService.Error("SourceManager", $"Failed to install plugin: {ex.Message}");
+                 return null;
             }
         }
 
-        public IMangaSource? LoadExtensionAssembly(string path, bool saveAfter = true)
+        public IMangaSource? LoadExtensionAssembly(string path)
         {
             try
             {
                 if (!System.IO.File.Exists(path)) return null;
 
                 // Load Assembly from MEMORY to avoid file locking
-                // This allows us to delete the file later even if the assembly is loaded
                 byte[] assemblyBytes = System.IO.File.ReadAllBytes(path);
                 using var stream = new System.IO.MemoryStream(assemblyBytes);
 
@@ -289,18 +268,7 @@ namespace Yomic.Core.Services
                         {
                             // Track path explicitly since Location is empty for Stream loaded assemblies
                             _sourceIdToPath[source.Id] = path;
-                        
-                            // Only add to persistence list if it's NOT in the Plugins folder (User or Bundled)
-                            bool isUserPlugin = System.IO.Path.GetFullPath(path).StartsWith(System.IO.Path.GetFullPath(_pluginsDir), StringComparison.OrdinalIgnoreCase);
-                            bool isBundledPlugin = System.IO.Path.GetFullPath(path).StartsWith(System.IO.Path.GetFullPath(_localPluginsDir), StringComparison.OrdinalIgnoreCase);
-                            
-                            if (!isUserPlugin && !isBundledPlugin)
-                            {
-                                _loadedExtensionPaths.Add(path);
-                            }
                         }
-                        
-                        if (saveAfter) SaveExtensions();
                         
                         return source;
                     }
@@ -308,7 +276,7 @@ namespace Yomic.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SourceManager] Failed to load assembly {path}: {ex.Message}");
+                LogService.Error("SourceManager", $"Failed to load assembly {path}", ex);
             }
             return null;
         }
@@ -343,57 +311,6 @@ namespace Yomic.Core.Services
             }
 
             return null;
-        }
-
-        private void SaveExtensions()
-        {
-            try
-            {
-                lock (_sourcesLock)
-                {
-                    var json = Newtonsoft.Json.JsonConvert.SerializeObject(_loadedExtensionPaths, Newtonsoft.Json.Formatting.Indented);
-                    System.IO.File.WriteAllText(_extensionsFilePath, json);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[SourceManager] Failed to save extensions: {ex.Message}");
-            }
-        }
-
-        public void ClearAllExtensions()
-        {
-            lock (_sourcesLock)
-            {
-                _sources.Clear();
-                _loadedExtensionPaths.Clear();
-                _sourceIdToPath.Clear();
-            }
-
-            // 1. Delete extensions.json
-            if (System.IO.File.Exists(_extensionsFilePath))
-            {
-                try { System.IO.File.Delete(_extensionsFilePath); } catch { }
-            }
-
-            // 2. Delete Plugins folder contents
-            if (System.IO.Directory.Exists(_pluginsDir))
-            {
-                try
-                {
-                    var files = System.IO.Directory.GetFiles(_pluginsDir);
-                    foreach (var file in files)
-                    {
-                        try { System.IO.File.Delete(file); } catch { }
-                    }
-                }
-                catch { }
-            }
-            
-            // 3. Clear Cache
-            ClearAllCache();
-
-            OnSourcesChanged?.Invoke();
         }
 
         #endregion

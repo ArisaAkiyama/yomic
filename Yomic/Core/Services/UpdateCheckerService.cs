@@ -17,7 +17,7 @@ namespace Yomic.Core.Services
         public List<Chapter> NewChapters { get; set; } = new List<Chapter>();
     }
 
-    public class UpdateCheckerService
+    public class UpdateCheckerService : IDisposable
     {
         private readonly SourceManager _sourceManager;
         private readonly LibraryService _libraryService;
@@ -57,13 +57,13 @@ namespace Yomic.Core.Services
             await _semaphore.WaitAsync();
             try
             {
-                System.Diagnostics.Debug.WriteLine($"[UpdateChecker] Starting check for: {manga.Title}");
+                LogService.Debug("UpdateChecker", $"Starting check for: {manga.Title}");
                 var source = _sourceManager.GetSource(manga.Source);
                 if (source == null) return;
 
                 // 1. Fetch Remote Chapters
                 var remoteChapters = await source.GetChapterListAsync(manga.Url);
-                System.Diagnostics.Debug.WriteLine($"[UpdateChecker] Fetched {remoteChapters?.Count ?? 0} chapters from source for {manga.Title}");
+                LogService.Debug("UpdateChecker", $"Fetched {remoteChapters?.Count ?? 0} chapters from source for {manga.Title}");
                 if (remoteChapters == null || remoteChapters.Count == 0) return;
 
                 // 2. Get Local State (Snapshot)
@@ -82,7 +82,7 @@ namespace Yomic.Core.Services
 
                     existingUrls = dbManga.Chapters.Select(c => c.Url).ToList();
                     isInitialImport = dbManga.Chapters.Count == 0;
-                    System.Diagnostics.Debug.WriteLine($"[UpdateChecker] Local state for {manga.Title}: {existingUrls.Count} existing chapters. Initial Import: {isInitialImport}");
+                    LogService.Debug("UpdateChecker", $"Local state for {manga.Title}: {existingUrls.Count} existing chapters. Initial Import: {isInitialImport}");
                 }
 
                 // 3. Smart Diff Logic
@@ -91,7 +91,7 @@ namespace Yomic.Core.Services
                     .Where(r => !existingUrls.Contains(r.Url))
                     .ToList();
                 
-                System.Diagnostics.Debug.WriteLine($"[UpdateChecker] Diff result for {manga.Title}: {newChapters.Count} new chapters found (not in local DB).");
+                LogService.Debug("UpdateChecker", $"Diff result for {manga.Title}: {newChapters.Count} new chapters found (not in local DB).");
 
                 // 4. Save to Database (Always Sync)
                 // This ensures DB is up-to-date regardless of notification rules
@@ -104,7 +104,7 @@ namespace Yomic.Core.Services
                 // Rule 1: Initial Import -> Do NOT notify
                 if (isInitialImport)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[UpdateChecker] Initial import for {manga.Title}. Suppressing notification.");
+                    LogService.Info("UpdateChecker", $"Initial import for {manga.Title}. Suppressing notification.");
                     return;
                 }
 
@@ -133,18 +133,22 @@ namespace Yomic.Core.Services
                         results.Add(result);
                     }
                     
-                    System.Diagnostics.Debug.WriteLine($"[UpdateChecker] Found {newChapters.Count} updates for {manga.Title}");
+                    LogService.Info("UpdateChecker", $"Found {newChapters.Count} updates for {manga.Title}");
                 }
             }
             catch (Exception ex)
             {
                 // Error Handling: Log and Continue (Skip this manga)
-                System.Diagnostics.Debug.WriteLine($"[UpdateChecker] Error checking {manga.Title}: {ex.Message}");
+                LogService.Error("UpdateChecker", $"Error checking {manga.Title}: {ex.Message}", ex);
             }
             finally
             {
                 _semaphore.Release();
             }
+        }
+        public void Dispose()
+        {
+            _semaphore?.Dispose();
         }
     }
 }

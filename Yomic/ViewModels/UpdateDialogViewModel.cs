@@ -61,7 +61,7 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _statusIcon, value);
         }
 
-        private string _statusColor = "#FF9900"; // Orange
+        private string _statusColor = "#0078D7"; // Blue
         public string StatusColor
         {
             get => _statusColor;
@@ -74,15 +74,46 @@ namespace Yomic.ViewModels
         // Action to close the window
         public Action? CloseAction { get; set; }
 
-        public UpdateDialogViewModel(Core.Services.UpdateService? updateService = null)
+        public UpdateDialogViewModel(Core.Services.UpdateService? updateService = null, Core.Services.UpdateService.UpdateInfo? preloadedInfo = null)
         {
             _updateService = updateService ?? new Core.Services.UpdateService();
 
             DownloadCommand = ReactiveCommand.Create(DownloadUpdate);
             CloseCommand = ReactiveCommand.Create(() => CloseAction?.Invoke());
 
-            // Start check automatically
-            _ = CheckForUpdatesAsync();
+            if (preloadedInfo != null)
+            {
+                ApplyUpdateInfo(preloadedInfo);
+            }
+            else
+            {
+                // Start check automatically
+                _ = CheckForUpdatesAsync();
+            }
+        }
+
+        private void ApplyUpdateInfo(Core.Services.UpdateService.UpdateInfo info)
+        {
+             if (info.IsUpdateAvailable)
+            {
+                IsUpdateAvailable = true;
+                LatestVersion = info.LatestVersion;
+                ReleaseNotes = info.ReleaseNotes;
+                _downloadUrl = info.DownloadUrl;
+                StatusText = "New Update Available!";
+                StatusIcon = "\uE74E"; // Download Global
+                StatusColor = "#00C853"; // Green (Success)
+            }
+            else
+            {
+                IsUpdateAvailable = false;
+                StatusText = "You're up to date";
+                StatusIcon = "\uE930"; // Checkmark
+                StatusColor = "#A6ADC8"; // Subtle
+                LatestVersion = $"v{info.LatestVersion.TrimStart('v')}";
+                ReleaseNotes = info.ReleaseNotes;
+            }
+            IsLoading = false;
         }
 
         public async Task CheckForUpdatesAsync()
@@ -90,7 +121,7 @@ namespace Yomic.ViewModels
             IsLoading = true;
             StatusText = "Checking for updates...";
             StatusIcon = "\uE895"; // Sync
-            StatusColor = "#FF9900"; // Orange
+            StatusColor = "#0078D7"; // Blue
             IsUpdateAvailable = false;
 
             try
@@ -116,7 +147,8 @@ namespace Yomic.ViewModels
                     StatusText = "You're up to date";
                     StatusIcon = "\uE930"; // Checkmark
                     StatusColor = "#A6ADC8"; // Subtle
-                    ReleaseNotes = $"Version {info.LatestVersion} is currently installed.";
+                    LatestVersion = $"v{info.LatestVersion.TrimStart('v')}";
+                    ReleaseNotes = info.ReleaseNotes;
                 }
             }
             catch (Exception ex)
@@ -166,7 +198,7 @@ namespace Yomic.ViewModels
             IsDownloading = true;
             StatusText = "Downloading Update...";
             StatusIcon = "\uE896"; // Download
-            StatusColor = "#FF9900";
+            StatusColor = "#0078D7";
 
             try
             {
@@ -218,20 +250,35 @@ namespace Yomic.ViewModels
                 }
 
                 // Launch Installer
-                StatusText = "Launching Installer...";
-                await Task.Delay(500); // Brief delay for UX
+                StatusText = "Installing Update...";
+                StatusIcon = "\uE896"; // Download/Install icon (optional, keep it consistent)
+                IsDownloading = false;
+                IsLoading = true;
+                await Task.Delay(1500); // Give user time to see the "Installing..." status
 
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                var startInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = tempPath,
                     UseShellExecute = true,
-                    Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART"
-                });
+                    Arguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART"
+                };
 
-                // Close App
-                if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+                // Launch the installer. If successful, it will return a Process object (or not null)
+                var process = System.Diagnostics.Process.Start(startInfo);
+                
+                if (process != null)
                 {
-                    desktop.Shutdown();
+                    // Close App only if installer successfully launched
+                    if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+                    {
+                        desktop.Shutdown();
+                    }
+                }
+                else
+                {
+                     // If for some reason it failed to start, revert status so user can try again
+                     StatusText = "Installation Failed to Start";
+                     IsLoading = false;
                 }
             }
             catch (Exception ex)

@@ -59,28 +59,98 @@
                 </Animation>
             </Style.Animations>
         </Style>
+
+        <!-- Standard Header Action Button Style -->
+        <Style Selector="Button.header-action">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+        </Style>
+        <Style Selector="Button.header-action:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+        </Style>
+        <Style Selector="Button.header-action:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style Selector="Button.header-action:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#25FFFFFF"/>
+        </Style>
+
+        <!-- Disable transitions for header buttons to avoid color "lag" -->
+        <Style Selector="Button.header-action TextBlock">
+             <Setter Property="Transitions" Value="{x:Null}"/>
+        </Style>
+
+        <Style Selector="Button.success">
+            <Setter Property="Foreground" Value="#A6E3A1"/>
+        </Style>
+        <Style Selector="Button.success:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#20A6E3A1"/>
+        </Style>
+        <Style Selector="Button.header-action.success:pointerover">
+            <Setter Property="Foreground" Value="#A6E3A1"/>
+        </Style>
+        <!-- Tab Filter Style (ListBoxItem) -->
+        <Style Selector="#LanguageFilterListBox ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.2"/>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.2"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="#LanguageFilterListBox ListBoxItem /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="#LanguageFilterListBox ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+        </Style>
+        <Style Selector="#LanguageFilterListBox ListBoxItem:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style Selector="#LanguageFilterListBox ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PrimaryBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentColor}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style Selector="#LanguageFilterListBox ListBoxItem:selected">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
     </UserControl.Styles>
 
-    <Grid>
-    <ScrollViewer Padding="40">
-        <StackPanel Spacing="20">
+    <Panel>
+        <Grid RowDefinitions="Auto, *" IsVisible="{Binding !IsOffline}">
+        <!-- Fixed Header Area -->
+        <StackPanel Grid.Row="0" Spacing="20" Margin="30,30,30,10" ZIndex="10">
             <!-- Header -->
             <StackPanel>
                 <Grid ColumnDefinitions="*, Auto">
                     <StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="15">
-                            <TextBlock Text="&#xE74C;" FontFamily="Segoe Fluent Icons" FontSize="24" 
-                                       Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
-                                       RenderOptions.TextRenderingMode="Antialias"/>
-                            <TextBlock Text="Extensions" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
-                        </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="15">
+                                <TextBlock Text="&#xEA86;" FontFamily="Segoe Fluent Icons" FontSize="24" 
+                                           Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
+                                           RenderOptions.TextRenderingMode="Antialias"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                    <TextBlock Text="Extensions" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
+                                    <TextBlock Text="{Binding FilteredExtensions.Count, StringFormat='({0})'}" 
+                                               FontSize="20" Foreground="{DynamicResource SecondaryText}" 
+                                               VerticalAlignment="Bottom" Margin="0,0,0,4"/>
+                                </StackPanel>
+                            </StackPanel>
                         <TextBlock Text="Manage manga sources and extensions" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0"/>
                     </StackPanel>
                 </Grid>
             </StackPanel>
 
             <!-- Search Box & Add Button -->
-            <Grid ColumnDefinitions="*, Auto, Auto">
+            <Grid ColumnDefinitions="*, Auto">
                 <TextBox Grid.Column="0" Width="350" HorizontalAlignment="Left"
                          Text="{Binding SearchText}"
                          Watermark="Search extensions..." 
@@ -118,114 +188,196 @@
                                    VerticalAlignment="Center" Margin="0,0,10,0"/>
                     </TextBox.InnerRightContent>
                 </TextBox>
-                
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
-                    <Button Classes="ExtBtn" Background="{DynamicResource SidebarBackground}" Foreground="{DynamicResource PrimaryText}" 
-                            Command="{Binding OpenRepoCommand}" ToolTip.Tip="Download All Extensions (GitHub)">
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" Margin="10,0,0,0" VerticalAlignment="Center">
+                    <!-- Filter Button -->
+                    <Button Classes="header-action" ToolTip.Tip="Filter Languages">
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuItem Header="Filter By" IsEnabled="False" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource SecondaryText}"/>
+                                
+                                <MenuItem Header="Show All" Command="{Binding SetLanguageFilterCommand}" CommandParameter="ALL">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                   IsVisible="{Binding SelectedLanguageFilter, Converter={x:Static ObjectConverters.Equal}, ConverterParameter='ALL'}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Bahasa Indonesia" Command="{Binding SetLanguageFilterCommand}" CommandParameter="ID">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                   IsVisible="{Binding SelectedLanguageFilter, Converter={x:Static ObjectConverters.Equal}, ConverterParameter='ID'}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="English" Command="{Binding SetLanguageFilterCommand}" CommandParameter="EN">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                   IsVisible="{Binding SelectedLanguageFilter, Converter={x:Static ObjectConverters.Equal}, ConverterParameter='EN'}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
-                            <TextBlock Text="Download" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="ExtBtn" Margin="0,0,0,0"
-                            Background="#FF9900" Foreground="#FFFFFF" FontWeight="Bold"
-                            Command="{Binding AddExtensionCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="&#xE710;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center"/>
-                            <TextBlock Text="Add" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xE71C;" FontFamily="Segoe Fluent Icons" FontSize="18" VerticalAlignment="Center"/>
+                            <TextBlock Text="Filter" VerticalAlignment="Center" FontSize="14" FontWeight="Medium"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
             </Grid>
 
-            <!-- Status Message -->
-            <TextBlock Text="{Binding StatusMessage}" Foreground="#F38BA8" Margin="0,5,0,0" 
-                       HorizontalAlignment="Right" FontSize="12" IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+        </StackPanel>
 
-            <!-- Unified Extensions List -->
-            <ScrollViewer>
-                <ItemsControl ItemsSource="{Binding FilteredExtensions}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Background="{DynamicResource SidebarBackground}" CornerRadius="8" Padding="15" Margin="0,0,0,10">
-                                <Grid ColumnDefinitions="Auto, *, Auto">
-                                    <Border Width="48" Height="48" CornerRadius="8" Background="{Binding IconBackground}" 
-                                            ClipToBounds="True" VerticalAlignment="Center">
-                                        <Panel>
-                                            <TextBlock Text="{Binding IconText}" FontSize="24" FontWeight="Bold" Foreground="{Binding IconColor}"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                            <Image Source="{Binding IconBitmap}" Stretch="UniformToFill"/>
-                                        </Panel>
-                                    </Border>
+        <!-- Scrollable Content Area -->
+        <Panel Grid.Row="1" ClipToBounds="True">
+            <ListBox ItemsSource="{Binding FilteredExtensions}" 
+                     Background="Transparent" BorderThickness="0"
+                     Padding="30,0,30,20">
+            <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Template">
+                            <ControlTemplate>
+                                <ContentPresenter Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  Padding="{TemplateBinding Padding}"/>
+                            </ControlTemplate>
+                        </Setter>
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel/>
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="{DynamicResource SidebarBackground}" CornerRadius="8" Padding="10" Margin="0,0,0,10">
+                            <Grid ColumnDefinitions="Auto, *, Auto, Auto">
+                                
+                                <!-- Col 1: Logo -->
+                                <Border Grid.Column="0" Width="48" Height="48" CornerRadius="8" Background="{Binding IconBackground}" 
+                                        ClipToBounds="True" VerticalAlignment="Center">
+                                    <Panel>
+                                        <TextBlock Text="{Binding IconText}" FontSize="24" FontWeight="Bold" Foreground="{Binding IconColor}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   IsVisible="{Binding IconText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        <Image Source="{Binding IconBitmap}" Stretch="UniformToFill"/>
+                                    </Panel>
+                                </Border>
+                                
+                                <!-- Col 2: Info -->
+                                <StackPanel Grid.Column="1" Margin="15,0,10,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
+                                    <TextBlock Text="{Binding Version, StringFormat='v{0}'}" Foreground="{DynamicResource SecondaryText}" FontSize="12" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                
+                                <!-- Col 3: Language Flags -->
+                                <ItemsControl Grid.Column="2" ItemsSource="{Binding LanguageFlags}" VerticalAlignment="Center" Margin="0,0,20,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border CornerRadius="2" ClipToBounds="True">
+                                                <Image Source="{Binding}" Width="24" Height="16" Stretch="UniformToFill"/>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                
+                                <!-- Col 4: Status / Actions -->
+                                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
                                     
-                                    <StackPanel Grid.Column="1" Margin="15,0,0,0" VerticalAlignment="Center">
-                                        <StackPanel Orientation="Horizontal" Spacing="10">
-                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
-                                            
-                                            <!-- Version Badge -->
-                                            <Border CornerRadius="4" Background="#A6E3A1" Padding="6,2">
-                                                <TextBlock Text="{Binding Version}" Foreground="#1E1E2E" FontSize="10" FontWeight="Bold"/>
-                                            </Border>
-                                            
-                                            <!-- Installed Badge -->
-                                            <Border CornerRadius="4" Background="#FF9900" Padding="6,2" IsVisible="{Binding IsInstalled}">
-                                                <TextBlock Text="INSTALLED" Foreground="#FFFFFF" FontSize="10" FontWeight="Bold"/>
-                                            </Border>
+                                    <!-- Download Button (For Uninstalled) -->
+                                    <Button x:CompileBindings="False" Classes="ExtBtn" Background="{DynamicResource HoverBackground}" 
+                                            Foreground="{DynamicResource PrimaryAccent}" ToolTip.Tip="Download &amp; Install" Padding="12,8"
+                                            Command="{Binding DataContext.DownloadExtensionCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}">
+                                        <Button.IsVisible>
+                                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                <Binding Path="!IsInstalled"/>
+                                                <Binding Path="!IsDownloading"/>
+                                            </MultiBinding>
+                                        </Button.IsVisible>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Download" FontWeight="Medium" FontSize="14" VerticalAlignment="Center"/>
                                         </StackPanel>
-                                        <TextBlock Text="{Binding Description}" Foreground="{DynamicResource SecondaryText}" FontSize="12" Margin="0,4,0,0"/>
+                                    </Button>
+
+                                    <!-- Downloading State -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsDownloading}" VerticalAlignment="Center" Margin="0,0,10,0">
+                                        <TextBlock Text="&#xE895;" FontFamily="Segoe Fluent Icons" FontSize="16" Foreground="{DynamicResource PrimaryAccent}" Classes="Spin" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Downloading..." Foreground="{DynamicResource PrimaryAccent}" FontSize="14" FontWeight="Medium" VerticalAlignment="Center" IsHitTestVisible="False"/>
                                     </StackPanel>
+
+                                    <!-- Status Indicator (Installed) -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <StackPanel.IsVisible>
+                                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                <Binding Path="IsInstalled"/>
+                                                <Binding Path="!IsInstalling"/>
+                                            </MultiBinding>
+                                        </StackPanel.IsVisible>
+                                        <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="#A6E3A1" FontSize="16" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Installed" Foreground="#A6E3A1" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <!-- Actions Divider -->
+                                    <Border Width="1" Height="24" Background="{DynamicResource SeparatorBrush}" Margin="5,0">
+                                        <Border.IsVisible>
+                                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                <Binding Path="IsInstalled"/>
+                                                <Binding Path="!IsInstalling"/>
+                                            </MultiBinding>
+                                        </Border.IsVisible>
+                                    </Border>
+
+                                    <!-- Verify Button -->
+                                    <Button x:CompileBindings="False" Classes="ExtBtn" Background="{DynamicResource HoverBackground}" 
+                                            Foreground="#FAB387" ToolTip.Tip="Verify Cloudflare" Padding="8"
+                                            Command="{Binding DataContext.VerifyExtensionCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}">
+                                        <Button.IsVisible>
+                                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                <Binding Path="CanVerify"/>
+                                                <Binding Path="!IsInstalling"/>
+                                            </MultiBinding>
+                                        </Button.IsVisible>
+                                        <TextBlock Text="&#xE9D5;" FontFamily="Segoe Fluent Icons" FontSize="16"/>
+                                    </Button>
+
+                                    <!-- Uninstall Button -->
+                                    <Button x:CompileBindings="False" Classes="ExtBtn" Background="Transparent" Foreground="#F38BA8"
+                                            ToolTip.Tip="Uninstall" Padding="8"
+                                            Command="{Binding DataContext.ToggleInstallCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}">
+                                        <Button.IsVisible>
+                                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                <Binding Path="IsInstalled"/>
+                                                <Binding Path="!IsInstalling"/>
+                                            </MultiBinding>
+                                        </Button.IsVisible>
+                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="16"/>
+                                    </Button>
+
+                                    <!-- Uninstalling State -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsInstalling}" VerticalAlignment="Center" Margin="0,0,10,0">
+                                        <TextBlock Text="&#xE895;" FontFamily="Segoe Fluent Icons" FontSize="16" Foreground="#F38BA8" Classes="Spin" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Uninstalling..." Foreground="#F38BA8" FontSize="14" FontWeight="Medium" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                    </StackPanel>
+
+                                    <!-- Keep only Uninstall and Status for auto-installed flow -->
                                     
-                                    <!-- Actions -->
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                        
-                                        <!-- Verify Button (Visible if Installed AND Supports Verification e.g. Mangabats) -->
-                                        <Button x:CompileBindings="False" Classes="ExtBtn" Background="#FAB387" Foreground="#1E1E2E" Content="Verify"
-                                                IsVisible="{Binding CanVerify}"
-                                                Command="{Binding DataContext.VerifyExtensionCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}"
-                                                Margin="0,0,8,0"/>
-
-                                        <!-- Uninstall Action Group -->
-                                        <Panel IsVisible="{Binding IsInstalled}">
-                                            <Button x:CompileBindings="False" Classes="ExtBtn" Background="{DynamicResource HoverBackground}" Foreground="#F38BA8" Content="Uninstall"
-                                                    IsVisible="{Binding !IsInstalling}"
-                                                    Command="{Binding DataContext.ToggleInstallCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"/>
-
-                                            <Button Classes="ExtBtn" Background="{DynamicResource HoverBackground}" Foreground="{DynamicResource SecondaryText}" 
-                                                    IsVisible="{Binding IsInstalling}" IsHitTestVisible="False">
-                                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                                    <Border Classes="Loader" Width="16" Height="16" BorderThickness="2" VerticalAlignment="Center"/>
-                                                    <TextBlock Text="Uninstalling..." VerticalAlignment="Center"/>
-                                                </StackPanel>
-                                            </Button>
-                                        </Panel>
-
-                                        <!-- Install Action Group -->
-                                        <Panel IsVisible="{Binding IsInstalled, Converter={x:Static BoolConverters.Not}}">
-                                            <Button x:CompileBindings="False" Classes="ExtBtn" Background="#FF9900" Foreground="#FFFFFF" Content="Install"
-                                                    IsVisible="{Binding !IsInstalling}"
-                                                    Command="{Binding DataContext.ToggleInstallCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"/>
-                                            
-                                            <Button Classes="ExtBtn" Background="{DynamicResource HoverBackground}" Foreground="{DynamicResource SecondaryText}" 
-                                                    IsVisible="{Binding IsInstalling}" IsHitTestVisible="False">
-                                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                                    <!-- Scaled Down Loader -->
-                                                    <Border Classes="Loader" Width="16" Height="16" BorderThickness="2" VerticalAlignment="Center"/>
-                                                    <TextBlock Text="Installing..." VerticalAlignment="Center"/>
-                                                </StackPanel>
-                                            </Button>
-                                        </Panel>
-                                        
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
-
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+    
             <!-- Empty State -->
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" Margin="0,50,0,0" IsVisible="{Binding !HasExtensions}">
                 <TextBlock Text="&#xE74C;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
@@ -234,12 +386,10 @@
                     <TextBlock Text="Try adjusting your search or add a new extension." Foreground="{DynamicResource SecondaryText}" FontSize="14" HorizontalAlignment="Center"/>
                 </StackPanel>
             </StackPanel>
-
-        </StackPanel>
-    </ScrollViewer>
+        </Panel>
 
     <!-- Loading Overlay -->
-    <Border Background="{DynamicResource OverlayBackground}" IsVisible="{Binding IsBusy}">
+    <Border Grid.RowSpan="2" Background="{DynamicResource OverlayBackground}" IsVisible="{Binding IsBusy}">
         <Border Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="30" HorizontalAlignment="Center" VerticalAlignment="Center"
                 BoxShadow="0 10 30 0 #50000000">
             <StackPanel Spacing="15" HorizontalAlignment="Center">
@@ -248,5 +398,15 @@
             </StackPanel>
         </Border>
     </Border>    
-    </Grid>
+        </Grid>
+
+        <!-- Offline State -->
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" IsVisible="{Binding IsOffline}">
+            <TextBlock Text="&#xEB55;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="#F38BA8" HorizontalAlignment="Center"/>
+            <StackPanel Spacing="8">
+                <TextBlock Text="No Internet Connection" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
+                <TextBlock Text="You are currently offline. Please check your network settings." Foreground="{DynamicResource SecondaryText}" FontSize="14" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </StackPanel>
+    </Panel>
 </UserControl>

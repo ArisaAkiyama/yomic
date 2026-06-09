@@ -1,38 +1,61 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Yomic.ViewModels"
         xmlns:components="using:Yomic.Views.Components"
         x:Class="Yomic.Views.MainWindow"
-        Title="Mihon Desktop"
+        Title="Yomic Desktop"
         Background="Transparent"
         TransparencyLevelHint="Mica"
         ExtendClientAreaToDecorationsHint="True"
         x:DataType="vm:MainWindowViewModel"
         x:Name="MainShell"
         WindowStartupLocation="CenterScreen"
-        Height="600" Width="960">
+        Height="600" Width="1008">
 
     <Window.Styles>
-        <Style Selector="Button.NavBtn">
+        <Style Selector="Button.SidebarBtn">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="Padding" Value="12, 10"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="6"/>
             <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Medium"/>
             <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="Container" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}" Padding="{TemplateBinding Padding}" Margin="{TemplateBinding Margin}">
+                        <Grid>
+                            <!-- Windows 11 Fluent UI Pill Indicator -->
+                            <Border Name="SelectionIndicator" Width="4" Height="16" CornerRadius="2" Background="#0078D4" Opacity="0" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-12,0,0,0"/>
+                            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
         </Style>
-        <Style Selector="Button.NavBtn:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+
+        <Style Selector="Button.SidebarBtn TextBlock.NavIcon">
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="Width" Value="20"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="FontSize" Value="20"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+        </Style>
+
+        <Style Selector="Button.SidebarBtn Image.NavIcon">
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="Width" Value="20"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+        </Style>
+
+        <Style Selector="Button.SidebarBtn TextBlock.NavLabel">
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
-        </Style>
-        <Style Selector="Window[WindowState=Maximized]">
-            <Setter Property="Padding" Value="8"/>
-        </Style>
-        
-        <!-- Smooth Text Reveal Animation -->
-        <Style Selector="TextBlock.NavLabel">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Medium"/>
             <Setter Property="Opacity" Value="0"/>
             <Setter Property="Transitions">
                 <Transitions>
@@ -40,17 +63,66 @@
                 </Transitions>
             </Setter>
         </Style>
+
         <Style Selector="SplitView[IsPaneOpen=True] TextBlock.NavLabel">
             <Setter Property="Opacity" Value="1"/>
         </Style>
+
+        <Style Selector="Button.SidebarBtn /template/ Border#SelectionIndicator">
+            <Setter Property="Height" Value="0"/>
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Height" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.1" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="Button.SidebarBtn:pointerover /template/ Border#Container">
+            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+        </Style>
+        
+        <Style Selector="Button.SidebarBtn.active /template/ Border#Container">
+            <Setter Property="Background" Value="#1A0078D4"/>
+        </Style>
+        
+        <Style Selector="Button.SidebarBtn.active /template/ Border#SelectionIndicator">
+            <Setter Property="Opacity" Value="1"/>
+            <Setter Property="Height" Value="16"/>
+        </Style>
+
+        <Style Selector="Button.SidebarBtn.active TextBlock.NavIcon">
+            <Setter Property="Opacity" Value="1.0"/>
+            <Setter Property="Foreground" Value="#0078D4"/>
+        </Style>
+
+        <Style Selector="Button.SidebarBtn.active Image.NavIcon">
+            <Setter Property="Opacity" Value="1.0"/>
+        </Style>
+
+        <Style Selector="Button.SidebarBtn.active TextBlock.NavLabel">
+            <Setter Property="Foreground" Value="#0078D4"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style Selector="Window[WindowState=Maximized] Panel#RootContainer">
+            <Setter Property="Margin" Value="8"/>
+        </Style>
+        <Style Selector="Window[WindowState=FullScreen] Panel#RootContainer">
+             <Setter Property="Margin" Value="0"/>
+        </Style>
     </Window.Styles>
 
-    <Panel>
+    <Panel Name="RootContainer">
         <!-- Mica Tint (Dark Overlay for better contrast) -->
-        <Border Background="{DynamicResource OverlayBackground}" IsHitTestVisible="False"/>
+        <Border Background="{DynamicResource OverlayBackground}" 
+                IsHitTestVisible="False"
+                IsVisible="{Binding !IsFullscreen}"/>
 
-        <!-- Custom Title Bar Visuals -->
-        <Grid Height="30" VerticalAlignment="Top" IsHitTestVisible="False">
+        <!-- Custom Title Bar Visuals - Hidden in Fullscreen -->
+        <Grid Height="30" VerticalAlignment="Top" IsHitTestVisible="False"
+              IsVisible="{Binding !IsFullscreen}">
              <StackPanel Orientation="Horizontal" Spacing="10" Margin="15,0,0,0" VerticalAlignment="Center">
 
                  <Image Source="/Assets/app.ico" Height="20" Width="20" VerticalAlignment="Center" RenderOptions.BitmapInterpolationMode="HighQuality"/>
@@ -58,76 +130,89 @@
              </StackPanel>
         </Grid>
 
+        <!-- Content when NOT fullscreen: SplitView with Sidebar -->
         <SplitView Margin="0,30,0,0"
                    DisplayMode="CompactInline"
                    IsPaneOpen="{Binding IsPaneOpen}"
                    OpenPaneLength="260"
                    CompactPaneLength="64"
-                   PaneBackground="{DynamicResource SidebarBackground}">
+                   PaneBackground="{DynamicResource SidebarBackground}"
+                   IsVisible="{Binding !IsFullscreen}">
             
             <SplitView.Pane>
-                <Border Padding="10,20" Background="Transparent" VerticalAlignment="Stretch">
+                <Border Name="SidebarPane" Padding="10,20" Background="Transparent" VerticalAlignment="Stretch">
                     <Grid RowDefinitions="Auto, *, Auto" VerticalAlignment="Stretch">
                         <!-- Hamburger -->
-                        <Button Grid.Row="0" Classes="NavBtn" Margin="0,0,0,15" 
+                        <Button Grid.Row="0" Classes="SidebarBtn" Margin="0,0,0,15" 
                                 Command="{Binding TogglePaneCommand}"
                                 HorizontalAlignment="Left">
                              <TextBlock Text="&#xE700;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center"/>
                         </Button>
 
                         <!-- Main Navigation -->
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden">
                             <StackPanel Spacing="4">
-                                <Button Classes="NavBtn" Click="OnLibraryClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsLibraryActive}" Click="OnLibraryClick">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
-                                        <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Library" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
-                                <Button Classes="NavBtn" Click="OnUpdatesClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsUpdatesActive}" Click="OnUpdatesClick">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
-                                        <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="&#xE895;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Updates" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
-                                <Button Classes="NavBtn" Click="OnHistoryClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsHistoryActive}" Click="OnHistoryClick">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
-                                        <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="History" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
-                                <Button Classes="NavBtn" Click="OnDownloadsClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsDownloadsActive}" Click="OnDownloadsClick">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
-                                        <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Downloads" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
                                 
                                 <Separator Background="{DynamicResource SeparatorBrush}" Height="1" Margin="10,15" Opacity="0.5"/>
                                 
-                                <Button Classes="NavBtn" Click="OnBrowseClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsBrowseActive}" Click="OnBrowseClick">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
-                                        <TextBlock Text="&#xE774;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="&#xE774;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Browse Sources" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
     
-                                <Button Classes="NavBtn" Click="OnExtensionsClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsExtensionsActive}" Click="OnExtensionsClick">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
-                                        <TextBlock Text="&#xE74C;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="&#xEA86;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Extensions" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
                             </StackPanel>
                         </ScrollViewer>
                         
-                        <!-- Settings -->
-                        <Button Grid.Row="2" Classes="NavBtn" Click="OnSettingsClick" VerticalAlignment="Bottom">
-                            <StackPanel Orientation="Horizontal" Spacing="16">
-                                <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" FontSize="20" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
-                                <TextBlock Text="Settings" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
-                            </StackPanel>
-                        </Button>
+                        <!-- Bottom Actions (Feedback & Settings) -->
+                        <StackPanel Grid.Row="2" Spacing="4" VerticalAlignment="Bottom" Margin="0,0,0,5">
+                            <Button Classes="SidebarBtn" Click="OnFeedbackClick">
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <TextBlock Text="&#xED15;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Send Feedback" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Separator Background="{DynamicResource SeparatorBrush}" Height="1" Margin="10,5" Opacity="0.5"/>
+
+                            <Button Classes="SidebarBtn" Classes.active="{Binding IsSettingsActive}" Click="OnSettingsClick">
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Settings" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
                     </Grid>
                 </Border>
             </SplitView.Pane>
@@ -148,5 +233,37 @@
                 </Grid>
             </SplitView.Content>
         </SplitView>
+        
+        <!-- Fullscreen Content: No Sidebar, No Title Bar -->
+        <Grid IsVisible="{Binding IsFullscreen}" Background="Black">
+            <Border ClipToBounds="True" Background="Black">
+                <TransitioningContentControl Content="{Binding CurrentPage}" Padding="0">
+                    <TransitioningContentControl.PageTransition>
+                        <CrossFade Duration="0:0:0.25" />
+                    </TransitioningContentControl.PageTransition>
+                </TransitioningContentControl>
+            </Border>
+        </Grid>
+        
+        <!-- Extension Reminder Snackbar (Daily Notification) -->
+        <components:ExtensionReminderSnackbar x:Name="ExtensionReminder" 
+                                               VerticalAlignment="Bottom" 
+                                               HorizontalAlignment="Center"
+                                               IsVisible="False"/>
+
+        <!-- Global Dialog Overlay (Dimming Effect) -->
+        <Border Background="#90000000" 
+                IsVisible="{Binding IsDialogOverlayVisible}"
+                ZIndex="1000">
+            <Border.Transitions>
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.25"/>
+                </Transitions>
+            </Border.Transitions>
+        </Border>
+
+        <!-- Full Screen Image Overlay for Theme Transition Crossfade -->
+        <Image RenderOptions.BitmapInterpolationMode="HighQuality" x:Name="ThemeTransitionOverlay" ZIndex="2000" IsHitTestVisible="False" IsVisible="False" Stretch="Fill" />
     </Panel>
 </Window>
+

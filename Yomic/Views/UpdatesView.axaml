@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Yomic.ViewModels"
+             xmlns:helpers="using:Yomic.Views.Helpers"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Yomic.Views.UpdatesView"
              x:DataType="vm:UpdatesViewModel"
@@ -15,74 +16,108 @@
             <Setter Property="Background" Value="Transparent"/>
         </Style>
         
-        <!-- Card Style -->
+        <!-- Card Style (Mihon-like flat row) -->
         <Style Selector="Border.UpdateCard">
-            <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+            <Setter Property="Background" Value="Transparent"/>
              <Setter Property="Transitions">
                 <Transitions>
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
-                    <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.2"/>
                     <BrushTransition Property="Background" Duration="0:0:0.2"/>
                 </Transitions>
             </Setter>
         </Style>
         <Style Selector="Border.UpdateCard:pointerover">
-            <Setter Property="RenderTransform" Value="scale(1.005)"/> 
-            <Setter Property="BoxShadow" Value="0 4 12 0 #40000000"/>
             <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
             <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        
+        <!-- Dimmed Text for Read Chapters -->
+        <Style Selector="TextBlock.read">
+            <Setter Property="Opacity" Value="0.45"/>
+        </Style>
+
+
+
+        <Style Selector="Button.header-action">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+        </Style>
+        <Style Selector="Button.header-action:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+        </Style>
+        <Style Selector="Button.header-action:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
         </Style>
     </UserControl.Styles>
 
     <Panel>
         <!-- Online Content -->
         <Panel IsVisible="{Binding !IsOffline}">
-            <ScrollViewer Padding="40">
-                <StackPanel>
+            <ScrollViewer>
+                <StackPanel Margin="30, 20">
                     <!-- Header -->
                     <StackPanel Margin="0,0,0,30">
-                        <Grid ColumnDefinitions="*, Auto">
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
-                                <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="28" 
-                                           Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
-                                           RenderOptions.TextRenderingMode="Antialias"/>
-                                <TextBlock Text="Updates" FontSize="32" FontWeight="Bold" 
-                                           Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
-                                
-                                <!-- Count Badge -->
-                                 <Border Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="12,4" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding UpdatesCount, StringFormat='{}{0} New Chapters'}" 
-                                               Foreground="{DynamicResource SecondaryText}" FontSize="12" VerticalAlignment="Center"/>
-                                </Border>
-                            </StackPanel>
-
-                            <Button Grid.Column="1" Command="{Binding RefreshCommand}"
-                                    Background="{DynamicResource SidebarBackground}" Foreground="#FF9900" 
-                                    CornerRadius="20" Width="40" Height="40" Padding="0"
-                                    VerticalAlignment="Center"
-                                    ToolTip.Tip="Sync Library">
-                                <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
-                                           FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Button>
-                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
+                            <TextBlock Text="&#xE895;" FontFamily="Segoe Fluent Icons" FontSize="28" 
+                                       Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
+                                       RenderOptions.TextRenderingMode="Antialias"/>
+                            <TextBlock Text="Updates" FontSize="32" FontWeight="Bold" 
+                                       Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
+                            
+                            <!-- Count Badge -->
+                             <Border Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="12,4" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding UpdatesCount, StringFormat='{}{0} New Chapters'}" 
+                                           Foreground="{DynamicResource SecondaryText}" FontSize="12" VerticalAlignment="Center"/>
+                            </Border>
+                        </StackPanel>
                         <TextBlock Text="Recent chapters from your library" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" FontSize="14"/>
+
+                            <!-- Search and Filter Row (Matches Library Layout) -->
+                        <Grid ColumnDefinitions="*, Auto" Margin="0,25,0,0">
+                            <!-- Spacer for Search Box (Column 0) - Empty here -->
+                            
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" IsVisible="{Binding HasItems}">
+
+
+                                <!-- Clear Cache / Updates Button -->
+                                <Button Command="{Binding ClearUpdatesCommand}"
+                                        Classes="header-action"
+                                        ToolTip.Tip="Clear Updates">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="18" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Clear All" VerticalAlignment="Center" FontSize="14" FontWeight="Medium"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <!-- Refresh Button -->
+                                <Button Command="{Binding RefreshCommand}"
+                                        Classes="header-action"
+                                        ToolTip.Tip="Sync Library">
+                                    <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
+                                               FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
 
                     <!-- Updates List (Grouped) -->
-                    <ItemsControl ItemsSource="{Binding GroupedUpdates}" IsVisible="{Binding !IsEmpty}" MaxWidth="900" HorizontalAlignment="Left">
+                    <ItemsControl ItemsSource="{Binding GroupedUpdates}" IsVisible="{Binding !IsEmpty}" HorizontalAlignment="Stretch">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Margin="0,0,0,25">
+                                <StackPanel Margin="0,0,0,25" HorizontalAlignment="Stretch">
                                     <!-- Group Header -->
-                                    <Border BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1" Margin="0,0,0,10" Padding="0,0,0,5">
-                                         <TextBlock Text="{Binding Header}" FontSize="16" FontWeight="Bold" Foreground="#FF9900"/>
+                                    <Border BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1" Margin="0,0,0,12" Padding="0,0,0,8">
+                                         <TextBlock Text="{Binding Header}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource SecondaryText}" Opacity="0.9"/>
                                     </Border>
                                     
                                     <!-- Items in Group -->
                                     <ItemsControl ItemsSource="{Binding Items}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Button Command="{Binding $parent[UserControl].((vm:UpdatesViewModel)DataContext).OpenChapterCommand}" 
+                                                <Button x:CompileBindings="False"
+                                                        Command="{Binding DataContext.OpenChapterCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
                                                         CommandParameter="{Binding}"
                                                         Background="Transparent" BorderThickness="0" HorizontalAlignment="Stretch" Padding="0" Margin="0,0,0,8">
                                                     <Button.Styles>
@@ -97,43 +132,49 @@
                                                     <Button.ContextMenu>
                                                         <ContextMenu>
                                                             <MenuItem Header="Mark previous as read" 
-                                                                      Command="{Binding $parent[UserControl].((vm:UpdatesViewModel)DataContext).MarkPrevReadCommand}"
+                                                                      Command="{Binding DataContext.MarkPrevReadCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                       CommandParameter="{Binding}"/>
                                                         </ContextMenu>
                                                     </Button.ContextMenu>
                                                     
-                                                    <Border Classes="UpdateCard" CornerRadius="12" Padding="12">
-                                                        <Grid ColumnDefinitions="Auto, *, Auto">
-                                                            <!-- Cover Placeholder / Image -->
-                                                            <Border Grid.Column="0" Width="60" Height="90" CornerRadius="8" ClipToBounds="True" Margin="0,0,18,0" Background="#181825">
-                                                                <Image Source="{Binding CoverBitmap}" Stretch="UniformToFill" />
+                                                    <Border Classes="UpdateCard" CornerRadius="8" Padding="8,6" Margin="0,0,0,4">
+                                                        <Grid ColumnDefinitions="48, *, Auto">
+                                                            <!-- Col 1: Cover (Square 48x48) -->
+                                                            <Border Grid.Column="0" Width="48" Height="48" CornerRadius="6" ClipToBounds="True" Background="#181825" VerticalAlignment="Center">
+                                                                <Image helpers:SecureImageLoader.Url="{Binding MangaRef.ThumbnailUrl}"
+                                                                       Stretch="UniformToFill" />
                                                             </Border>
-                                                            
-                                                            <!-- Info -->
-                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6" Margin="0,4">
-                                                                <TextBlock Text="{Binding MangaRef.Title}" Foreground="{DynamicResource PrimaryText}" 
-                                                                           FontWeight="Bold" FontSize="16" TextWrapping="Wrap" MaxLines="2" 
-                                                                           LineHeight="22" TextTrimming="CharacterEllipsis"/>
-                                                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource SecondaryText}" FontSize="14"/>
-                                                                    <Border Background="{DynamicResource OverlayBackground}" CornerRadius="4" Padding="6,1" IsVisible="{Binding IsRead}">
-                                                                        <TextBlock Text="READ" FontSize="10" Foreground="{DynamicResource SecondaryText}"/>
-                                                                    </Border>
+
+                                                            <!-- Col 2: Info -->
+                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0" Spacing="4">
+                                                                <!-- Title -->
+                                                                <TextBlock Classes.read="{Binding IsRead}"
+                                                                           Text="{Binding MangaRef.Title}" 
+                                                                           Foreground="{DynamicResource PrimaryText}" FontWeight="SemiBold" FontSize="14"
+                                                                           TextTrimming="CharacterEllipsis" MaxLines="1"
+                                                                           VerticalAlignment="Center"/>
+                                                                
+                                                                <!-- Chapter Name Row -->
+                                                                <StackPanel Orientation="Horizontal" Spacing="0">
+                                                                    <!-- Unread Dot (Mihon style) -->
+                                                                    <Border Width="8" Height="8" CornerRadius="4" 
+                                                                            Background="{DynamicResource PrimaryAccent}" 
+                                                                            Margin="0,0,6,0" VerticalAlignment="Center" 
+                                                                            IsVisible="{Binding !IsRead}"/>
+                                                                    
+                                                                    <!-- Chapter Title -->
+                                                                    <TextBlock Classes.read="{Binding IsRead}"
+                                                                               Text="{Binding Title}" 
+                                                                               Foreground="{DynamicResource SecondaryText}" FontSize="12" 
+                                                                               TextTrimming="CharacterEllipsis" MaxLines="1"
+                                                                               VerticalAlignment="Center"/>
                                                                 </StackPanel>
                                                             </StackPanel>
-                                                            
-                                                            <!-- Metadata / Actions -->
-                                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal" Spacing="20" Margin="10,0,10,0">
-                                                                <TextBlock Text="{Binding Date}" Foreground="{DynamicResource SecondaryText}" FontSize="12" VerticalAlignment="Center"/>
-                                                                
-                                                                <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" FontSize="18"
-                                                                           IsVisible="{Binding IsDownloaded}" 
-                                                                           ToolTip.Tip="Downloaded" VerticalAlignment="Center"/>
-                                                                           
-                                                                <TextBlock Text="&#xE762;" FontFamily="Segoe Fluent Icons" Foreground="#FF9900" FontSize="18"
-                                                                           IsVisible="{Binding !IsRead}" 
-                                                                           ToolTip.Tip="New Chapter" VerticalAlignment="Center"/>
-                                                            </StackPanel>
+
+                                                            <!-- Col 3: Meta (Timestamp) -->
+                                                            <TextBlock Grid.Column="2" Text="{Binding Date}" 
+                                                                       Foreground="{DynamicResource SecondaryText}" FontSize="12" 
+                                                                       VerticalAlignment="Center" HorizontalAlignment="Right" Margin="10,0,5,0"/>
                                                         </Grid>
                                                     </Border>
                                                 </Button>
@@ -154,7 +195,7 @@
                        <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="#45475A" HorizontalAlignment="Center"/>
                        <TextBlock Text="Updates is Empty" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
                        <TextBlock Text="Add manga to your library to see updates here." Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
-                       <Button Command="{Binding GoToLibraryCommand}" Content="Go to Library" HorizontalAlignment="Center" Background="#FF9900" Foreground="#1E1E2E" Padding="20,10" CornerRadius="8" Margin="0,15,0,0"/>
+                       <Button Command="{Binding GoToLibraryCommand}" Content="Go to Library" HorizontalAlignment="Center" Background="#0078D7" Foreground="#FFFFFF" Padding="20,10" CornerRadius="8" Margin="0,15,0,0"/>
                    </StackPanel>
 
                   <!-- Case 2: Library Has Items but No Updates -->
@@ -162,12 +203,12 @@
                        <TextBlock Text="&#xE9D5;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="#45475A" HorizontalAlignment="Center"/>
                        <TextBlock Text="No Recent Updates" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
                        <TextBlock Text="New chapters from your library will appear here." Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
-                       <Button Command="{Binding RefreshCommand}" Content="Check Now" HorizontalAlignment="Center" Background="#FF9900" Foreground="#1E1E2E" Padding="20,10" CornerRadius="8" Margin="0,15,0,0"/>
+                       <Button Command="{Binding RefreshCommand}" Content="Check Now" HorizontalAlignment="Center" Background="#0078D7" Foreground="#FFFFFF" Padding="20,10" CornerRadius="8" Margin="0,15,0,0"/>
                   </StackPanel>
             </StackPanel>
         </Panel>
 
-        <!-- Offline State -->
+    <!-- Offline State -->
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" IsVisible="{Binding IsOffline}">
             <TextBlock Text="&#xEB55;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="#F38BA8" HorizontalAlignment="Center"/>
             <StackPanel Spacing="8">
@@ -175,5 +216,13 @@
                 <TextBlock Text="You are currently offline. Please check your network settings." Foreground="{DynamicResource SecondaryText}" FontSize="14" HorizontalAlignment="Center"/>
             </StackPanel>
         </StackPanel>
+
+        <!-- Sync Overlay -->
+        <Border Background="#80000000" IsVisible="{Binding IsRefreshing}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
+                 <ProgressBar IsIndeterminate="True" Foreground="{DynamicResource AccentColor}" Width="150" Height="2" Background="#33FFFFFF"/>
+                 <TextBlock Text="{Binding StatusMessage}" Foreground="White" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
+            </StackPanel>
+        </Border>
     </Panel>
 </UserControl>

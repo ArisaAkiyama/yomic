@@ -6,10 +6,6 @@ namespace Yomic.Core.Sources
 {
     public interface IFilterableMangaSource
     {
-        /// <summary>
-        /// Get manga with specific filters.
-        /// </summary>
-        Task<(List<Manga> Items, int TotalPages)> GetFilteredMangaAsync(int page, int statusFilter = 0, int typeFilter = 0);
 
         /// <summary>
         /// Get latest updated manga (paginated).

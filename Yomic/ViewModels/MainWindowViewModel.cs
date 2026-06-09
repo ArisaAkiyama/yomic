@@ -2,6 +2,7 @@ using ReactiveUI;
 using System;
 using System.Reactive;
 using System.Collections.ObjectModel;
+using System.Threading.Tasks;
 
 namespace Yomic.ViewModels
 {
@@ -10,30 +11,52 @@ namespace Yomic.ViewModels
     {
         public string Title { get; set; } = string.Empty;
         public string? CoverUrl { get; set; } 
-        public string? UnreadCount { get; set; }
+        public long LastViewed { get; set; } // For "Last Read" sorting 
+
+        private string? _unreadCount;
+        public string? UnreadCount 
+        {
+            get => _unreadCount;
+            set 
+            {
+                this.RaiseAndSetIfChanged(ref _unreadCount, value);
+                this.RaisePropertyChanged(nameof(HasUnreadContent));
+            }
+        }
+
         public string? LastReadTime { get; set; }
         public int Status { get; set; } // 1=Ongoing, 2=Completed, 5=Hiatus, 6=Cancelled
+        public int ChapterCount { get; set; } // Total chapters count
         public System.Collections.Generic.List<string> Genres { get; set; } = new();
-        
-        public string StatusString => Status switch
+
+        public bool HasUnreadContent => !string.IsNullOrEmpty(UnreadCount) && UnreadCount != "0";
+
+        private bool _isNewBadgeVisible;
+        public bool IsNewBadgeVisible
         {
-            1 => "Ongoing",
-            2 => "Completed",
-            5 => "Hiatus",
-            6 => "Cancelled",
-            _ => "Unknown"
-        };
+            get => _isNewBadgeVisible;
+            set => this.RaiseAndSetIfChanged(ref _isNewBadgeVisible, value);
+        }
+        
+        public string StatusString 
+        {
+            get
+            {
+                return Status switch
+                {
+                    1 => "Ongoing",
+                    2 => "Completed",
+                    5 => "Hiatus",
+                    6 => "Cancelled",
+                    _ => "Unknown"
+                };
+            }
+        }
         
         // Context for Fetching Details
         public long SourceId { get; set; }
+        public string? SourceName { get; set; }
         public string MangaUrl { get; set; } = string.Empty; // This corresponds to Manga.Url (ID)
-
-        private Avalonia.Media.Imaging.Bitmap? _coverBitmap;
-        public Avalonia.Media.Imaging.Bitmap? CoverBitmap
-        {
-            get => _coverBitmap;
-            set => this.RaiseAndSetIfChanged(ref _coverBitmap, value);
-        }
         
         // Formatted Last Update String
         public long LastUpdate { get; set; }
@@ -54,6 +77,12 @@ namespace Yomic.ViewModels
             }
         }
 
+        public bool HasNewChapters 
+        {
+            get => _isNewBadgeVisible;
+            set => this.RaiseAndSetIfChanged(ref _isNewBadgeVisible, value);
+        }
+
         public string Description { get; set; } = string.Empty;
 
         // Helper to Create from Core Model safely
@@ -67,8 +96,11 @@ namespace Yomic.ViewModels
                 MangaUrl = m.Url,
 
                 Status = m.Status,
+                ChapterCount = m.Chapters?.Count ?? 0,
                 Genres = m.Genre ?? new(),
-                LastUpdate = m.LastUpdate
+                LastUpdate = m.LastUpdate,
+                LastViewed = m.LastViewed, // Map from Core
+                HasNewChapters = m.HasNewChapters // Map from Core
             };
         }
     }
@@ -76,6 +108,14 @@ namespace Yomic.ViewModels
     public class MainWindowViewModel : ViewModelBase
     {
         public NotificationViewModel NotificationVM { get; } = new NotificationViewModel();
+        public event Action<Core.Services.UpdateService.UpdateInfo?>? RequestUpdateDialog;
+        public Action? RequestFeedbackDialog;
+        public Action<bool>? RequestThemeChange;
+
+        public void ShowUpdateDialog(Core.Services.UpdateService.UpdateInfo? info = null)
+        {
+            RequestUpdateDialog?.Invoke(info);
+        }
 
         private ViewModelBase? _currentPage;
         public ViewModelBase? CurrentPage
@@ -85,11 +125,26 @@ namespace Yomic.ViewModels
             {
                 this.RaiseAndSetIfChanged(ref _currentPage, value);
                 this.RaisePropertyChanged(nameof(IsReaderMode));
+                this.RaisePropertyChanged(nameof(IsLibraryActive));
+                this.RaisePropertyChanged(nameof(IsUpdatesActive));
+                this.RaisePropertyChanged(nameof(IsHistoryActive));
+                this.RaisePropertyChanged(nameof(IsDownloadsActive));
+                this.RaisePropertyChanged(nameof(IsBrowseActive));
+                this.RaisePropertyChanged(nameof(IsExtensionsActive));
+                this.RaisePropertyChanged(nameof(IsSettingsActive));
             }
         }
 
         // True when CurrentPage is ReaderViewModel (used to hide sidebar)
         public bool IsReaderMode => _currentPage is ReaderViewModel;
+
+        public bool IsLibraryActive => _currentPage == _libraryVM && _libraryVM != null;
+        public bool IsUpdatesActive => _currentPage == _updatesVM && _updatesVM != null;
+        public bool IsHistoryActive => _currentPage == _historyVM && _historyVM != null;
+        public bool IsDownloadsActive => _currentPage == _downloadsVM && _downloadsVM != null;
+        public bool IsBrowseActive => _currentPage == _browseVM && _browseVM != null;
+        public bool IsExtensionsActive => _currentPage == _extensionsVM && _extensionsVM != null;
+        public bool IsSettingsActive => _currentPage == _settingsVM && _settingsVM != null;
 
         private LibraryViewModel? _libraryVM;
         public LibraryViewModel LibraryVM 
@@ -116,11 +171,28 @@ namespace Yomic.ViewModels
         private readonly Core.Services.ImageCacheService _imageCacheService;
         public Core.Services.ImageCacheService ImageCacheService => _imageCacheService;
 
-        private bool _isPaneOpen = true;
+        private readonly Core.Services.SecureImageService _secureImageService;
+        public Core.Services.SecureImageService SecureImageService => _secureImageService;
+
+        private bool _isPaneOpen = false;
         public bool IsPaneOpen
         {
             get => _isPaneOpen;
             set => this.RaiseAndSetIfChanged(ref _isPaneOpen, value);
+        }
+        
+        private bool _isFullscreen = false;
+        public bool IsFullscreen
+        {
+            get => _isFullscreen;
+            set => this.RaiseAndSetIfChanged(ref _isFullscreen, value);
+        }
+
+        private bool _isDialogOverlayVisible;
+        public bool IsDialogOverlayVisible
+        {
+            get => _isDialogOverlayVisible;
+            set => this.RaiseAndSetIfChanged(ref _isDialogOverlayVisible, value);
         }
 
         public ReactiveCommand<System.Reactive.Unit, System.Reactive.Unit> TogglePaneCommand { get; }
@@ -130,14 +202,16 @@ namespace Yomic.ViewModels
                                    Core.Services.NetworkService networkService,
                                    Core.Services.DownloadService downloadService,
                                    Core.Services.SettingsService settingsService,
-                                   Core.Services.ImageCacheService imageCacheService)
+                                   Core.Services.ImageCacheService imageCacheService,
+                                   Core.Services.SecureImageService secureImageService)
         {
             _sourceManager = sourceManager;
             _libraryService = libraryService;
             _networkService = networkService;
             _downloadService = downloadService;
             _settingsService = settingsService;
-            _imageCacheService = imageCacheService; // Store it
+            _imageCacheService = imageCacheService;
+            _secureImageService = secureImageService;
             
             // Subscribe to Network Status
             _networkService.StatusChanged += (s, isOnline) =>
@@ -164,6 +238,7 @@ namespace Yomic.ViewModels
             _downloadService = new Core.Services.DownloadService(_sourceManager, _libraryService, _networkService);
             _settingsService = new Core.Services.SettingsService();
             _imageCacheService = new Core.Services.ImageCacheService();
+            _secureImageService = new Core.Services.SecureImageService(_networkService, _imageCacheService);
             TogglePaneCommand = ReactiveCommand.Create(() => { IsPaneOpen = !IsPaneOpen; });
             CheckFirstRun();
         }
@@ -175,6 +250,9 @@ namespace Yomic.ViewModels
         {
             if (_navigationStack.Count > 0)
             {
+                // Dispose the page we are EXITING with delay to avoid visual flash
+                DisposeDelayed(CurrentPage);
+
                 CurrentPage = _navigationStack.Pop();
                 
                 // Refresh library when navigating back to it
@@ -207,8 +285,16 @@ namespace Yomic.ViewModels
         {
             if (CurrentPage != LibraryVM)
             {
-                _navigationStack.Clear();
+                var oldPage = CurrentPage;
+                ClearStack();
+                _historyVM = null;
+                _browseVM = null;
+                _updatesVM = null;
+                _downloadsVM = null;
+                _extensionsVM = null;
+                
                 CurrentPage = LibraryVM;
+                DisposeDelayed(oldPage);
             }
             // Always refresh
             _ = LibraryVM.RefreshLibrary();
@@ -217,7 +303,7 @@ namespace Yomic.ViewModels
         public void GoToReader(ChapterItem? chapter = null, System.Collections.Generic.List<ChapterItem>? allChapters = null, long sourceId = 3, string mangaTitle = "", string mangaUrl = "", bool isNsfw = false)
         {
             if (CurrentPage != null) _navigationStack.Push(CurrentPage);
-            CurrentPage = new ReaderViewModel(this, _sourceManager, chapter, allChapters, _networkService, _libraryService, sourceId, mangaTitle, mangaUrl, isNsfw);
+            CurrentPage = new ReaderViewModel(this, _sourceManager, chapter, allChapters, _networkService, _libraryService, _settingsService, sourceId, mangaTitle, mangaUrl, isNsfw);
         }
 
         private BrowseViewModel? _browseVM;
@@ -230,8 +316,11 @@ namespace Yomic.ViewModels
         {
             if (CurrentPage != BrowseVM)
             {
-                _navigationStack.Clear();
+                var oldPage = CurrentPage;
+                ClearStack();
+                _browseVM = null; // Re-init current if needed
                 CurrentPage = BrowseVM;
+                DisposeDelayed(oldPage);
             }
         }
 
@@ -240,7 +329,7 @@ namespace Yomic.ViewModels
         private SettingsViewModel? _settingsVM;
         public SettingsViewModel SettingsVM
         {
-            get => _settingsVM ??= new SettingsViewModel(this, _libraryService, _settingsService, _sourceManager);
+            get => _settingsVM ??= new SettingsViewModel(this, _libraryService, _settingsService, _sourceManager, _networkService);
         }
 
         public void GoToSettings()
@@ -261,10 +350,17 @@ namespace Yomic.ViewModels
         {
             if (CurrentPage != UpdatesVM)
             {
+                var oldPage = CurrentPage;
+                ClearStack();
+                _updatesVM = null; // Fresh re-init
                 CurrentPage = UpdatesVM;
-                // Auto-refresh when entering updates view
+                DisposeDelayed(oldPage);
+                // Load from DB first
                 _ = UpdatesVM.LoadUpdatesAsync();
             }
+            
+            // Auto Update from Web when Sidebar button is clicked
+            UpdatesVM.RefreshCommand.Execute().Subscribe();
         }
 
         private HistoryViewModel? _historyVM;
@@ -277,7 +373,11 @@ namespace Yomic.ViewModels
         {
             if (CurrentPage != HistoryVM)
             {
+                var oldPage = CurrentPage;
+                ClearStack();
+                _historyVM = null; // Fresh re-init
                 CurrentPage = HistoryVM;
+                DisposeDelayed(oldPage);
                 // Always refresh history when navigating to it
                 _ = HistoryVM.LoadHistory();
             }
@@ -293,21 +393,29 @@ namespace Yomic.ViewModels
         {
             if (CurrentPage != DownloadsVM)
             {
+                var oldPage = CurrentPage;
+                ClearStack();
+                _downloadsVM = null;
                 CurrentPage = DownloadsVM;
+                DisposeDelayed(oldPage);
             }
         }
 
         private ExtensionsViewModel? _extensionsVM;
         public ExtensionsViewModel ExtensionsVM
         {
-            get => _extensionsVM ??= new ExtensionsViewModel(_sourceManager);
+            get => _extensionsVM ??= new ExtensionsViewModel(this, _sourceManager);
         }
 
         public void GoToExtensions()
         {
             if (CurrentPage != ExtensionsVM)
             {
+                var oldPage = CurrentPage;
+                ClearStack();
+                _extensionsVM = null;
                 CurrentPage = ExtensionsVM;
+                DisposeDelayed(oldPage);
             }
         }
 
@@ -356,7 +464,7 @@ namespace Yomic.ViewModels
                              var updateInfo = await updateService.CheckForUpdatesAsync();
                              if (updateInfo.IsUpdateAvailable)
                              {
-                                 ShowNotification($"New version available: {updateInfo.LatestVersion}!", NotificationType.Success);
+                                 RequestUpdateDialog?.Invoke(updateInfo);
                              }
                          }
                          catch {}
@@ -400,6 +508,54 @@ namespace Yomic.ViewModels
         {
             get => _downloadProgress;
             set => this.RaiseAndSetIfChanged(ref _downloadProgress, value);
+        }
+
+        private async void DisposeDelayed(ViewModelBase? page)
+        {
+            if (page is not IDisposable disposable) return;
+            
+            // Give the UI enough time to detach (300ms is snappier than 500ms)
+            await Task.Delay(300);
+            
+            try 
+            {
+                disposable.Dispose();
+                CleanupMemory();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainWindowVM] Error during delayed disposal: {ex.Message}");
+            }
+        }
+
+        private void ClearStack()
+        {
+            while (_navigationStack.Count > 0)
+            {
+                var page = _navigationStack.Pop();
+                if (page is IDisposable d) d.Dispose();
+            }
+        }
+
+        private void CleanupMemory()
+        {
+            try
+            {
+                // 1. Clear memory caches
+                _imageCacheService.Clear();
+                
+                // 2. Force Aggressive Garbage Collection
+                // We call it multiple times to ensure all generations are collected and finalizers run.
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(2, GCCollectionMode.Forced, true);
+                
+                System.Diagnostics.Debug.WriteLine("[MainWindowVM] RAM Optimization triggered: Cache cleared and GC collected.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainWindowVM] Cleanup error: {ex.Message}");
+            }
         }
     }
 }

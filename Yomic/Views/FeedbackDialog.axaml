@@ -1,0 +1,103 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Yomic.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="350"
+        x:Class="Yomic.Views.FeedbackDialog"
+        Width="480" Height="360"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        CanResize="False"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        x:DataType="vm:FeedbackDialogViewModel"
+        x:Name="FeedbackWindow">
+
+    <Border Background="{DynamicResource PrimaryBackground}" CornerRadius="16" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1" Padding="24">
+        <Grid RowDefinitions="Auto, *, Auto, Auto">
+            
+            <!-- Header -->
+            <TextBlock Grid.Row="0" Text="Send feedback" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" Margin="0,0,0,20"/>
+            
+            <!-- Input Area -->
+            <TextBox Grid.Row="1" 
+                     Text="{Binding FeedbackText}"
+                     Watermark="Tell us about your experience using this app..."
+                     Background="{DynamicResource SidebarBackground}"
+                     Foreground="{DynamicResource PrimaryText}"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     CornerRadius="8"
+                     BorderThickness="0"
+                     Padding="12"
+                     FontSize="14"
+                     VerticalContentAlignment="Top">
+                 <TextBox.Styles>
+                     <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+                         <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+                         <Setter Property="BorderThickness" Value="0"/>
+                     </Style>
+                     <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+                         <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+                         <Setter Property="BorderThickness" Value="0"/>
+                     </Style>
+                 </TextBox.Styles>
+            </TextBox>
+                     
+            <!-- Privacy Text -->
+            <TextBlock Grid.Row="2" Margin="0,16,0,20" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" FontSize="13" LineHeight="18">
+                Your response is anonymous and will be used to help improve Yomic. By continuing, you allow Yomic Support to review technical information about your account. Your personal messages and library remain completely local and private. <Run Foreground="{DynamicResource AccentColor}" FontWeight="SemiBold">Learn more</Run>
+            </TextBlock>
+
+            <!-- Action Buttons -->
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="16">
+                <!-- Cancel Button -->
+                <Button Content="Cancel" 
+                        Command="{Binding CancelCommand}"
+                        CommandParameter="{Binding ElementName=FeedbackWindow}"
+                        Background="{DynamicResource HoverBackground}" 
+                        Foreground="{DynamicResource PrimaryText}" 
+                        CornerRadius="20"
+                        Padding="24,10"
+                        FontWeight="SemiBold"
+                        FontSize="14"
+                        Cursor="Hand"
+                        BorderThickness="0">
+                     <Button.Styles>
+                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="{DynamicResource SeparatorBrush}"/>
+                        </Style>
+                    </Button.Styles>
+                </Button>
+                
+                <!-- Submit Button -->
+                <Button Content="Submit" 
+                        Command="{Binding SubmitCommand}"
+                        CommandParameter="{Binding ElementName=FeedbackWindow}"
+                        Background="{DynamicResource HoverBackground}" 
+                        Foreground="{DynamicResource SecondaryText}" 
+                        CornerRadius="20" 
+                        Padding="24,10"
+                        FontWeight="SemiBold"
+                        FontSize="14"
+                        Cursor="Hand"
+                        BorderThickness="0">
+                     <Button.Styles>
+                        <!-- Normal Active State -->
+                        <Style Selector="Button:not(:disabled) /template/ ContentPresenter">
+                            <Setter Property="Background" Value="{DynamicResource AccentColor}"/>
+                            <Setter Property="Foreground" Value="White"/>
+                        </Style>
+                        <!-- Hover Active State -->
+                        <Style Selector="Button:not(:disabled):pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="#1A8DF0"/>
+                            <Setter Property="Foreground" Value="White"/>
+                        </Style>
+                    </Button.Styles>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

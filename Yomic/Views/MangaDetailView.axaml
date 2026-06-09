@@ -1,215 +1,138 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Yomic.ViewModels"
+             xmlns:helpers="clr-namespace:Yomic.Views.Helpers"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
              x:Class="Yomic.Views.MangaDetailView"
-             x:DataType="vm:MangaDetailViewModel"
-             Background="#1E1E2E">
+             x:DataType="vm:MangaDetailViewModel">
 
-    <UserControl.Styles>
-        <Style Selector="Button.BackBtn">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="10"/>
-            <Setter Property="CornerRadius" Value="20"/>
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.2"/>
-                    <BrushTransition Property="Foreground" Duration="0:0:0.2"/>
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
-                </Transitions>
-            </Setter>
-        </Style>
-        <Style Selector="Button.BackBtn:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#FF9900"/>
-            <Setter Property="Foreground" Value="#1E1E2E"/>
-        </Style>
-        <Style Selector="Button.BackBtn:pointerover">
-            <Setter Property="RenderTransform" Value="scale(1.05)"/>
-        </Style>
-        
-        <Style Selector="TextBlock.Unread">
-             <Setter Property="Foreground" Value="White"/>
-             <Setter Property="FontWeight" Value="Bold"/>
-        </Style>
-        <Style Selector="TextBlock.Read">
-             <Setter Property="Foreground" Value="#7F849C"/>
-             <Setter Property="FontWeight" Value="Normal"/>
-        </Style>
-        
-        <!-- ListBox Item Stlying to mimic ItemsControl look but virtualized -->
-        <Style Selector="ListBoxItem">
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Margin" Value="0,0,0,5"/>
-            <Setter Property="Background" Value="Transparent"/>
-        </Style>
-        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-            <Setter Property="Background" Value="Transparent"/>
-        </Style>
-        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="Transparent"/>
-        </Style>
-        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="Transparent"/>
-        </Style>
+    <Grid>
+        <!-- LAYER 2: INTERACTIVE CONTENT (Scrollable) -->
+        <ListBox ItemsSource="{Binding DisplayItems}" 
+                 Background="{DynamicResource PrimaryBackground}" 
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 Padding="0,0,0,50">
+            
+            <ListBox.Styles>
+                <!-- Clear default ListBox styles -->
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Margin" Value="0"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                </Style>
+                <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent"/>
+                </Style>
+                <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent"/>
+                </Style>
+                <Style Selector="ListBoxItem:pressed /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent"/>
+                </Style>
+            </ListBox.Styles>
 
-        <!-- Loader Styles (CSS Replication: Rotating Circle) -->
-        <Style Selector="Border.Loader">
-            <Setter Property="Width" Value="50"/>
-            <Setter Property="Height" Value="50"/>
-            <Setter Property="CornerRadius" Value="25"/>
-            <Setter Property="BorderThickness" Value="8"/>
-            <Setter Property="RenderTransform">
-                 <RotateTransform />
-            </Setter>
-            <Setter Property="BorderBrush">
-                <ConicGradientBrush>
-                    <GradientStop Offset="0" Color="LightBlue"/>
-                    <GradientStop Offset="0.75" Color="LightBlue"/>
-                    <GradientStop Offset="0.7501" Color="Orange"/>
-                    <GradientStop Offset="1" Color="Orange"/>
-                </ConicGradientBrush>
-            </Setter>
-            <Style.Animations>
-                <Animation Duration="0:0:1" IterationCount="Infinite"> 
-                    <KeyFrame Cue="0%">
-                        <Setter Property="RotateTransform.Angle" Value="0"/>
-                    </KeyFrame>
-                    <KeyFrame Cue="100%">
-                        <Setter Property="RotateTransform.Angle" Value="360"/>
-                    </KeyFrame>
-                </Animation>
-            </Style.Animations>
-        </Style>
-    </UserControl.Styles>
+            <ListBox.DataTemplates>
+                <!-- TEMPLATE 1: HEADER (Cover + Info) -->
+                <!-- Now includes the Background so it scrolls away -->
+                <DataTemplate DataType="{x:Type vm:MangaDetailHeader}">
+                    <Grid>
+                        <!-- AMBIENT BACKGROUND (Scrollable with Header) -->
+                        <Grid ClipToBounds="True" Height="650" VerticalAlignment="Top"> 
+                            <!-- Height restricted to the header region -->
+                            <Image helpers:SecureImageLoader.Url="{Binding ViewModel.ThumbnailUrl}" 
+                                   Stretch="UniformToFill"
+                                   Margin="-100"> 
+                                <Image.Effect>
+                                    <BlurEffect Radius="100"/>
+                                </Image.Effect>
+                            </Image>
+                            
+                            <!-- 20% Black Overlay -->
+                            <Rectangle Fill="Black" Opacity="0.2"/>
 
-    <!-- Main Layout: Virtualized ListBox -->
-    <ListBox ItemsSource="{Binding DisplayItems}" Background="Transparent" Margin="0" Padding="0">
-        <ListBox.Styles>
-            <Style Selector="ListBoxItem">
-                <Setter Property="Padding" Value="0"/>
-                <Setter Property="Margin" Value="0"/>
-                <Setter Property="Background" Value="Transparent"/>
-                <Setter Property="Template">
-                    <ControlTemplate>
-                        <ContentPresenter Background="{TemplateBinding Background}"
-                                          BorderBrush="{TemplateBinding BorderBrush}"
-                                          BorderThickness="{TemplateBinding BorderThickness}"
-                                          CornerRadius="{TemplateBinding CornerRadius}"
-                                          ContentTemplate="{TemplateBinding ContentTemplate}"
-                                          Content="{TemplateBinding Content}"
-                                          Padding="{TemplateBinding Padding}"
-                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
-                    </ControlTemplate>
-                </Setter>
-            </Style>
-        </ListBox.Styles>
+                            <!-- Gradient Fade to Theme Color -->
+                            <Rectangle Fill="{DynamicResource MangaFadeGradient}"/>
+                        </Grid>
 
-        <ListBox.DataTemplates>
-            <!-- HEADER TEMPLATE -->
-            <DataTemplate DataType="vm:MangaDetailHeader">
-                <StackPanel Margin="40" Spacing="20">
-                    <!-- Back Button and Actions -->
-                    <Grid ColumnDefinitions="Auto, *, Auto, Auto">
-                        <Button Classes="BackBtn" Click="OnBackClick">
-                            <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="20" VerticalAlignment="Center"/>
-                        </Button>
-                                
-                        <!-- Refresh Button -->
-                        <Button Grid.Column="2" 
-                                Command="{Binding ViewModel.RefreshCommand}"
-                                Background="#313244" Foreground="#FF9900" 
-                                Padding="10" CornerRadius="20" Margin="0,0,10,0"
-                                ToolTip.Tip="Refresh Details">
-                            <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                        <!-- Back Button (Inside Header, so it scrolls away) -->
+                         <Button Click="OnBackClick" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="20,30,0,0"
+                                Width="40" Height="40" CornerRadius="20" Padding="0"
+                                Background="#30000000" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                Foreground="{DynamicResource PrimaryText}">
+                             <Button.Styles>
+                                 <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                     <Setter Property="Background" Value="#60000000"/>
+                                 </Style>
+                             </Button.Styles>
+                             <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Button>
 
-                        <Button Grid.Column="3" 
-                                Command="{Binding ViewModel.ToggleLibraryCommand}"
-                                Background="#313244" Foreground="#F38BA8" Padding="15,8" CornerRadius="8">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="&#xEB51;" FontFamily="Segoe Fluent Icons" IsVisible="{Binding !ViewModel.InLibrary}" FontSize="16" VerticalAlignment="Center"/>
-                                <TextBlock Text="&#xEB52;" FontFamily="Segoe Fluent Icons" IsVisible="{Binding ViewModel.InLibrary}" FontSize="16" VerticalAlignment="Center"/>
-                                <TextBlock Text="{Binding ViewModel.InLibrary, Converter={x:Static ObjectConverters.IsNull}}" IsVisible="False"/> 
-                                <TextBlock Text="Add to Library" IsVisible="{Binding !ViewModel.InLibrary}" FontWeight="SemiBold"/>
-                                <TextBlock Text="In Library" IsVisible="{Binding ViewModel.InLibrary}" FontWeight="SemiBold"/>
-                            </StackPanel>
-                        </Button>
-                    </Grid>
-                    
-                    <!-- Manga Info Header -->
-                    <Grid ColumnDefinitions="200, *" Margin="0,20,0,0">
-                        <!-- Cover -->
-                        <Border Grid.Column="0" Width="180" Height="270" CornerRadius="8" 
-                                Background="#313244" ClipToBounds="True">
-                             <Panel>
-                                 <!-- Loading State: Skeleton + Spinner -->
-                                 <Panel IsVisible="{Binding ViewModel.CoverBitmap, Converter={x:Static ObjectConverters.IsNull}}">
-                                     <Border Classes="Skeleton" Background="#313244" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
-                                     <!-- New Loader -->
-                                     <Border Classes="Loader" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                 </Panel>
-                                 
-                                 <!-- Actual Image -->
-                                 <Image Source="{Binding ViewModel.CoverBitmap}" Stretch="UniformToFill"/>
-                             </Panel>
+
+
+                        <!-- HEADER CONTENT -->
+                        <Grid RowDefinitions="*, Auto" ColumnDefinitions="Auto, *" Margin="40,100,40,20">
+                        <!-- Left Column: Sharp Cover Image -->
+                        <!-- Reduced size slightly for better proportions -->
+                        <Border Grid.Column="0" 
+                                Width="230" Height="345" 
+                                CornerRadius="12" 
+                                ClipToBounds="True" 
+                                Margin="0,0,40,0"
+                                VerticalAlignment="Top"
+                                BoxShadow="0 15 30 0 #60000000"> 
+                             <Image helpers:SecureImageLoader.Url="{Binding ViewModel.ThumbnailUrl}" Stretch="UniformToFill"/>
                         </Border>
 
-                        <!-- Info -->
-                        <StackPanel Grid.Column="1" Margin="30,0,0,0" Spacing="10">
-                            <TextBlock Text="{Binding ViewModel.Title}" FontSize="28" FontWeight="Bold" 
-                                       Foreground="White" TextWrapping="Wrap"/>
-                            <TextBlock Text="{Binding ViewModel.Author}" Foreground="#CDD6F4" FontSize="14"/>
-                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                <TextBlock Text="{Binding ViewModel.Status}" Foreground="#A6E3A1" FontSize="14" VerticalAlignment="Center"/>
-                                
-                                <!-- OFFLINE Badge -->
-                                <Border CornerRadius="4" Background="#FF9900" Padding="8,4" 
-                                        IsVisible="{Binding !ViewModel.IsOnline}">
-                                    <StackPanel Orientation="Horizontal" Spacing="5">
-                                        <TextBlock Text="&#xEA8F;" FontFamily="Segoe Fluent Icons" Foreground="#1E1E2E" FontSize="12" VerticalAlignment="Center"/>
-                                        <TextBlock Text="OFFLINE MODE" Foreground="#1E1E2E" FontSize="11" 
-                                                   FontWeight="Bold" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Border>
-                                
-                                <!-- RED Badge (Ecchi/Explicit) -->
-                                <Border CornerRadius="6" Background="#20F38BA8" 
-                                        BorderBrush="#F38BA8" BorderThickness="1"
-                                        Padding="10,4" 
-                                        IsVisible="{Binding ViewModel.IsExplicitContent}">
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" 
-                                                   Foreground="#F38BA8" FontSize="14" VerticalAlignment="Center" Margin="0,1,0,0"/>
-                                        <TextBlock Text="{Binding ViewModel.MatureWarningText}" 
-                                                   Foreground="#F38BA8" FontSize="12" 
-                                                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Border>
-                                
-                                <!-- YELLOW Badge (Mature) -->
-                                <Border CornerRadius="6" Background="#20F9E2AF" 
-                                        BorderBrush="#F9E2AF" BorderThickness="1"
-                                        Padding="10,4" 
-                                        IsVisible="{Binding !ViewModel.IsExplicitContent}">
-                                    <Border.IsVisible>
-                                        <MultiBinding Converter="{x:Static BoolConverters.And}">
-                                            <Binding Path="ViewModel.IsMatureContent"/>
-                                            <Binding Path="!ViewModel.IsExplicitContent"/>
-                                        </MultiBinding>
-                                    </Border.IsVisible>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" 
-                                                   Foreground="#F9E2AF" FontSize="14" VerticalAlignment="Center" Margin="0,1,0,0"/>
-                                        <TextBlock Text="{Binding ViewModel.MatureWarningText}" 
-                                                   Foreground="#F9E2AF" FontSize="12" 
-                                                   FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Border>
+                        <!-- Right Column: Info & Actions -->
+                        <StackPanel Grid.Column="1" Spacing="0">
+                            <!-- Title -->
+                            <!-- Adjusted size and line height -->
+                            <TextBlock Text="{Binding ViewModel.Title}" 
+                                       FontSize="36" FontWeight="Black" 
+                                       TextWrapping="Wrap" 
+                                       Foreground="{DynamicResource PrimaryText}"
+                                       Margin="0,0,0,10"/>
+
+                            <!-- Author & Status Row -->
+                            <StackPanel Orientation="Vertical" Spacing="8" Margin="0,0,0,20">
+                                <!-- Author -->
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="&#xE77B;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding ViewModel.Author}" Foreground="{DynamicResource SecondaryText}" FontSize="15" FontWeight="SemiBold"/>
+                                </StackPanel>
+
+                                <!-- Status with Timer Icon -->
+                                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+                                     <TextBlock Text="&#xE916;" FontFamily="Segoe Fluent Icons" 
+                                                Foreground="{Binding ViewModel.Status, Converter={x:Static vm:StatusToColorConverter.Instance}}" 
+                                                FontSize="15" VerticalAlignment="Center"/>
+                                     <TextBlock Text="{Binding ViewModel.Status}" 
+                                                Foreground="{Binding ViewModel.Status, Converter={x:Static vm:StatusToColorConverter.Instance}}" 
+                                                FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <!-- Source Info -->
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <!-- Source Icon -->
+                                    <Border Width="16" Height="16" CornerRadius="4" ClipToBounds="True"
+                                            IsVisible="{Binding ViewModel.SourceIconBitmap, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                        <Image Source="{Binding ViewModel.SourceIconBitmap}" Stretch="UniformToFill"/>
+                                    </Border>
+                                    
+                                    <!-- Source Name -->
+                                    <TextBlock Text="{Binding ViewModel.SourceName}" 
+                                               FontSize="15" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource SecondaryText}" 
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
                             </StackPanel>
-                            
-                            <!-- Genre Section (Moved Here) -->
-                            <ItemsControl ItemsSource="{Binding ViewModel.Genres}" Margin="0,15,0,0">
+
+                                
+                                <!-- GENRES -->
+                            <ItemsControl ItemsSource="{Binding ViewModel.Genres}" Margin="0,0,0,25">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <WrapPanel Orientation="Horizontal"/>
@@ -217,212 +140,324 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border CornerRadius="15" Background="#313244" Padding="12,6" Margin="0,0,8,8">
-                                            <TextBlock Text="{Binding}" Foreground="#FF9900" FontSize="12"/>
+                                        <Border CornerRadius="16" Padding="12,6" Margin="0,0,8,8"
+                                                BorderThickness="1"
+                                                Background="{Binding Converter={x:Static vm:StatusToColorConverter.GenreToBackground}}"
+                                                BorderBrush="{Binding Converter={x:Static vm:StatusToColorConverter.GenreToBorder}}">
+                                            <TextBlock Text="{Binding}" FontSize="12"
+                                                       Foreground="{Binding Converter={x:Static vm:StatusToColorConverter.GenreToForeground}}"/>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <!-- Tags -->
-                            <ItemsControl ItemsSource="{Binding ViewModel.Tags}" Margin="0,10,0,0">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" Spacing="8"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border CornerRadius="15" BorderBrush="#FF9900" 
-                                                BorderThickness="1" Padding="12,5" Margin="0,0,5,5">
-                                            <TextBlock Text="{Binding}" Foreground="#FF9900" FontSize="12"/>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </Grid>
+                            <!-- Action Buttons -->
+                            <StackPanel Spacing="20" Margin="0,5,0,30">
+                                <!-- Secondary Actions Grid (Icon Top, Text Bottom) -->
+                                <UniformGrid Rows="1" Columns="5">
+                                    <UniformGrid.Styles>
+                                        <Style Selector="Button">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Setter Property="Padding" Value="0"/>
+                                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover">
+                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter, 
+                                                       Button:pressed /template/ ContentPresenter, 
+                                                       Button:focus /template/ ContentPresenter,
+                                                       Button:disabled /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="BorderBrush" Value="Transparent"/>
+                                        </Style>
+                                    </UniformGrid.Styles>
+                                    
+                                    <!-- Read Now / Resume -->
+                                    <Button Command="{Binding ViewModel.ResumeReadingCommand}" 
+                                            CommandParameter="{Binding ViewModel.NextChapterToRead}"
+                                            IsEnabled="{Binding ViewModel.Chapters.Count}">
+                                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                                            <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons" FontSize="22" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ViewModel.ResumeButtonText}" FontSize="11" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
 
-                    <!-- Synopsis -->
-                    <Border Background="#252535" CornerRadius="8" Padding="20" Margin="0,10,0,0">
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Synopsis" FontWeight="SemiBold" Foreground="White" FontSize="16"/>
+                                    <!-- Library Toggle -->
+                                    <Button Command="{Binding ViewModel.ToggleLibraryCommand}">
+                                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                                            <TextBlock Text="{Binding ViewModel.InLibrary, Converter={x:Static vm:StatusToColorConverter.BoolToHeartIcon}}" 
+                                                       FontFamily="Segoe Fluent Icons" HorizontalAlignment="Center" FontSize="22"
+                                                       Foreground="{Binding ViewModel.InLibrary, Converter={x:Static vm:StatusToColorConverter.BoolToHeartColor}}"/>
+                                            <TextBlock Text="{Binding ViewModel.InLibrary, Converter={x:Static vm:StatusToColorConverter.BoolToLibraryText}}" 
+                                                       FontSize="11" HorizontalAlignment="Center"
+                                                       TextWrapping="Wrap" TextAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <!-- WebView -->
+                                    <Button Command="{Binding ViewModel.OpenWebViewCommand}">
+                                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                                            <TextBlock Text="&#xf6fa;" FontFamily="Segoe Fluent Icons" FontSize="22" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="WebView" FontSize="11" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <!-- Refresh -->
+                                    <Button Command="{Binding ViewModel.RefreshCommand}">
+                                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                                            <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" FontSize="22" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Refresh" FontSize="11" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    
+                                    <!-- Download -->
+                                    <Button Command="{Binding ViewModel.DownloadAllCommand}">
+                                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                                            <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" FontSize="22" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Download" FontSize="11" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                </UniformGrid>
+                            </StackPanel>
+
+                            <!-- Description / Synopsis -->
+                            <TextBlock Text="Synopsis" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" Margin="0,0,0,8" FontSize="16"/>
+                            
+                            <!-- Collapsed Description (MaxLines=6) -->
                             <TextBlock Text="{Binding ViewModel.Description}" 
-                                       Foreground="#A6ADC8" TextWrapping="Wrap" LineHeight="20" FontSize="13"
-                                       MaxLines="4" TextTrimming="CharacterEllipsis"/>
+                                       Foreground="{DynamicResource SecondaryText}" 
+                                       TextWrapping="Wrap" 
+                                       FontSize="14" 
+                                       LineHeight="22"
+                                       MaxLines="6"
+                                       TextTrimming="CharacterEllipsis"
+                                       IsVisible="{Binding !ViewModel.IsSynopsisExpanded}"/>
+                            
+                            <!-- Expanded Description (No MaxLines) -->
+                            <TextBlock Text="{Binding ViewModel.Description}" 
+                                       Foreground="{DynamicResource SecondaryText}" 
+                                       TextWrapping="Wrap" 
+                                       FontSize="14" 
+                                       LineHeight="22"
+                                       IsVisible="{Binding ViewModel.IsSynopsisExpanded}"/>
+                            
+                            <!-- Toggle Button -->
+                            <Button Command="{Binding ViewModel.ToggleSynopsisCommand}"
+                                    Click="OnSynopsisToggleClick"
+                                    Background="Transparent" BorderThickness="0" 
+                                    Padding="10,5" Margin="0,5,0,0"
+                                    HorizontalAlignment="Center">
+                                <Button.Styles>
+                                    <Style Selector="Button">
+                                        <Setter Property="Foreground" Value="#0078D7"/>
+                                    </Style>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                    <Style Selector="Button:pointerover">
+                                        <Setter Property="Foreground" Value="#5AB0FF"/>
+                                    </Style>
+                                    <Style Selector="Button:pressed /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                </Button.Styles>
+                                <TextBlock FontSize="18" 
+                                           FontFamily="Segoe Fluent Icons"
+                                           Foreground="{Binding $parent[Button].Foreground}">
+                                    <TextBlock.Text>
+                                        <MultiBinding Converter="{x:Static vm:StatusToColorConverter.BoolToExpandText}">
+                                            <Binding Path="ViewModel.IsSynopsisExpanded"/>
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                </TextBlock>
+                            </Button>
                         </StackPanel>
-                    </Border>
 
-                    
-                    <!-- Chapter Header -->
-                    <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto" Margin="0,10,0,5">
-                        <TextBlock Text="Chapters" FontWeight="SemiBold" Foreground="White" FontSize="18" VerticalAlignment="Center"/>
-                        
-                        <!-- Start Button (Always visible - Goes to Chapter 1) -->
-                        <Button Grid.Column="2" Command="{Binding ViewModel.StartReadingCommand}" 
-                                Background="#313244" Foreground="#A6ADC8" 
-                                CornerRadius="6" Padding="12,6" Margin="0,0,10,0">
-                            <Button.Styles>
-                                <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                    <Setter Property="Background" Value="#45475A"/>
-                                </Style>
-                            </Button.Styles>
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons" FontSize="14" VerticalAlignment="Center"/>
-                                <TextBlock Text="Start" FontWeight="SemiBold" FontSize="12"/>
-                            </StackPanel>
-                        </Button>
-                        
-                        <!-- Resume Button (Only visible if user has read chapters - Shows chapter info) -->
-                        <Button Grid.Column="3" Command="{Binding ViewModel.ResumeReadingCommand}" 
-                                IsVisible="{Binding ViewModel.CanResume}"
-                                Background="#FF9900" Foreground="#1E1E2E" 
-                                CornerRadius="6" Padding="12,6" Margin="0,0,10,0">
-                            <Button.Styles>
-                                <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                    <Setter Property="Background" Value="#E68A00"/>
-                                </Style>
-                            </Button.Styles>
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons" FontSize="14" VerticalAlignment="Center"/>
-                                <TextBlock Text="{Binding ViewModel.ResumeButtonText, FallbackValue=Resume}" FontWeight="SemiBold" FontSize="12"/>
-                            </StackPanel>
-                        </Button>
-                        
-                        <!-- Download All Button -->
-                        <Button Grid.Column="4" Command="{Binding ViewModel.DownloadAllCommand}" 
-                                Background="#313244" Foreground="#A6E3A1" 
-                                CornerRadius="6" Padding="12,6">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" FontSize="14" VerticalAlignment="Center"/>
-                                <TextBlock Text="Download All" FontWeight="SemiBold" FontSize="12"/>
-                            </StackPanel>
-                        </Button>
+                        <!-- Chapters Divider -->
+                         <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,35,0,15" ColumnDefinitions="Auto, *, Auto">
+                             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                 <TextBlock Text="Chapters" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
+                                 <Border Background="#20FFFFFF" CornerRadius="12" Padding="8,2" VerticalAlignment="Center">
+                                     <TextBlock Text="{Binding ViewModel.Chapters.Count}" Foreground="{DynamicResource SecondaryText}" FontWeight="Bold" FontSize="12"/>
+                                 </Border>
+                             </StackPanel>
+                                        
+                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
+                                 <Button Command="{Binding ViewModel.ToggleSortCommand}" 
+                                         Background="#011E1E2E" BorderThickness="0"
+                                         Padding="8,4">
+                                     <Button.Styles>
+                                         <Style Selector="Button">
+                                             <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                                         </Style>
+                                         <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                             <Setter Property="Background" Value="Transparent"/>
+                                             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                                         </Style>
+                                          <Style Selector="Button:pointerover">
+                                              <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                                          </Style>
+                                         <Style Selector="Button:pressed /template/ ContentPresenter">
+                                             <Setter Property="Background" Value="Transparent"/>
+                                         </Style>
+                                     </Button.Styles>
+                                     <StackPanel Orientation="Horizontal" Spacing="6">
+                                         <TextBlock Text="&#xE8CB;" FontFamily="Segoe Fluent Icons"
+                                                    Foreground="{Binding $parent[Button].Foreground}"/>
+                                         <TextBlock Text="{Binding ViewModel.SortAscending, Converter={x:Static vm:StatusToColorConverter.SortToString}}" 
+                                                    FontSize="12"
+                                                    Foreground="{Binding $parent[Button].Foreground}"/>
+                                     </StackPanel>
+                                 </Button>
+                             </StackPanel>
+                         </Grid>
                     </Grid>
-
-                    <!-- Loader (Visible when loading chapters) -->
-                    <Border Classes="Loader" HorizontalAlignment="Center" Margin="0,30,0,10" 
-                            IsVisible="{Binding ViewModel.IsLoadingChapters}"/>
-                </StackPanel>
+                </Grid>
             </DataTemplate>
 
-            <!-- CHAPTER ITEM TEMPLATE -->
-            <DataTemplate DataType="vm:ChapterItem">
-                <Border Background="Transparent" BorderBrush="#313244" BorderThickness="0,0,0,1" Margin="40,0,40,0">
-                    <Border.ContextMenu>
-                        <ContextMenu x:CompileBindings="False">
-                            <!-- Mark as Read -->
-                            <MenuItem Header="Mark as Read" Command="{Binding MarkAsReadCommand}"/>
+                <!-- TEMPLATE 2: CHAPTER ITEMS -->
+                <DataTemplate DataType="{x:Type vm:ChapterItem}">
+                    <Panel Margin="40,0,40,10">
+                        <!-- 1. Background Content (Replaced Button with Border for Shadow) -->
+                        <Border CornerRadius="8" 
+                                BoxShadow="0 2 4 0 #10000000"
+                                Background="{DynamicResource SidebarBackground}">
+                            <Button Click="OnReadClick"
+                                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                    Background="Transparent" 
+                                    BorderThickness="0" 
+                                    CornerRadius="8"
+                                    RenderTransform="none">
+                                <Button.Transitions>
+                                    <Transitions>
+                                        <BrushTransition Property="Background" Duration="0:0:0.1"/>
+                                        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.075" Easing="CubicEaseOut"/>
+                                    </Transitions>
+                                </Button.Transitions>
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                    </Style>
+                                    <Style Selector="Button:pressed">
+                                        <Setter Property="RenderTransform" Value="scale(0.98)"/>
+                                    </Style>
+                                    <Style Selector="Button:pressed /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="#200078D7"/>
+                                    </Style>
+                                </Button.Styles>
+                            </Button>
+                        </Border>
+
+                        <!-- 2. Content Overlay -->
+                        <Grid ColumnDefinitions="Auto, *, Auto, Auto" Margin="20,15">
                             
-                            <!-- Mark as Unread -->
-                            <MenuItem Header="Mark as Unread" Command="{Binding MarkAsUnreadCommand}"/>
-
-                            <Separator/>
-
-                            <!-- Mark Previous as Read -->
-                            <MenuItem Header="Mark Previous as Read" Command="{Binding MarkPreviousAsReadCommand}"/>
-                        </ContextMenu>
-                    </Border.ContextMenu>
-                    <Grid>
-                        <!-- Last Read Indicator -->
-                        <Border Width="4" HorizontalAlignment="Left" Background="#FF9900"
-                                IsVisible="{Binding IsLastRead}" Margin="0,10"/>
-                                
-                        <Grid ColumnDefinitions="*, Auto" Margin="15,16,10,16">
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Title}" 
-                                           Classes.Unread="{Binding !IsRead}" Classes.Read="{Binding IsRead}" 
-                                           FontSize="15" VerticalAlignment="Center"/>
+                            <!-- Unread indicator (Pass-through) -->
+                            <Border Grid.Column="0" Width="4" Height="34" CornerRadius="2" 
+                                    Background="{DynamicResource PrimaryAccent}" 
+                                    Opacity="{Binding IsRead, Converter={x:Static vm:StatusToColorConverter.UnreadToOpacity}}"
+                                    Margin="0,0,15,0"
+                                    VerticalAlignment="Center"
+                                    IsHitTestVisible="False"/>
+                            
+                            <!-- Text Info (Pass-through) -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Orientation="Horizontal" IsHitTestVisible="False">
+                                <TextBlock Text="{Binding Title}" Foreground="{DynamicResource PrimaryText}" FontWeight="SemiBold" FontSize="15"
+                                           Opacity="{Binding IsRead, Converter={x:Static vm:StatusToColorConverter.BoolToOpacity}}"
+                                           VerticalAlignment="Center"/>
                                 
                                 <!-- NEW Badge -->
-                                <Border Background="#D20F39" CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
+                                <Border Background="#00E676" CornerRadius="12" Padding="5,1" Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
                                         IsVisible="{Binding IsNewRelease}">
-                                    <TextBlock Text="NEW" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                    <TextBlock Text="NEW" Foreground="#1E1E2E" FontSize="10" FontWeight="Black"/>
                                 </Border>
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                <!-- Download Button -->
-                                <Button Background="Transparent" Foreground="#CDD6F4" 
-                                        CornerRadius="20" Padding="8"
-                                        Command="{Binding DownloadCommand}"
-                                        ToolTip.Tip="Download">
+
+                            
+                            <!-- Action Buttons Panel (Capture Clicks) -->
+                            <!-- IsHitTestVisible="True" on Panel to capture clicks for buttons inside -->
+                            <Panel Grid.Column="2" Margin="15,0" IsHitTestVisible="True" VerticalAlignment="Center">
+                                <!-- Download Button (Visible when NOT downloaded) -->
+                                <Button Command="{Binding DownloadCommand}" Background="{DynamicResource CardBackground}" 
+                                        IsVisible="{Binding !IsDownloaded}"
+                                        Padding="10,8" BorderThickness="0"
+                                        CornerRadius="8"
+                                        ToolTip.Tip="Download Chapter"
+                                        Foreground="{DynamicResource SecondaryText}">
                                     <Button.Styles>
                                         <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="#313244"/>
+                                            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover">
+                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
                                         </Style>
                                     </Button.Styles>
                                     <Panel>
-                                        <!-- Normal Download Icon -->
-                                        <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" FontSize="18"
-                                                   IsVisible="{Binding !IsDownloading}">
-                                            <TextBlock.IsVisible>
-                                                <MultiBinding Converter="{x:Static BoolConverters.And}">
-                                                    <Binding Path="!IsDownloading"/>
-                                                    <Binding Path="!IsDownloaded"/>
-                                                </MultiBinding>
-                                            </TextBlock.IsVisible>
-                                        </TextBlock>
-                                        
-                                        <!-- Check for Downloaded -->
-                                        <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="18"
-                                                   IsVisible="{Binding IsDownloaded}" Foreground="#A6E3A1"/>
-                                        
-                                        <!-- Animated Arrow for Downloading -->
-                                        <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" Foreground="#FF9900" FontSize="18"
-                                                   IsVisible="{Binding IsDownloading}"
-                                                   RenderTransformOrigin="50%,50%">
-                                             <TextBlock.Styles>
-                                                 <Style Selector="TextBlock[IsVisible=True]">
-                                                     <Style.Animations>
-                                                         <Animation Duration="0:0:0.6" IterationCount="Infinite" PlaybackDirection="Alternate" Easing="SineEaseInOut"> 
-                                                             <KeyFrame KeyTime="0:0:0">
-                                                                 <Setter Property="TranslateTransform.Y" Value="-2"/>
-                                                                 <Setter Property="Opacity" Value="0.6"/>
-                                                             </KeyFrame>
-                                                             <KeyFrame KeyTime="0:0:0.6">
-                                                                 <Setter Property="TranslateTransform.Y" Value="2"/>
-                                                                 <Setter Property="Opacity" Value="1"/>
-                                                             </KeyFrame>
-                                                         </Animation>
-                                                     </Style.Animations>
-                                                 </Style>
-                                             </TextBlock.Styles>
-                                        </TextBlock>
+                                        <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" FontSize="16"
+                                                   IsVisible="{Binding !IsDownloading}"/>
+                                        <ProgressBar IsIndeterminate="True" Width="16" Height="16" 
+                                                     IsVisible="{Binding IsDownloading}"
+                                                     Foreground="{DynamicResource PrimaryAccent}"/>
                                     </Panel>
                                 </Button>
 
-                                <!-- Delete Button -->
-                                <Button Background="Transparent" Foreground="#F38BA8" 
-                                        CornerRadius="20" Padding="8"
-                                        Command="{Binding DeleteCommand}"
+                                <!-- Delete Button (Visible when Downloaded) -->
+                                <Button Command="{Binding DeleteCommand}" Background="{DynamicResource CardBackground}"
                                         IsVisible="{Binding IsDownloaded}"
+                                        Padding="10,8" BorderThickness="0"
+                                        CornerRadius="8"
                                         ToolTip.Tip="Delete Download">
                                     <Button.Styles>
                                         <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="#313244"/>
+                                            <Setter Property="Background" Value="#30EF4444"/>
                                         </Style>
                                     </Button.Styles>
-                                    <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="18"/>
+                                    <Panel>
+                                        <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" Foreground="#EF4444" FontSize="16"
+                                                   IsVisible="{Binding !IsDeleting}"/>
+                                        <ProgressBar IsIndeterminate="True" Width="16" Height="16" 
+                                                     IsVisible="{Binding IsDeleting}"
+                                                     Foreground="#EF4444"/>
+                                    </Panel>
                                 </Button>
-                                
-                                <!-- Read Button -->
-                                <Button Content="Read" Background="#313244" 
-                                        Foreground="#FF9900" CornerRadius="18" Padding="20,8" 
-                                        BorderThickness="0" FontWeight="Bold" Cursor="Hand"
-                                        HorizontalAlignment="Left"
-                                        Click="OnReadClick">
-                                    <Button.Styles>
-                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="#FF9900"/>
-                                            <Setter Property="Foreground" Value="#1E1E2E"/>
-                                        </Style>
-                                    </Button.Styles>
-                                </Button>
-                            </StackPanel>
+                            </Panel>
+                            
+
                         </Grid>
-                    </Grid>
-                </Border>
-            </DataTemplate>
-        </ListBox.DataTemplates>
-    </ListBox>
+                    </Panel>
+                </DataTemplate>
+
+            </ListBox.DataTemplates>
+        </ListBox>
+        
+
+        
+        <!-- Loading Overlay -->
+        <Border Background="#80000000" IsVisible="{Binding IsLoadingChapters}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
+                 <ProgressBar IsIndeterminate="True" Foreground="{DynamicResource AccentColor}" Width="150" Height="2" Background="#33FFFFFF"/>
+                 <TextBlock Text="Loading Chapters..." Foreground="White" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
+            </StackPanel>
+        </Border>
+
+        <!-- CAPTCHA Bypass Loading Overlay (Match BrowseView) -->
+        <Border Background="#90000000" IsVisible="{Binding IsBypassing}" ZIndex="100">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20">
+                <ProgressBar IsIndeterminate="True" Width="200" Height="4"
+                             Foreground="#0078D7" Background="#30FFFFFF"/>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding BypassMessage}" 
+                               Foreground="White" FontSize="18" FontWeight="SemiBold" 
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Please do not close the browser window until finished." 
+                               Foreground="#B0FFFFFF" FontSize="12" 
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
 </UserControl>

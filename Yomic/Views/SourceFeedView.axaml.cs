@@ -12,13 +12,13 @@ namespace Yomic.Views
             
             // Infinite Scroll Logic
             // Infinite Scroll Logic (Attached to ListBox's internal ScrollViewer)
-            MainListBox.AddHandler(ScrollViewer.ScrollChangedEvent, (s, e) => 
+            // Infinite Scroll Logic
+            // Attached to the main ScrollViewer
+            // Infinite Scroll Logic (Attached to ListBox's internal ScrollViewer via routed event)
+            MangaListBox.AddHandler(ScrollViewer.ScrollChangedEvent, (s, e) => 
             {
-                if (e.Source is ScrollViewer sv)
+                if (e is ScrollChangedEventArgs args && args.Source is ScrollViewer sv)
                 {
-                    // Debug Scroll
-                    // System.Diagnostics.Debug.WriteLine($"[Scroll] Off: {sv.Offset.Y}, Ext: {sv.Extent.Height}, View: {sv.Viewport.Height}");
-
                      // Trigger when close to bottom (e.g. 500px buffer)
                     if (sv.Offset.Y >= sv.Extent.Height - sv.Viewport.Height - 500)
                     {

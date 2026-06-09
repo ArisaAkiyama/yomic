@@ -3,12 +3,34 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Yomic.ViewModels;
 using Yomic.Views;
+using Yomic.Core.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Yomic
 {
     public partial class App : Application
     {
+        // Static property for global access (used by MainWindow for extension reminder)
+        public static SettingsService? SettingsService { get; private set; }
+        public App()
+        {
+            // Catch unhandled exceptions
+            System.AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
+            {
+                if (args.ExceptionObject as System.Exception is System.Exception ex)
+                {
+                    Yomic.Core.Services.LogService.Error("Global", "Unhandled Exception", ex);
+                }
+            };
+
+            // Catch unobserved task exceptions
+            System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (sender, args) =>
+            {
+                Yomic.Core.Services.LogService.Error("Global", "Unobserved Task Exception", args.Exception);
+                args.SetObserved(); // Prevent app crash
+            };
+        }
+
         public override void Initialize()
         {
             AvaloniaXamlLoader.Load(this);
@@ -18,16 +40,23 @@ namespace Yomic
         {
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
+                // Run Source ID migration before loading extensions
+                // This ensures old hardcoded IDs are updated to new hash-based IDs
+                Core.Services.SourceIdMigrationService.RunMigrationIfNeeded();
+                
                 var sourceManager = new Core.Services.SourceManager();
-                // Load persisted extensions (DLLs)
-                // Load persisted extensions (DLLs)
-                sourceManager.LoadExtensions();
+                // Load persisted extensions (DLLs) - Auto-loaded in constructor now
                 
                 var settingsService = new Core.Services.SettingsService();
+                SettingsService = settingsService; // Expose for global access (MainWindow extension reminder)
                 var libraryService = new Core.Services.LibraryService();
                 var networkService = new Core.Services.NetworkService(settingsService);
                 var downloadService = new Core.Services.DownloadService(sourceManager, libraryService, networkService);
                 var imageCacheService = new Core.Services.ImageCacheService();
+                var secureImageService = new Core.Services.SecureImageService(networkService, imageCacheService);
+                
+                // Static Injection for Attached Property
+                Yomic.Views.Helpers.SecureImageLoader.Service = secureImageService;
                 
                 // Apply Theme
                 RequestedThemeVariant = settingsService.IsDarkMode ? Avalonia.Styling.ThemeVariant.Dark : Avalonia.Styling.ThemeVariant.Light;
@@ -90,7 +119,7 @@ namespace Yomic
 
                 desktop.MainWindow = new MainWindow
                 {
-                    DataContext = new MainWindowViewModel(sourceManager, libraryService, networkService, downloadService, settingsService, imageCacheService),
+                    DataContext = new MainWindowViewModel(sourceManager, libraryService, networkService, downloadService, settingsService, imageCacheService, secureImageService),
                 };
             }
 

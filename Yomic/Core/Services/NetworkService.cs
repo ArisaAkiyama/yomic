@@ -22,17 +22,24 @@ namespace Yomic.Core.Services
         public event EventHandler<bool>? StatusChanged;
         
         private Timer? _pollingTimer;
+        private readonly System.Net.Http.HttpClient _connectivityClient;
         
         // Debounce/Grace period settings
         private int _consecutiveFailures = 0;
-        private const int FailureThreshold = 2; // Increased to 2 to prevent flaky notifications
-        private const int PollingIntervalSeconds = 3; // More frequent checks (was 5)
+        private const int FailureThreshold = 3; // Ditingkatkan agar lebih kebal lag spike
+        private const int PollingIntervalSeconds = 5; // Cek setiap 5 detik agar tidak spam
 
         private readonly SettingsService _settingsService;
 
         public NetworkService(SettingsService settingsService)
         {
             _settingsService = settingsService;
+            
+            _connectivityClient = new System.Net.Http.HttpClient 
+            { 
+                Timeout = TimeSpan.FromSeconds(5) // Toleransi waktu tunggu dinaikkan ke 5 detik
+            };
+            _connectivityClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
             // Initial check
             _ = CheckConnectivityAsync();
@@ -51,7 +58,7 @@ namespace Yomic.Core.Services
                             IsOnline = false;
                             StatusChanged?.Invoke(this, false);
                             _consecutiveFailures = FailureThreshold; // Sync failure count
-                            System.Diagnostics.Debug.WriteLine($"[NetworkService] Immediate Offline via OS Event.");
+                            LogService.Warning("Network", "Immediate Offline via OS Event.");
                         }
                     });
                 }
@@ -88,16 +95,16 @@ namespace Yomic.Core.Services
                 {
                     IsOnline = false;
                     StatusChanged?.Invoke(this, false);
-                    System.Diagnostics.Debug.WriteLine($"[NetworkService] Forced Offline via Settings.");
+                    LogService.Info("Network", "Forced Offline via Settings.");
                 }
                 return false; 
             }
 
             try
             {
-                using var ping = new Ping();
-                var reply = await ping.SendPingAsync("8.8.8.8", 2000);
-                var isConnected = reply.Status == IPStatus.Success;
+                // Use a lightweight HTTP check (204 No Content is fastest)
+                using var response = await _connectivityClient.GetAsync("http://clients3.google.com/generate_204");
+                var isConnected = response.IsSuccessStatusCode;
                 
                 if (isConnected)
                 {
@@ -108,37 +115,56 @@ namespace Yomic.Core.Services
                     {
                         IsOnline = true;
                         StatusChanged?.Invoke(this, true);
-                        System.Diagnostics.Debug.WriteLine($"[NetworkService] Status changed: Online (recovered)");
+                        LogService.Success("Network", "Status changed: Online (recovered)");
                     }
                 }
                 else
                 {
                     // Failure: increment counter
                     _consecutiveFailures++;
-                    System.Diagnostics.Debug.WriteLine($"[NetworkService] Ping failed. Consecutive failures: {_consecutiveFailures}/{FailureThreshold}");
+                    LogService.Debug("Network", $"Connectivity check failed. Consecutive failures: {_consecutiveFailures}/{FailureThreshold}");
                     
                     // Only go offline if threshold exceeded
                     if (_consecutiveFailures >= FailureThreshold && IsOnline)
                     {
                         IsOnline = false;
                         StatusChanged?.Invoke(this, false);
-                        System.Diagnostics.Debug.WriteLine($"[NetworkService] Status changed: Offline (after {FailureThreshold} failures)");
+                        LogService.Warning("Network", $"Status changed: Offline (after {FailureThreshold} failures)");
                     }
                 }
                 
                 return IsOnline;
             }
-            catch
+            catch (Exception ex)
             {
-                // Exception counts as failure
+                // Fallback: Jika HTTP gagal (mungkin masalah DNS/Proxy), coba Ping langsung ke IP Google
+                try 
+                {
+                    using var ping = new System.Net.NetworkInformation.Ping();
+                    var reply = await ping.SendPingAsync("8.8.8.8", 2000);
+                    if (reply.Status == System.Net.NetworkInformation.IPStatus.Success)
+                    {
+                        _consecutiveFailures = 0;
+                        if (!IsOnline)
+                        {
+                            IsOnline = true;
+                            StatusChanged?.Invoke(this, true);
+                            LogService.Success("Network", "Status changed: Online (recovered via Ping fallback)");
+                        }
+                        return true;
+                    }
+                } 
+                catch { }
+
+                // Jika Ping juga gagal, maka benar-benar dihitung sebagai kegagalan
                 _consecutiveFailures++;
-                System.Diagnostics.Debug.WriteLine($"[NetworkService] Check exception. Consecutive failures: {_consecutiveFailures}/{FailureThreshold}");
+                LogService.Debug("Network", $"Check exception: {ex.Message}. Consecutive failures: {_consecutiveFailures}/{FailureThreshold}");
                 
                 if (_consecutiveFailures >= FailureThreshold && IsOnline)
                 {
                     IsOnline = false;
                     StatusChanged?.Invoke(this, false);
-                    System.Diagnostics.Debug.WriteLine($"[NetworkService] Status changed: Offline (exception, after {FailureThreshold} failures)");
+                    LogService.Warning("Network", $"Status changed: Offline (exception, after {FailureThreshold} failures)");
                 }
                 return false;
             }
@@ -190,12 +216,24 @@ namespace Yomic.Core.Services
                         var host = context.DnsEndPoint.Host;
                         System.Net.IPAddress? ipAddress = null;
 
-                        // List of DoH providers (IPv4)
-                        var dohQueries = new[]
+                        int dohProvider = _settingsService.DnsOverHttpsProvider;
+                        
+                        if (dohProvider == 0)
                         {
-                            "https://cloudflare-dns.com/dns-query?name={0}&type=A",
-                            "https://dns.google/resolve?name={0}&type=A",
-                        };
+                            // If DoH is disabled, just fallback immediately
+                            var entry = await System.Net.Dns.GetHostEntryAsync(host, token);
+                            ipAddress = entry.AddressList.FirstOrDefault();
+                        }
+                        else
+                        {
+                            // List of DoH providers (IPv4)
+                            string[] dohQueries = dohProvider switch
+                            {
+                                1 => new[] { "https://1.1.1.1/dns-query?name={0}&type=A", "https://cloudflare-dns.com/dns-query?name={0}&type=A" }, // Cloudflare
+                                2 => new[] { "https://8.8.8.8/resolve?name={0}&type=A", "https://dns.google/resolve?name={0}&type=A" }, // Google
+                                3 => new[] { "https://dns.adguard-dns.com/resolve?name={0}&type=A", "https://94.140.14.14/resolve?name={0}&type=A" }, // AdGuard
+                                _ => new[] { "https://8.8.8.8/resolve?name={0}&type=A" } // Fallback
+                            };
                         
                         using var dohClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2) };
 
@@ -212,19 +250,26 @@ namespace Yomic.Core.Services
                                 {
                                     var json = await response.Content.ReadAsStringAsync(token);
                                     var obj = Newtonsoft.Json.Linq.JObject.Parse(json);
-                                    var answer = obj["Answer"];
-                                    if (answer != null && answer.HasValues)
+                                    var answers = obj["Answer"];
+                                    
+                                    if (answers != null)
                                     {
-                                        var ipStr = answer.First?["data"]?.ToString();
-                                        if (System.Net.IPAddress.TryParse(ipStr, out var parsedIp))
+                                        foreach (var ans in answers)
                                         {
-                                            ipAddress = parsedIp;
-                                            break; 
+                                            var ipStr = ans["data"]?.ToString();
+                                            if (System.Net.IPAddress.TryParse(ipStr, out var parsedIp))
+                                            {
+                                                ipAddress = parsedIp;
+                                                break; 
+                                            }
                                         }
+                                        
+                                        if (ipAddress != null) break;
                                     }
                                 }
                             }
                             catch {}
+                        }
                         }
 
                         // Fallback to standard DNS
@@ -260,7 +305,7 @@ namespace Yomic.Core.Services
              }
             
             var client = new System.Net.Http.HttpClient(handler);
-            client.Timeout = TimeSpan.FromSeconds(30);
+            client.Timeout = TimeSpan.FromSeconds(60);
             
             // Add required headers (MangaDex requires User-Agent)
             client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
@@ -269,5 +314,60 @@ namespace Yomic.Core.Services
             
             return client;
         }
+        
+        /// <summary>
+        /// Resets all network connections by flushing DNS cache and triggering connectivity check.
+        /// Call this when switching VPN on/off to ensure fresh connections.
+        /// </summary>
+        public async Task ResetConnectionsAsync()
+        {
+            try
+            {
+                LogService.Info("Network", "Resetting connections...");
+                
+                // Flush Windows DNS cache (requires cmd)
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "ipconfig",
+                        Arguments = "/flushdns",
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true
+                    };
+                    using var process = System.Diagnostics.Process.Start(psi);
+                    process?.WaitForExit(3000);
+                    LogService.Info("Network", "DNS cache flushed");
+                }
+                catch (Exception ex)
+                {
+                    LogService.Warning("Network", $"DNS flush failed (non-critical): {ex.Message}");
+                }
+                
+                // Reset failure counter
+                _consecutiveFailures = 0;
+                
+                // Wait a moment for network to stabilize
+                await Task.Delay(500);
+                
+                // Force connectivity check
+                await CheckConnectivityAsync();
+                
+                // Raise event for UI to refresh
+                ConnectionReset?.Invoke(this, EventArgs.Empty);
+                
+                LogService.Info("Network", "Connections reset complete");
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Network", "Error resetting connections", ex);
+            }
+        }
+        
+        /// <summary>
+        /// Event raised when connections are reset. UI can subscribe to refresh data.
+        /// </summary>
+        public event EventHandler? ConnectionReset;
     }
 }

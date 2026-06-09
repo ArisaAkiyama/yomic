@@ -32,6 +32,11 @@ namespace Yomic.Core.Services
         public bool CheckAppUpdateOnStart { get; set; } = true;
         public bool IsFirstRun { get; set; } = true;
         public int LibrarySortMode { get; set; } = 0; // 0=TitleAsc, 1=TitleDesc, 2=DateModified
+        public DateTime LastExtensionReminderDate { get; set; } = DateTime.MinValue;
+        public bool ShowNsfwSources { get; set; } = false;
+        public int DnsOverHttpsProvider { get; set; } = 2; // 0=None, 1=Cloudflare, 2=Google, 3=AdGuard
+        public bool PreloadNextChapter { get; set; } = true;
+        public int MaxCacheSizeMb { get; set; } = 500;
 
         public SettingsService()
         {
@@ -64,12 +69,17 @@ namespace Yomic.Core.Services
                         CheckAppUpdateOnStart = settings.CheckAppUpdateOnStart;
                         IsFirstRun = settings.IsFirstRun;
                         LibrarySortMode = settings.LibrarySortMode;
+                        LastExtensionReminderDate = settings.LastExtensionReminderDate;
+                        ShowNsfwSources = settings.ShowNsfwSources;
+                        DnsOverHttpsProvider = settings.DnsOverHttpsProvider;
+                        PreloadNextChapter = settings.PreloadNextChapter;
+                        MaxCacheSizeMb = settings.MaxCacheSizeMb;
                     }
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error loading settings: {ex.Message}");
+                LogService.Error("Settings", "Error loading settings", ex);
             }
         }
 
@@ -85,7 +95,12 @@ namespace Yomic.Core.Services
                     UpdateOnStart = UpdateOnStart,
                     CheckAppUpdateOnStart = CheckAppUpdateOnStart,
                     IsFirstRun = IsFirstRun,
-                    LibrarySortMode = LibrarySortMode
+                    LibrarySortMode = LibrarySortMode,
+                    LastExtensionReminderDate = LastExtensionReminderDate,
+                    ShowNsfwSources = ShowNsfwSources,
+                    DnsOverHttpsProvider = DnsOverHttpsProvider,
+                    PreloadNextChapter = PreloadNextChapter,
+                    MaxCacheSizeMb = MaxCacheSizeMb
                 };
 
                 var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
@@ -93,7 +108,7 @@ namespace Yomic.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error saving settings: {ex.Message}");
+                LogService.Error("Settings", "Error saving settings", ex);
             }
         }
 
@@ -107,7 +122,6 @@ namespace Yomic.Core.Services
                 }
 
                 // Reset properties to default
-                // Reset properties to default
                 IsDarkMode = true;
                 IsOfflineMode = false;
                 SecureScreen = false;
@@ -115,10 +129,15 @@ namespace Yomic.Core.Services
                 CheckAppUpdateOnStart = true;
                 IsFirstRun = true;
                 LibrarySortMode = 0;
+                LastExtensionReminderDate = DateTime.MinValue;
+                ShowNsfwSources = false;
+                DnsOverHttpsProvider = 2;
+                PreloadNextChapter = true;
+                MaxCacheSizeMb = 500;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error resetting settings: {ex.Message}");
+                LogService.Error("Settings", "Error resetting settings", ex);
             }
         }
 
@@ -132,6 +151,11 @@ namespace Yomic.Core.Services
             public bool CheckAppUpdateOnStart { get; set; }
             public bool IsFirstRun { get; set; }
             public int LibrarySortMode { get; set; }
+            public DateTime LastExtensionReminderDate { get; set; }
+            public bool ShowNsfwSources { get; set; }
+            public int DnsOverHttpsProvider { get; set; } = 2;
+            public bool PreloadNextChapter { get; set; } = true;
+            public int MaxCacheSizeMb { get; set; } = 500;
         }
     }
 }

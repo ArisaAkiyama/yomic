@@ -2,14 +2,33 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia; // Added for VisualTreeAttachmentEventArgs
+using Avalonia.VisualTree;
 using Avalonia.Threading; // Added for DispatcherTimer
+using Avalonia.Media.Imaging;
 using Yomic.ViewModels;
 using System;
+using System.IO;
+using System.Linq;
 
 namespace Yomic.Views
 {
     public partial class ReaderView : UserControl
     {
+        private ScrollViewer? _mainScroll;
+        private ScrollViewer? MainScroll 
+        {
+            get 
+            {
+                if (_mainScroll != null) return _mainScroll;
+                var listBox = this.FindControl<ListBox>("MainListBox");
+                if (listBox != null)
+                {
+                    _mainScroll = listBox.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+                }
+                return _mainScroll;
+            }
+        }
+
         public ReaderView()
         {
             InitializeComponent();
@@ -23,10 +42,9 @@ namespace Yomic.Views
             }
 
             // Focusable needs to be true for KeyDown to work
-            this.Focusable = true; 
             this.AttachedToVisualTree += OnAttachedToVisualTree;
+            this.DataContextChanged += OnDataContextChanged;
             
-
 
             // Fix for "Jumping to top":
             // We use AddHandler with handledEventsToo: true to ensure we capture events.
@@ -38,13 +56,12 @@ namespace Yomic.Views
 
             // Pan / Drag Handlers
             // Pan / Drag Handlers
-            var mainScroll = this.FindControl<ScrollViewer>("MainScroll");
-            if (mainScroll != null)
+            var mainListBox = this.FindControl<ListBox>("MainListBox");
+            if (mainListBox != null)
             {
-                mainScroll.AddHandler(PointerPressedEvent, OnPanPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
-                mainScroll.AddHandler(PointerReleasedEvent, OnPanPointerReleased, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
-                mainScroll.AddHandler(PointerMovedEvent, OnPanPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
-                mainScroll.AddHandler(PointerMovedEvent, OnPanPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+                mainListBox.AddHandler(PointerPressedEvent, OnPanPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+                mainListBox.AddHandler(PointerReleasedEvent, OnPanPointerReleased, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+                mainListBox.AddHandler(PointerMovedEvent, OnPanPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
             }
             
             // AutoScroll Timer
@@ -55,7 +72,39 @@ namespace Yomic.Views
             _autoScrollTimer.Tick += OnAutoScrollTick;
         }
 
-        private DateTime _lastNavTime = DateTime.MinValue;
+        private void OnDataContextChanged(object? sender, EventArgs e)
+        {
+            if (DataContext is ReaderViewModel vm)
+            {
+                vm.RequestScroll += OnScrollRequested;
+            }
+        }
+
+        private void OnScrollRequested(object? sender, int direction)
+        {
+            // direction: 1 = Down, -1 = Up
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (DataContext is ReaderViewModel vm && vm.IsWebtoon)
+                {
+                    if (MainScroll != null)
+                    {
+                        double offset = MainScroll.Viewport.Height * 0.9 * direction;
+                        MainScroll.Offset = new Vector(MainScroll.Offset.X, MainScroll.Offset.Y + offset);
+                    }
+                }
+                else
+                {
+                    // Paged Mode Scrolling (if zoomed)
+                    var pagedScroll = this.FindControl<ScrollViewer>("PagedScroll");
+                    if (pagedScroll != null)
+                    {
+                        double offset = pagedScroll.Viewport.Height * 0.9 * direction;
+                        pagedScroll.Offset = new Vector(pagedScroll.Offset.X, pagedScroll.Offset.Y + offset);
+                    }
+                }
+            });
+        }
 
         private void OnReaderPointerWheelChanged(object? sender, PointerWheelEventArgs e)
         {
@@ -81,24 +130,22 @@ namespace Yomic.Views
             
             if (DataContext is ReaderViewModel vm)
             {
-                // Debounce / Cool-down for navigation (300ms) to ensure "1x click" feel
-                bool isNavKey = (e.Key == Key.Right || e.Key == Key.Left);
-                if (isNavKey && (DateTime.Now - _lastNavTime).TotalMilliseconds < 300)
-                {
-                    e.Handled = true;
-                    return;
-                }
-
                 if (e.Key == Key.Right)
                 {
-                    _lastNavTime = DateTime.Now;
-                    vm.NextPageCommand.Execute().Subscribe(_ => { });
+                    if (vm.IsWebtoon)
+                        vm.NextChapterCommand.Execute().Subscribe(_ => { });
+                    else
+                        vm.NextPageCommand.Execute().Subscribe(_ => { });
+                        
                     e.Handled = true;
                 }
                 else if (e.Key == Key.Left)
                 {
-                    _lastNavTime = DateTime.Now;
-                    vm.PrevPageCommand.Execute().Subscribe(_ => { });
+                    if (vm.IsWebtoon)
+                        vm.PrevChapterCommand.Execute().Subscribe(_ => { });
+                    else
+                        vm.PrevPageCommand.Execute().Subscribe(_ => { });
+
                     e.Handled = true;
                 }
                 else if (e.Key == Key.Space)
@@ -116,6 +163,40 @@ namespace Yomic.Views
                 {
                     // F11 to toggle fullscreen
                     vm.ToggleFullscreenCommand.Execute().Subscribe(_ => { });
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.Down)
+                {
+                    double scrollAmount = 150; // Adjust scroll speed here
+                    if (vm.IsWebtoon && MainScroll != null)
+                    {
+                        MainScroll.Offset = new Avalonia.Vector(MainScroll.Offset.X, MainScroll.Offset.Y + scrollAmount);
+                    }
+                    else if (!vm.IsWebtoon)
+                    {
+                        var pagedScroll = this.FindControl<ScrollViewer>("PagedScroll");
+                        if (pagedScroll != null)
+                        {
+                            pagedScroll.Offset = new Avalonia.Vector(pagedScroll.Offset.X, pagedScroll.Offset.Y + scrollAmount);
+                        }
+                    }
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.Up)
+                {
+                    double scrollAmount = 150; // Adjust scroll speed here
+                    if (vm.IsWebtoon && MainScroll != null)
+                    {
+                        MainScroll.Offset = new Avalonia.Vector(MainScroll.Offset.X, Math.Max(0, MainScroll.Offset.Y - scrollAmount));
+                    }
+                    else if (!vm.IsWebtoon)
+                    {
+                        var pagedScroll = this.FindControl<ScrollViewer>("PagedScroll");
+                        if (pagedScroll != null)
+                        {
+                            pagedScroll.Offset = new Avalonia.Vector(pagedScroll.Offset.X, Math.Max(0, pagedScroll.Offset.Y - scrollAmount));
+                        }
+                    }
                     e.Handled = true;
                 }
             }
@@ -194,6 +275,11 @@ namespace Yomic.Views
                     {
                         vm.CurrentPageIndex = estimatedIndex;
                     }
+
+                    // Mihon-style: trigger preload around the visible viewport
+                    // This ensures pages near the scroll position are always being loaded,
+                    // even if CurrentPageIndex didn't change (e.g., user scrolled within same page).
+                    vm.PreloadAroundIndex(estimatedIndex);
                 }
             }
         }
@@ -230,9 +316,11 @@ namespace Yomic.Views
         }
         private void OnPageAttached(object? sender, VisualTreeAttachmentEventArgs e)
         {
+            // When the VirtualizingStackPanel materializes an item (meaning it's near the viewport),
+            // immediately trigger its Load(). The PageViewModel's internal _isLoaded guard
+            // prevents duplicate downloads, and the global SemaphoreSlim throttles concurrency.
             if (sender is Control control && control.DataContext is PageViewModel page)
             {
-                // Lazy Load when attached to visual tree (scrolled into view)
                 page.Load();
             }
         }
@@ -253,12 +341,25 @@ namespace Yomic.Views
         {
             var props = e.GetCurrentPoint(this).Properties;
             if (!props.IsLeftButtonPressed || MainScroll == null) return;
+
+            // Ignore if source is ScrollBar or its children (Thumb, Track, etc.)
+            if (e.Source is Visual visual && visual.FindAncestorOfType<Avalonia.Controls.Primitives.ScrollBar>(true) != null)
+                return;
             
             if (DataContext is ReaderViewModel vm && vm.ZoomScale <= 1.5)
             {
                 // --- AUTO SCROLL MODE (Zoom <= 150%) ---
                 _isAutoScrolling = true;
-                _autoScrollAnchorPosition = e.GetPosition(this);
+                
+                // Clamp Anchor Position to avoid overlapping scrollbar or edges
+                var rawPos = e.GetPosition(this);
+                double horizontalMargin = 60; // More margin for right side (scrollbar)
+                double verticalMargin = 40;
+                
+                double clampedX = Math.Clamp(rawPos.X, verticalMargin, this.Bounds.Width - horizontalMargin);
+                double clampedY = Math.Clamp(rawPos.Y, verticalMargin, this.Bounds.Height - verticalMargin);
+                
+                _autoScrollAnchorPosition = new Point(clampedX, clampedY);
                 
                 // Show Anchor
                 if (_autoScrollCanvas == null) _autoScrollCanvas = this.FindControl<Canvas>("AutoScrollCanvas");
@@ -267,7 +368,7 @@ namespace Yomic.Views
                 if (_autoScrollCanvas != null && _autoScrollAnchor != null)
                 {
                     _autoScrollCanvas.IsVisible = true;
-                    // Position the anchor centered on the click
+                    // Position the anchor centered on the click (clamped)
                     Canvas.SetLeft(_autoScrollAnchor, _autoScrollAnchorPosition.X);
                     Canvas.SetTop(_autoScrollAnchor, _autoScrollAnchorPosition.Y);
                 }
@@ -358,10 +459,15 @@ namespace Yomic.Views
         
         private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
         {
-            this.Focus();
-            
+            // Force focus so key events work immediately
+            Dispatcher.UIThread.Post(() => 
+            {
+                this.Focus();
+                // Also try to find a child to focus if this fails, but this should work since Focusable=True
+            }, DispatcherPriority.Input);
         }
         
+
 
     }
 }

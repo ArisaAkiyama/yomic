@@ -5,25 +5,36 @@ using System.Linq;
 using System.Reactive;
 using ReactiveUI;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using System.Net.Http;
 using System.IO;
 using Yomic.Core.Services;
 using Yomic.Core.Sources;
+using Yomic.Core.Models; // Added as per instruction
 
 namespace Yomic.ViewModels
 {
-    public class ExtensionItem : ViewModelBase
+    public class ExtensionItem : ViewModelBase, IDisposable
     {
         public long Id { get; set; }
         public string Name { get; set; } = "";
         public string Version { get; set; } = "1.0";
         public string Language { get; set; } = "EN";
-        public string IconText { get; set; } = "E";
-        public string IconColor { get; set; } = "#FF9900";
+        private string _iconText = "E";
+        public string IconText
+        {
+            get => _iconText;
+            set => this.RaiseAndSetIfChanged(ref _iconText, value);
+        }
+        public string IconColor { get; set; } = "#0078D7";
         public string IconBackground { get; set; } = "#313244";
         public string Description { get; set; } = "";
         public string? FilePath { get; set; } // Path for uninstalled extensions
+        public string? DownloadUrl { get; set; } // Raw URL from GitHub
         
+        // Multi-Language Support
+        public ObservableCollection<Bitmap> LanguageFlags { get; } = new();
+
         private Bitmap? _iconBitmap;
         public Bitmap? IconBitmap
         {
@@ -45,16 +56,63 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isInstalling, value);
         }
 
-        // Feature Flags
+        private bool _isDownloading;
+        public bool IsDownloading
+        {
+            get => _isDownloading;
+            set => this.RaiseAndSetIfChanged(ref _isDownloading, value);
+        }
+
         public bool CanVerify { get; set; }
 
         public IMangaSource? SourceInstance { get; set; }
+        public bool IsSystem { get; set; } // Bundled (Program Files) plugin
+
+        public void Dispose()
+        {
+            if (_iconBitmap != null)
+            {
+                _iconBitmap.Dispose();
+                _iconBitmap = null;
+            }
+            // Dispose flags
+            foreach (var flag in LanguageFlags)
+            {
+                flag.Dispose();
+            }
+            LanguageFlags.Clear();
+            
+            SourceInstance = null;
+        }
     }
 
-    public class ExtensionsViewModel : ViewModelBase
+    public class ExtensionsViewModel : ViewModelBase, IDisposable
     {
         private readonly SourceManager _sourceManager;
+        private readonly MainWindowViewModel _mainVM;
         private static readonly HttpClient _httpClient = new HttpClient();
+        
+        private static readonly HashSet<string> IndonesianExtensions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "luvyaa", "aarlas", "ainzscansid", "astralscans", "bacakomik", 
+            "bacami", "comicazen", "cosmicscansid", "crotpedia", "dailysuka", 
+            "dojingnet", "doujindesu", "doujindesuunoriginal", "doujinku", "dreamteamsscans", 
+            "hentaicrot", "holotoon", "hwago", "inazumanga", "izanamiscans", 
+            "kanzenin", "kiryuu", "klikmanga", "komikav", "komikcast", 
+            "komikdewasa", "komikdewasaart", "komikhwa", "komikindo", "komikindoco", 
+            "komikindoid", "komiknesia", "komiknextgonline", "komikstation", "komiktap", 
+            "komiku", "komikucc", "komikucom", "komikzoid", "kumapoi", 
+            "kumopoi", "kuromanga", "lepoytl", "lianscans", "lumoskomik", 
+            "maid", "maidmanga", "mangacan", "mangakuri", "mangalay", "mangasusu", 
+            "mangatale", "manhwadesu", "manhwahana", "manhwaindo", "manhwalandmom", 
+            "manhwalistid", "manhwalistorg", "medusascans", "mgkomik", "mihentai", 
+            "mikoroku", "narasininja", "natsu", "ngamenkomik", "ngomik", 
+            "noromax", "okyykomik", "omicaso", "otascans", "pixhentai", 
+            "pornhwa18", "pramramadhan", "riztranslation", "roseveil", "sasangeyou", 
+            "sektedoujin", "sektekomik", "shinigami", "shirakami", "shirodoujin", 
+            "shiyurasub", "siimanga", "softkomik", "soulscans", "themanga", 
+            "tooncubus", "ulascomic", "westmanga", "yubikiri"
+        };
         
         private List<ExtensionItem> _allExtensionsCache = new();
         public ObservableCollection<ExtensionItem> FilteredExtensions { get; } = new();
@@ -70,6 +128,40 @@ namespace Yomic.ViewModels
             }
         }
 
+        public ObservableCollection<LanguageFilterItem> AvailableLanguages { get; } = new()
+        {
+            new LanguageFilterItem { Name = "All", Code = "ALL" },
+            new LanguageFilterItem { Name = "Bahasa Indonesia", Code = "ID" },
+            new LanguageFilterItem { Name = "English", Code = "EN" }
+        };
+
+        private LanguageFilterItem? _selectedLanguageFilterItem;
+        public LanguageFilterItem? SelectedLanguageFilterItem
+        {
+            get => _selectedLanguageFilterItem;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _selectedLanguageFilterItem, value);
+                SelectedLanguageFilter = value?.Code ?? "ALL";
+            }
+        }
+
+        private string _selectedLanguageFilter = "ALL";
+        public string SelectedLanguageFilter
+        {
+            get => _selectedLanguageFilter;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _selectedLanguageFilter, value);
+                var match = AvailableLanguages.FirstOrDefault(x => x.Code == value);
+                if (match != null && SelectedLanguageFilterItem != match)
+                    SelectedLanguageFilterItem = match;
+                FilterExtensions();
+            }
+        }
+
+        public ReactiveCommand<string, Unit> SetLanguageFilterCommand { get; }
+
         public ReactiveCommand<ExtensionItem, Unit> ToggleInstallCommand { get; }
         public ReactiveCommand<ExtensionItem, Unit> VerifyExtensionCommand { get; }
         public ReactiveCommand<Unit, Unit> AddExtensionCommand { get; }
@@ -81,53 +173,125 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _hasNoInstalledExtensions, value);
         }
 
-        public ExtensionsViewModel(SourceManager sourceManager)
+        private bool _isOffline;
+        public bool IsOffline
         {
+            get => _isOffline;
+            set => this.RaiseAndSetIfChanged(ref _isOffline, value);
+        }
+
+        public ReactiveCommand<ExtensionItem, Unit> DownloadExtensionCommand { get; }
+
+        public ExtensionsViewModel(MainWindowViewModel mainVM, SourceManager sourceManager)
+        {
+            _mainVM = mainVM;
             _sourceManager = sourceManager;
             
+            // Initial State
+            IsOffline = !_mainVM.NetworkService.IsOnline;
+
+            // Subscribe to Network Changes
+            _mainVM.NetworkService.StatusChanged += (s, isOnline) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+                {
+                    IsOffline = !isOnline;
+                    if (isOnline)
+                    {
+                        _ = FetchRemoteExtensionsAsync();
+                    }
+                });
+            };
+
             ToggleInstallCommand = ReactiveCommand.Create<ExtensionItem>(ToggleInstall);
             VerifyExtensionCommand = ReactiveCommand.Create<ExtensionItem>(VerifyExtension);
             AddExtensionCommand = ReactiveCommand.Create(AddExtension);
-            OpenRepoCommand = ReactiveCommand.Create(OpenRepo);
+            DownloadExtensionCommand = ReactiveCommand.Create<ExtensionItem>(DownloadExtension);
+            
+            SetLanguageFilterCommand = ReactiveCommand.Create<string>(lang =>
+            {
+                SelectedLanguageFilter = lang;
+            });
             
             LoadExtensions();
+            _ = FetchRemoteExtensionsAsync();
         }
 
-        public ReactiveCommand<Unit, Unit> OpenRepoCommand { get; }
-
-        private void OpenRepo()
+        private async System.Threading.Tasks.Task FetchRemoteExtensionsAsync()
         {
+            if (IsOffline) return;
+
             try
             {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo 
-                { 
-                    FileName = "https://github.com/ArisaAkiyama/extension-yomic", 
-                    UseShellExecute = true 
-                });
+                using var client = new HttpClient();
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
+                var response = await client.GetStringAsync("https://api.github.com/repos/ArisaAkiyama/extension-yomic/contents");
+                var files = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(response);
+                
+                if (files.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var file in files.EnumerateArray())
+                    {
+                        var name = file.GetProperty("name").GetString();
+                        if (name != null && name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var downloadUrl = file.GetProperty("download_url").GetString();
+                            var cleanName = name.Replace("Yomic.Extensions.", "").Replace(".dll", "");
+                            
+                            // Check if we already have it installed
+                            var existing = _allExtensionsCache.FirstOrDefault(x => x.Name.Equals(cleanName, StringComparison.OrdinalIgnoreCase) || 
+                                                                                  (x.FilePath != null && x.FilePath.EndsWith(name, StringComparison.OrdinalIgnoreCase)));
+                            if (existing == null)
+                            {
+                                // It's not installed, add a placeholder
+                                string lowerName = cleanName.ToLower();
+                                string lang = "en";
+                                if (IndonesianExtensions.Contains(lowerName) || 
+                                    lowerName.Contains("komik") || 
+                                    lowerName.Contains("indo"))
+                                    lang = "id";
+                                else if (lowerName == "mangadex" || lowerName == "nhentai")
+                                    lang = "global";
+
+                                var extItem = new ExtensionItem
+                                {
+                                    Id = cleanName.GetHashCode(), // Fake ID
+                                    Name = cleanName,
+                                    Description = "Available on GitHub",
+                                    IsInstalled = false,
+                                    DownloadUrl = downloadUrl,
+                                    IconText = cleanName.Substring(0, 1),
+                                    Version = "Latest",
+                                    Language = lang
+                                };
+                                LoadLanguageFlags(extItem);
+                                LoadDefaultDllIcon(extItem);
+                                _allExtensionsCache.Add(extItem);
+                            }
+                        }
+                    }
+                    FilterExtensions();
+                }
             }
-            catch { /* Ignore */ }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to fetch remote extensions: {ex.Message}");
+            }
         }
 
         private async void VerifyExtension(ExtensionItem item)
         {
-            if (item.SourceInstance == null) return;
-            var method = item.SourceInstance.GetType().GetMethod("InitializeBrowserAsync");
-            if (method != null)
+            if (item.SourceInstance is not ICloudflareBypassable bypassable) return;
+            
+            _mainVM.ShowNotification($"Verifying {item.Name}...", NotificationType.Info);
+            try
             {
-                 StatusMessage = $"Verifying {item.Name}... Please solve the CAPTCHA in the browser window.";
-                 await System.Threading.Tasks.Task.Run(() => 
-                 {
-                     try { method.Invoke(item.SourceInstance, null); }
-                     catch (Exception)
-                     {
-                         // Ignore error
-                     }
-                 });
-                 StatusMessage = $"{item.Name} Verified!";
-                 
-                 // Clear message after delay
-                 await System.Threading.Tasks.Task.Delay(3000);
-                 StatusMessage = "";
+                await bypassable.InitializeBrowserAsync();
+                _mainVM.ShowNotification($"{item.Name} Verified!", NotificationType.Success);
+            }
+            catch (Exception ex)
+            {
+                _mainVM.ShowNotification($"Verification failed: {ex.Message}", NotificationType.Error);
             }
         }
         
@@ -145,44 +309,58 @@ namespace Yomic.ViewModels
 
         private void LoadExtensions()
         {
+            foreach (var item in _allExtensionsCache)
+            {
+                item.Dispose();
+            }
             _allExtensionsCache.Clear();
             var activeSources = _sourceManager.GetSources();
             foreach (var source in activeSources)
             {
-                bool canVerify = source.GetType().GetMethod("InitializeBrowserAsync") != null;
+                bool canVerify = source is ICloudflareBypassable;
                 
-                // Branding Logic
-                string iconBg = "#313244";
-                string iconFg = "#FF9900";
-                string iconTxt = source.Name.Substring(0, 1);
+                // Branding Logic (Dynamic)
+                string iconBg = source.IconBackground;
+                string iconFg = source.IconForeground;
+                string iconTxt = !string.IsNullOrEmpty(source.Name) ? source.Name.Substring(0, 1) : "?";
 
-                if (source.Name.Contains("Komiku", StringComparison.OrdinalIgnoreCase))
-                {
-                    iconBg = "#2596be"; // Komiku Blue
-                    iconFg = "White";
-                    iconTxt = "K";
-                }
-
+                // Use source metadata
                 var extItem = new ExtensionItem
                 {
                     Id = source.Id,
                     Name = source.Name,
-                    Version = "1.0.2",
+                    Version = source.Version, // Dynamic Version
                     Language = source.Language,
                     IconText = iconTxt,
                     IconColor = iconFg,
                     IconBackground = iconBg,
-                    Description = $"{source.Name} Source (api.komiku.org)",
-                    IsInstalled = true,
+                    Description = !string.IsNullOrEmpty(source.Description) ? source.Description : $"{source.Name} Source",
+                    
+                    // IsInstalled = TRUE if in AppData/ProgramFiles, FALSE if just loaded from random DLL
+                    IsInstalled = _sourceManager.IsInstalledSource(source.Id),
+                    
                     SourceInstance = source,
                     CanVerify = canVerify
                 };
-                
-                if (source.Name.Contains("Komiku", StringComparison.OrdinalIgnoreCase))
+
+                // If NOT installed, show path in description
+                if (!extItem.IsInstalled)
                 {
-                     _ = LoadIconAsync(extItem, "https://www.google.com/s2/favicons?domain=komiku.org&sz=128");
+                    var path = _sourceManager.GetSourcePath(source.Id);
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        extItem.Description = "Loaded from: " + System.IO.Path.GetFileName(path);
+                    }
                 }
                 
+                // Load Icon from URL if provided by Source
+                if (!string.IsNullOrEmpty(source.IconUrl))
+                {
+                     _ = LoadIconAsync(extItem, source.IconUrl);
+                }
+                
+                LoadLanguageFlags(extItem);
+
                 _allExtensionsCache.Add(extItem);
             }
             
@@ -198,6 +376,17 @@ namespace Yomic.ViewModels
                 ? _allExtensionsCache 
                 : _allExtensionsCache.Where(x => x.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
 
+            // Apply Language Filter
+            if (!string.IsNullOrEmpty(SelectedLanguageFilter) && SelectedLanguageFilter != "ALL")
+            {
+                list = list.Where(x => 
+                    x.Language != null && (
+                        x.Language.Equals(SelectedLanguageFilter, StringComparison.OrdinalIgnoreCase) ||
+                        x.Language.Equals("global", StringComparison.OrdinalIgnoreCase)
+                    )
+                ).ToList();
+            }
+
             // Sort: Installed First, then Name
             var sorted = list.OrderByDescending(x => x.IsInstalled).ThenBy(x => x.Name);
             
@@ -212,13 +401,6 @@ namespace Yomic.ViewModels
         // Delegate for View to hook into
         public System.Func<System.Threading.Tasks.Task<Avalonia.Platform.Storage.IStorageFile?>>? OpenFilePickerAsync { get; set; }
 
-        private string? _statusMessage; // Helper: make nullable if needed to fix warning
-        public string? StatusMessage
-        {
-            get => _statusMessage;
-            set => this.RaiseAndSetIfChanged(ref _statusMessage, value);
-        }
-
         private bool _isBusy;
         public bool IsBusy
         {
@@ -229,7 +411,6 @@ namespace Yomic.ViewModels
         private async void AddExtension()
         {
             if (OpenFilePickerAsync == null) return;
-            StatusMessage = "";
 
             try
             {
@@ -242,69 +423,26 @@ namespace Yomic.ViewModels
                 await System.Threading.Tasks.Task.Delay(500);
 
                 var path = file.Path.LocalPath;
-                StatusMessage = $"Loading {System.IO.Path.GetFileName(path)}...";
+                string fileName = System.IO.Path.GetFileName(path);
+                _mainVM.ShowNotification($"Installing {fileName}...", NotificationType.Info);
 
-                // Use SourceManager to PEEK only (do not install yet)
-                var source = _sourceManager.PeekExtension(path);
-
-                if (source != null)
+                // INSTALL PERSISTENTLY (Copy to AppData/Plugins and Load)
+                var loadedSource = await System.Threading.Tasks.Task.Run(() => _sourceManager.InstallPlugin(path));
+                
+                if (loadedSource != null)
                 {
-                    // Check if already in UI list (duplicate check)
-                    // We check ID and Name to be sure
-                    if (_allExtensionsCache.Any(x => x.Id == source.Id || x.Name.Equals(source.Name, StringComparison.OrdinalIgnoreCase))) 
-                    {
-                        StatusMessage = $"Extension '{source.Name}' is already in the list.";
-                        IsBusy = false;
-                        return;
-                    }
-
-                    bool canVerify = source.GetType().GetMethod("InitializeBrowserAsync") != null;
-
-                    // Branding Logic
-                    string iconBg = "#313244";
-                    string iconFg = "#FF9900";
-                    string iconTxt = source.Name.Substring(0, 1);
-
-                    if (source.Name.Contains("Komiku", StringComparison.OrdinalIgnoreCase))
-                    {
-                        iconBg = "#2596be";
-                        iconFg = "White";
-                        iconTxt = "K";
-                    }
-
-                    var newExt = new ExtensionItem
-                    {
-                            Id = source.Id,
-                            Name = source.Name,
-                            Version = source.GetType().Assembly.GetName().Version?.ToString() ?? "1.0.0",
-                            Language = source.Language,
-                            IconText = iconTxt,
-                            IconColor = iconFg,
-                            IconBackground = iconBg,
-                            Description = $"Loaded from {System.IO.Path.GetFileName(path)}",
-                            IsInstalled = false, // Not installed yet
-                            SourceInstance = source,
-                            CanVerify = canVerify,
-                            FilePath = path // Save path for installation
-                    };
-                    
-                    if (source.Name.Contains("Komiku", StringComparison.OrdinalIgnoreCase))
-                    {
-                            _ = LoadIconAsync(newExt, "https://www.google.com/s2/favicons?domain=komiku.org&sz=128");
-                    }
-
-                    _allExtensionsCache.Add(newExt);
-                    FilterExtensions();
-                    StatusMessage = ""; 
+                     // Refresh list to show new item
+                     LoadExtensions(); // Reloads list, new item will appear as "Installed"
+                     _mainVM.ShowNotification($"{loadedSource.Name} installed successfully!", NotificationType.Success);
                 }
                 else
                 {
-                    StatusMessage = "Error: Failed to load extension from DLL.";
+                    _mainVM.ShowNotification("Failed to install extension.", NotificationType.Error);
                 }
             }
             catch (System.Exception ex)
             {
-                StatusMessage = $"Load Error: {ex.Message}";
+                _mainVM.ShowNotification($"Install Error: {ex.Message}", NotificationType.Error);
             }
             finally
             {
@@ -312,23 +450,43 @@ namespace Yomic.ViewModels
             }
         }
 
-        private async System.Threading.Tasks.Task LoadIconAsync(ExtensionItem item, string url)
+        private async void DownloadExtension(ExtensionItem item)
         {
+            if (string.IsNullOrEmpty(item.DownloadUrl)) return;
+
+            item.IsDownloading = true;
+            _mainVM.ShowNotification($"Downloading {item.Name}...", NotificationType.Info);
+
             try
             {
-                var bytes = await _httpClient.GetByteArrayAsync(url);
-                using var stream = new MemoryStream(bytes);
-                var bitmap = new Bitmap(stream);
-                // Switch to UI thread if needed, but ReactiveUI properties handle notification.
-                // However, Bitmap creation often needs to happen? No, Bitmap matches UI thread usually? 
-                // Avalonia Bitmaps are thread-safeish but best created on UI or passed carefully.
-                // We'll just set it.
-                item.IconBitmap = bitmap;
-                item.IconText = ""; // Clear IconText if bitmap is loaded
+                var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"{item.Name}.dll");
+                
+                using var client = new HttpClient();
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
+                var bytes = await client.GetByteArrayAsync(item.DownloadUrl);
+                await System.IO.File.WriteAllBytesAsync(tempPath, bytes);
+
+                // Install the downloaded DLL
+                var loadedSource = await System.Threading.Tasks.Task.Run(() => _sourceManager.InstallPlugin(tempPath));
+                
+                if (loadedSource != null)
+                {
+                     LoadExtensions();
+                     await FetchRemoteExtensionsAsync(); // Refresh remote list to catch any others
+                     _mainVM.ShowNotification($"{loadedSource.Name} installed successfully!", NotificationType.Success);
+                }
+                else
+                {
+                    _mainVM.ShowNotification("Failed to install downloaded extension.", NotificationType.Error);
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                // Fallback to text
+                _mainVM.ShowNotification($"Download Error: {ex.Message}", NotificationType.Error);
+            }
+            finally
+            {
+                item.IsDownloading = false;
             }
         }
 
@@ -336,54 +494,111 @@ namespace Yomic.ViewModels
         {
             if (item.IsInstalled)
             {
-                // Uninstall
+                // Uninstall (Delete file if it is an installed user plugin, or just remove from list if temp)
                 item.IsInstalling = true;
-                await System.Threading.Tasks.Task.Delay(1000); // Simulate uninstall time
+                await System.Threading.Tasks.Task.Delay(1000); 
 
-                item.IsInstalled = false;
-                item.IsInstalling = false;
-                
                 _sourceManager.RemoveSource(item.Id);
-                _allExtensionsCache.Remove(item); 
+                
+                LoadExtensions();
+                _ = FetchRemoteExtensionsAsync();
+                
+                _mainVM.ShowNotification($"{item.Name} removed.", NotificationType.Success);
             }
-            else
+        }
+
+        private async System.Threading.Tasks.Task LoadIconAsync(ExtensionItem item, string url)
+        {
+            try
             {
-                // Install - with loading simulation
-                item.IsInstalling = true;
-                await System.Threading.Tasks.Task.Delay(1000); // Simulate install time
+                using var optClient = _mainVM.NetworkService.CreateOptimizedHttpClient();
+                var bytes = await optClient.GetByteArrayAsync(url);
+                using var stream = new MemoryStream(bytes);
+                var bitmap = new Bitmap(stream);
                 
-                if (!string.IsNullOrEmpty(item.FilePath))
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    // INSTALL: Copy to Plugins and Load (Background Thread)
-                    var loadedSource = await System.Threading.Tasks.Task.Run(() => _sourceManager.InstallPlugin(item.FilePath));
-                    
-                    if (loadedSource != null)
-                    {
-                        item.SourceInstance = loadedSource;
-                        item.IsInstalled = true;
-                        
-                        var fileName = System.IO.Path.GetFileName(item.FilePath);
-                        item.Description = $"Installed in Plugins ({fileName})";
-                    }
-                    else
-                    {
-                        StatusMessage = "Failed to install extension.";
-                    }
-                }
-                else
-                {
-                     // Fallback for pre-installed items logic
-                     if (item.SourceInstance != null)
-                     {
-                         _sourceManager.AddSource(item.SourceInstance);
-                         item.IsInstalled = true;
-                     }
-                }
-                
-                item.IsInstalling = false;
+                    item.IconBitmap = bitmap;
+                    item.IconText = ""; 
+                });
             }
-            
-            FilterExtensions();
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ExtensionsVM] Icon load failed: {ex.Message}");
+            }
+        }
+
+        private void LoadDefaultDllIcon(ExtensionItem item)
+        {
+            try
+            {
+                var uri = new Uri("avares://Yomic/Assets/Icons/WindowsIcons/dll.ico");
+                if (AssetLoader.Exists(uri))
+                {
+                    using var stream = AssetLoader.Open(uri);
+                    item.IconBitmap = new Bitmap(stream);
+                    item.IconText = "";
+                    item.IconBackground = "Transparent";
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load default DLL icon: {ex.Message}");
+            }
+        }
+        
+        private void LoadLanguageFlags(ExtensionItem item)
+        {
+             // Clear existing
+             item.LanguageFlags.Clear();
+
+             // Logic for Global / Multi-Language Sources
+             if (item.Name.Equals("MangaDex", StringComparison.OrdinalIgnoreCase) || item.Language.Equals("global", StringComparison.OrdinalIgnoreCase))
+             {
+                 AddFlag(item, "id.png");
+                 AddFlag(item, "gb.png");
+                 return;
+             }
+
+             // Logic for Single Language Sources
+             if (item.Language.Equals("id", StringComparison.OrdinalIgnoreCase))
+             {
+                 AddFlag(item, "id.png");
+             }
+             else if (item.Language.Equals("en", StringComparison.OrdinalIgnoreCase) || 
+                      item.Language.Equals("gb", StringComparison.OrdinalIgnoreCase))
+             {
+                 AddFlag(item, "gb.png");
+             }
+        }
+
+        private void AddFlag(ExtensionItem item, string fileName)
+        {
+            try
+            {
+                var uri = new Uri($"avares://Yomic/Assets/Flags/{fileName}");
+                if (AssetLoader.Exists(uri))
+                {
+                    using var stream = AssetLoader.Open(uri);
+                    item.LanguageFlags.Add(new Bitmap(stream));
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load flag {fileName}: {ex.Message}");
+            }
+        }
+
+        public void Dispose()
+        {
+            foreach (var item in _allExtensionsCache)
+            {
+                item.Dispose();
+            }
+            _allExtensionsCache.Clear();
+            FilteredExtensions.Clear();
+
+            System.Diagnostics.Debug.WriteLine("[ExtensionsVM] Disposed and memory references cleared.");
         }
     }
 }

@@ -73,7 +73,8 @@ namespace Yomic.Core.Services
                 return new UpdateInfo
                 {
                     IsUpdateAvailable = false,
-                    LatestVersion = latestVersionTag
+                    LatestVersion = latestVersionTag,
+                    ReleaseNotes = body
                 };
             }
             catch (Exception ex)

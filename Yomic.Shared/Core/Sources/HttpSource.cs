@@ -10,11 +10,31 @@ namespace Yomic.Core.Sources
 {
     public abstract class HttpSource : IMangaSource
     {
-        public abstract long Id { get; }
+        /// <summary>
+        /// Unique stable ID generated from the class name.
+        /// This ensures no collision between extensions from different developers.
+        /// </summary>
+        public long Id => GenerateStableId();
+        
+        private long GenerateStableId()
+        {
+            var name = GetType().FullName ?? GetType().Name;
+            var hash = System.Security.Cryptography.MD5.HashData(
+                System.Text.Encoding.UTF8.GetBytes(name));
+            return BitConverter.ToInt64(hash, 0);
+        }
+        
         public abstract string Name { get; }
         public abstract string BaseUrl { get; }
         public virtual string Language => "EN"; // Default to EN
         public virtual bool IsHasMorePages => true;
+        
+        public virtual string Version => "1.0.0";
+        public virtual string IconUrl => "";
+        public virtual string Description => "Manga Source";
+        public virtual string Author => "Unknown";
+        public virtual string IconBackground => "#313244";
+        public virtual string IconForeground => "#FF9900";
         
         // DoH Client for bootstrapping resolution
         private static readonly HttpClient _dohClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
@@ -24,24 +44,49 @@ namespace Yomic.Core.Sources
         private bool _lastProxyState = false;
         protected readonly CookieContainer _cookieContainer = new CookieContainer();
         
+        /// <summary>
+        /// Public accessor for cookie container, allowing external cookie injection (e.g., after Cloudflare CAPTCHA solving).
+        /// </summary>
+        public CookieContainer CookieContainer => _cookieContainer;
+        
+        /// <summary>
+        /// Override to true in sources that require VPN proxy (e.g., MangaDex which is ISP-blocked).
+        /// Default is false, meaning most sources use direct connection with DoH.
+        /// </summary>
+        public virtual bool RequiresProxy => false;
+        
         // Property that gets/creates HttpClient with current proxy state
         protected HttpClient Client
         {
             get
             {
-                bool currentProxyState = SingboxService.Instance.IsRunning;
+                // Only use proxy if: VPN is running AND this source requires proxy
+                bool shouldUseProxy = SingboxService.Instance.IsRunning && RequiresProxy;
                 
                 // Recreate client if proxy state changed or client doesn't exist
-                if (_client == null || currentProxyState != _lastProxyState)
+                if (_client == null || shouldUseProxy != _lastProxyState)
                 {
                     _client?.Dispose();
-                    _client = CreateHttpClient(currentProxyState);
-                    _lastProxyState = currentProxyState;
-                    Console.WriteLine($"[HttpSource] HttpClient created with proxy: {currentProxyState}");
+                    _client = CreateHttpClient(shouldUseProxy);
+                    _lastProxyState = shouldUseProxy;
+                    
+                    // Re-apply extension-specific configuration (headers, etc.)
+                    ConfigureClient(_client);
+                    
+                    Console.WriteLine($"[HttpSource] HttpClient created with proxy: {shouldUseProxy} (RequiresProxy: {RequiresProxy})");
                 }
                 
                 return _client;
             }
+        }
+
+        /// <summary>
+        /// Virtual method for extensions to configure the HttpClient with custom headers.
+        /// Called every time the HttpClient is created/recreated (e.g., when proxy state changes).
+        /// </summary>
+        protected virtual void ConfigureClient(HttpClient client)
+        {
+            // Base implementation - extensions can override to add Origin, Referer, etc.
         }
 
         protected HttpSource()
@@ -83,8 +128,10 @@ namespace Yomic.Core.Sources
                         System.Net.IPAddress? ipAddress = null;
                         var logBuilder = new System.Text.StringBuilder();
 
+                        // List of DoH providers (IPv4)
                         var dohQueries = new[]
                         {
+                            (Provider: "https://8.8.8.8/resolve?name={0}&type=A", Type: "IPv4"), // Direct IP
                             (Provider: "https://cloudflare-dns.com/dns-query?name={0}&type=A", Type: "IPv4"),
                             (Provider: "https://dns.google/resolve?name={0}&type=A", Type: "IPv4"),
                         };
@@ -102,16 +149,22 @@ namespace Yomic.Core.Sources
                                 {
                                     var json = await response.Content.ReadAsStringAsync(token);
                                     var obj = Newtonsoft.Json.Linq.JObject.Parse(json);
-                                    var answer = obj["Answer"];
-                                    if (answer != null && answer.HasValues)
+                                    var answers = obj["Answer"];
+                                    
+                                    if (answers != null)
                                     {
-                                        var ipStr = answer.First?["data"]?.ToString();
-                                        if (System.Net.IPAddress.TryParse(ipStr, out var parsedIp))
+                                        foreach (var ans in answers)
                                         {
-                                            ipAddress = parsedIp;
-                                            logBuilder.AppendLine($"[DoH] Resolved {host} ({type}) via {dohUrl} -> {ipAddress}");
-                                            break;
+                                            var ipStr = ans["data"]?.ToString();
+                                            if (System.Net.IPAddress.TryParse(ipStr, out var parsedIp))
+                                            {
+                                                ipAddress = parsedIp;
+                                                logBuilder.AppendLine($"[DoH] Resolved {host} ({type}) via {dohUrl} -> {ipAddress}");
+                                                break; 
+                                            }
                                         }
+                                        
+                                        if (ipAddress != null) break;
                                     }
                                 }
                             }
@@ -162,7 +215,7 @@ namespace Yomic.Core.Sources
             var client = new HttpClient(handler);
             client.Timeout = TimeSpan.FromSeconds(15); // Increased timeout for proxy
             
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
             client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8");
             client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
             
@@ -186,6 +239,13 @@ namespace Yomic.Core.Sources
                 Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [HttpSource] Request Error ({ex.GetType().Name}): {ex.Message}");
                 Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [HttpSource] Attempting Cloudflare/Puppeteer Fallback...");
                 
+                // FAST PATH: If user already solved CAPTCHA via WebView, skip Steps 1-2 and go directly to headless fetch
+                if (CloudflareBypassService.Instance.HasPreSolvedCookies)
+                {
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [HttpSource] Pre-solved cookies detected! Skipping to HEADLESS BROWSER FETCH...");
+                    return await CloudflareBypassService.Instance.GetContentAsync(url);
+                }
+
                 try
                 {
                     // Strategy 1: Update Tokens and Retry HTTP

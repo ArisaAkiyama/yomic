@@ -5,172 +5,282 @@
              x:DataType="vm:BrowseViewModel"
              Background="{DynamicResource PrimaryBackground}">
 
+    <UserControl.Styles>
+        <!-- Standard Header Action Button Style -->
+        <Style Selector="Button.header-action">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+        </Style>
+        <Style Selector="Button.header-action:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#15FFFFFF"/>
+        </Style>
+        <Style Selector="Button.header-action:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style Selector="Button.header-action:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#25FFFFFF"/>
+        </Style>
+        <Style Selector="Button.header-action TextBlock">
+             <Setter Property="Transitions" Value="{x:Null}"/>
+        </Style>
+        <!-- Tab Filter Style (ListBoxItem) -->
+        <Style Selector="#LanguageFilterListBox ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.2"/>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.2"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="#LanguageFilterListBox ListBoxItem /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="#LanguageFilterListBox ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+        </Style>
+        <Style Selector="#LanguageFilterListBox ListBoxItem:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+        <Style Selector="#LanguageFilterListBox ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PrimaryBackground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentColor}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style Selector="#LanguageFilterListBox ListBoxItem:selected">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+        </Style>
+    </UserControl.Styles>
+
     <Panel>
         <Grid RowDefinitions="Auto, *" IsVisible="{Binding !IsOffline}">
-            <Border Grid.Row="0" Padding="40,30,40,20">
-                <StackPanel Spacing="25">
-                    <StackPanel Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
-                            <TextBlock Text="&#xE774;" FontFamily="Segoe Fluent Icons" FontSize="28" 
+        <StackPanel Grid.Row="0" Spacing="20" Margin="30,30,30,10" ZIndex="10">
+            <!-- Header -->
+            <StackPanel>
+                <Grid ColumnDefinitions="*, Auto">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="15">
+                            <TextBlock Text="&#xE774;" FontFamily="Segoe Fluent Icons" FontSize="24" 
                                        Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
                                        RenderOptions.TextRenderingMode="Antialias"/>
-                            <TextBlock Text="Browse Source" FontSize="32" FontWeight="Bold" 
-                                       Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <TextBlock Text="Browse Source" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
+                                <TextBlock Text="{Binding Sources.Count, StringFormat='({0})'}" 
+                                           FontSize="20" Foreground="{DynamicResource SecondaryText}" 
+                                           VerticalAlignment="Bottom" Margin="0,0,0,4"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="Browse and open installed manga sources" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0"/>
                     </StackPanel>
-                    
+                </Grid>
+            </StackPanel>
 
+            <!-- Search Box & Filter Button -->
+            <Grid ColumnDefinitions="*, Auto">
+                <TextBox Grid.Column="0" Width="350" HorizontalAlignment="Left"
+                          Text="{Binding SearchText}"
+                          Watermark="Search sources..." 
+                          Background="{DynamicResource SidebarBackground}" Foreground="{DynamicResource PrimaryText}" 
+                          CornerRadius="20" Padding="15,10"
+                          BorderThickness="0" VerticalContentAlignment="Center">
+                    <TextBox.Styles>
+                        <Style Selector="TextBox:focus">
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                            <Setter Property="CaretBrush" Value="{DynamicResource PrimaryText}"/>
+                        </Style>
+                        <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+                            <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                        </Style>
+                        <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+                            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                        </Style>
+                         <Style Selector="TextBox:pointerover">
+                             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                         </Style>
+                         <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
+                             <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                         </Style>
+                         <Style Selector="TextBox:focus /template/ TextBlock#PART_Watermark">
+                             <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                         </Style>
+                         <Style Selector="TextBox:pointerover /template/ TextBlock#PART_Watermark">
+                             <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                         </Style>
+                    </TextBox.Styles>
+                    <TextBox.InnerRightContent>
+                        <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" 
+                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    </TextBox.InnerRightContent>
+                </TextBox>
 
-                    <!-- iOS-style Language Toggle -->
-                    <Border Background="{DynamicResource SidebarBackground}" CornerRadius="8" HorizontalAlignment="Left" Padding="2">
-                        <Grid ColumnDefinitions="Auto, Auto, Auto">
-                            <Grid.Styles>
-                                 <Style Selector="RadioButton.Toggle">
-                                     <Setter Property="Background" Value="Transparent"/>
-                                     <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
-                                     <Setter Property="Padding" Value="30,8"/>
-                                     <Setter Property="CornerRadius" Value="6"/>
-                                     <Setter Property="FontSize" Value="14"/>
-                                     <Setter Property="FontWeight" Value="SemiBold"/>
-                                     <Setter Property="HorizontalContentAlignment" Value="Center"/>
-                                     <Setter Property="VerticalContentAlignment" Value="Center"/>
-                                     <Setter Property="Cursor" Value="Hand"/>
-                                     <Setter Property="Template">
-                                         <ControlTemplate>
-                                             <Border Name="RootBorder" Background="{TemplateBinding Background}" 
-                                                     CornerRadius="{TemplateBinding CornerRadius}"
-                                                     Padding="{TemplateBinding Padding}">
-                                                 <ContentPresenter Content="{TemplateBinding Content}" 
-                                                                   HorizontalAlignment="Center" 
-                                                                   VerticalAlignment="Center"
-                                                                   TextElement.Foreground="{TemplateBinding Foreground}"/>
-                                             </Border>
-                                         </ControlTemplate>
-                                     </Setter>
-                                 </Style>
-                                 
-                                 <!-- Checked State -->
-                                 <Style Selector="RadioButton.Toggle:checked">
-                                     <Setter Property="Background" Value="#FF9900"/>
-                                     <Setter Property="Foreground" Value="#1E1E2E"/>
-                                     <Setter Property="FontWeight" Value="Bold"/>
-                                 </Style>
-
-                                 <!-- Disable Hover Effects by forcing values matching state -->
-                                 <!-- Unchecked Hover -->
-                                 <Style Selector="RadioButton.Toggle:pointerover /template/ Border#RootBorder">
-                                     <Setter Property="Background" Value="Transparent"/>
-                                 </Style>
-                                 <Style Selector="RadioButton.Toggle:pointerover /template/ ContentPresenter">
-                                     <Setter Property="TextElement.Foreground" Value="{DynamicResource SecondaryText}"/>
-                                 </Style>
-
-                                 <!-- Checked Hover -->
-                                 <Style Selector="RadioButton.Toggle:checked:pointerover /template/ Border#RootBorder">
-                                     <Setter Property="Background" Value="#FF9900"/>
-                                 </Style>
-                                 <Style Selector="RadioButton.Toggle:checked:pointerover /template/ ContentPresenter">
-                                     <Setter Property="TextElement.Foreground" Value="#1E1E2E"/>
-                                 </Style>
-                                 
-                                 <!-- Animation -->
-                                 <Style Selector="RadioButton.Toggle /template/ Border#RootBorder">
-                                     <Setter Property="Transitions">
-                                         <Transitions>
-                                             <BrushTransition Property="Background" Duration="0:0:0.2"/>
-                                         </Transitions>
-                                     </Setter>
-                                 </Style>
-                            </Grid.Styles>
-
-                            <RadioButton Grid.Column="0" Classes="Toggle" Content="ALL" 
-                                         IsChecked="{Binding IsAll}" GroupName="Lang"/>
-                            <RadioButton Grid.Column="1" Classes="Toggle" Content="ID" 
-                                         IsChecked="{Binding IsId}" GroupName="Lang"/>
-                            <RadioButton Grid.Column="2" Classes="Toggle" Content="EN" 
-                                         IsChecked="{Binding IsEn}" GroupName="Lang"/>
-                        </Grid>
-                    </Border>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" Margin="10,0,0,0" VerticalAlignment="Center">
+                    <!-- Filter Button -->
+                    <Button Classes="header-action" ToolTip.Tip="Filter Languages">
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuItem Header="Filter By" IsEnabled="False" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource SecondaryText}"/>
+                                
+                                <MenuItem Header="Show All" Command="{Binding SetLanguageFilterCommand}" CommandParameter="ALL">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                   IsVisible="{Binding SelectedLanguage, Converter={x:Static ObjectConverters.Equal}, ConverterParameter='ALL'}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Bahasa Indonesia" Command="{Binding SetLanguageFilterCommand}" CommandParameter="ID">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                   IsVisible="{Binding SelectedLanguage, Converter={x:Static ObjectConverters.Equal}, ConverterParameter='ID'}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="English" Command="{Binding SetLanguageFilterCommand}" CommandParameter="EN">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource AccentColor}"
+                                                   IsVisible="{Binding SelectedLanguage, Converter={x:Static ObjectConverters.Equal}, ConverterParameter='EN'}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="&#xE71C;" FontFamily="Segoe Fluent Icons" FontSize="18" VerticalAlignment="Center"/>
+                            <TextBlock Text="Filter" VerticalAlignment="Center" FontSize="14" FontWeight="Medium"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
-            </Border>
+            </Grid>
+        </StackPanel>
 
             <!-- Main Content (Online) -->
             <Panel Grid.Row="1">
-                <ScrollViewer Padding="40,10,40,40" IsVisible="{Binding HasSources}">
-                    <ItemsControl ItemsSource="{Binding Sources}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel Orientation="Horizontal" ItemWidth="320" ItemHeight="90"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Button x:CompileBindings="False" Background="Transparent" Padding="0" Margin="0,0,20,20"
-                                        Command="{Binding DataContext.OpenSourceCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}">
-                                    <Button.Styles>
-                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="Transparent"/>
-                                        </Style>
-                                        <Style Selector="Button:pressed /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="Transparent"/>
-                                        </Style>
-                                    </Button.Styles>
-                                    <!-- Card Background -->
-                                    <Border CornerRadius="16" Padding="15" Width="300" Height="90"
-                                            Background="{DynamicResource SidebarBackground}" BorderThickness="0" BorderBrush="{DynamicResource SeparatorBrush}">
-                                        <Border.Styles>
-                                            <Style Selector="Border">
-                                                <Setter Property="Transitions">
-                                                    <Transitions>
-                                                        <BrushTransition Property="Background" Duration="0:0:0.2"/>
-                                                        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
-                                                        <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.2"/>
-                                                    </Transitions>
-                                                </Setter>
-                                            </Style>
-                                            <Style Selector="Border:pointerover">
-                                                <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
-                                                <Setter Property="RenderTransform" Value="scale(1.02)"/>
-                                                <Setter Property="BoxShadow" Value="0 8 15 0 #30000000"/>
-                                                <Setter Property="BorderBrush" Value="{DynamicResource SeparatorBrush}"/>
-                                            </Style>
-                                        </Border.Styles>
+                <ListBox ItemsSource="{Binding Sources}" 
+                         Background="Transparent" 
+                         BorderThickness="0"
+                         Padding="30,10,30,50"
+                         VerticalAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         IsVisible="{Binding HasSources}">
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Margin" Value="0"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                        </Style>
+                        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="Transparent"/>
+                        </Style>
+                        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                            <Setter Property="Background" Value="Transparent"/>
+                        </Style>
+                    </ListBox.Styles>
 
-                                        <Grid ColumnDefinitions="Auto, *, Auto">
-                                            <!-- Icon -->
-                                            <Border Width="52" Height="52" CornerRadius="14" Background="{Binding IconColor}" Margin="0,0,15,0">
-                                                 <Panel>
-                                                     <TextBlock Text="{Binding IconText}" Foreground="{Binding IconForeground}" FontWeight="ExtraBold" FontSize="24"
-                                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                     <Image Source="{Binding IconBitmap}" Stretch="UniformToFill"/>
-                                                 </Panel>
-                                            </Border>
-                                            
-                                            <!-- Text -->
-                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Spacing="6">
-                                                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource PrimaryText}" FontWeight="Bold" FontSize="16"/>
-                                                <Border Background="{DynamicResource OverlayBackground}" CornerRadius="8" Padding="10,3" HorizontalAlignment="Left" BorderThickness="0">
-                                                    <TextBlock Text="{Binding Language}" Foreground="{DynamicResource SecondaryText}" FontSize="11" FontWeight="Bold"/>
-                                                </Border>
-                                                <!-- Optional: Add URL or other info if needed -->
-                                            </StackPanel>
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="8"/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
 
-                                            <!-- Action Badge -->
-                                            <Panel Grid.Column="2" VerticalAlignment="Center">
-                                                <!-- Install Button or Status -->
-                                                <Border Background="#FF9900" CornerRadius="20" Padding="12,6" IsVisible="{Binding !IsInstalled}">
-                                                    <TextBlock Text="Install" Foreground="#1E1E2E" FontWeight="Bold" FontSize="12"/>
-                                                </Border>
-                                                <!-- Installed Icon? -->
-                                                <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="#A6E3A1" FontSize="24" IsVisible="{Binding IsInstalled}"
-                                                           VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                                            </Panel>
-                                        </Grid>
-                                    </Border>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Button x:CompileBindings="False" Background="Transparent" Padding="0" Margin="0,0,0,4"
+                                    Command="{Binding DataContext.OpenSourceCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}" HorizontalAlignment="Stretch">
+                                <Button.Styles>
+                                    <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                    <Style Selector="Button:pressed /template/ ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                </Button.Styles>
+                                
+                                <!-- List Item Background -->
+                                <Border CornerRadius="8" Padding="15,10"
+                                        Background="{DynamicResource SidebarBackground}" BorderThickness="0" BorderBrush="{DynamicResource SeparatorBrush}">
+                                    <Border.Styles>
+                                        <Style Selector="Border">
+                                            <Setter Property="Transitions">
+                                                <Transitions>
+                                                    <BrushTransition Property="Background" Duration="0:0:0.2"/>
+                                                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+                                                </Transitions>
+                                            </Setter>
+                                        </Style>
+                                        <Style Selector="Border:pointerover">
+                                            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                            <Setter Property="RenderTransform" Value="translateX(4px)"/>
+                                        </Style>
+                                    </Border.Styles>
+
+                                    <Grid ColumnDefinitions="Auto, *, Auto, Auto">
+                                        <!-- Col 1: Icon -->
+                                        <Border Grid.Column="0" Width="48" Height="48" CornerRadius="8" Background="{Binding IconColor}" Margin="0,0,15,0" ClipToBounds="True">
+                                             <Panel>
+                                                 <TextBlock Text="{Binding IconText}" Foreground="{Binding IconForeground}" FontWeight="ExtraBold" FontSize="20"
+                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                            IsVisible="{Binding IconText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                 <Image Source="{Binding IconBitmap}" Stretch="UniformToFill"/>
+                                             </Panel>
+                                        </Border>
+                                        
+                                        <!-- Col 2: Name & Version -->
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Spacing="2">
+                                            <TextBlock Text="{Binding Name}" Foreground="{DynamicResource PrimaryText}" FontWeight="SemiBold" FontSize="16"/>
+                                            <TextBlock Text="Supported Source" Foreground="{DynamicResource SecondaryText}" FontSize="12"/>
+                                        </StackPanel>
+
+                                        <!-- Col 3: Language Flags -->
+                                        <ItemsControl Grid.Column="2" ItemsSource="{Binding LanguageFlags}" VerticalAlignment="Center" Margin="0,0,10,0">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border CornerRadius="2" ClipToBounds="True">
+                                                        <Image Source="{Binding}" Width="24" Height="16" Stretch="UniformToFill"/>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <!-- Col 4: Action / Status -->
+                                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                             <!-- WebView Button (Open Browser for CAPTCHA) -->
+                                             <Button x:CompileBindings="False"
+                                                     Command="{Binding DataContext.OpenWebViewCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
+                                                     CommandParameter="{Binding}"
+                                                     Background="Transparent" BorderThickness="0" Padding="6"
+                                                     CornerRadius="16" Cursor="Hand"
+                                                     ToolTip.Tip="Open in Browser (Solve CAPTCHA)">
+                                                 <Button.Styles>
+                                                     <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                                         <Setter Property="Background" Value="#20FF9900"/>
+                                                     </Style>
+                                                 </Button.Styles>
+                                                 <TextBlock Text="&#xE774;" FontFamily="Segoe Fluent Icons" 
+                                                            Foreground="{DynamicResource SecondaryText}" FontSize="16"
+                                                            VerticalAlignment="Center"/>
+                                             </Button>
+                                             
+                                             <!-- Arrow -->
+                                             <TextBlock Text="&#xE76C;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" FontSize="16" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Button>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
                 
                 <!-- Empty State (Online but no sources found) -->
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" IsVisible="{Binding !HasSources}">
@@ -191,5 +301,21 @@
                 <TextBlock Text="You are currently offline. Please check your network settings." Foreground="{DynamicResource SecondaryText}" FontSize="14" HorizontalAlignment="Center"/>
             </StackPanel>
         </StackPanel>
+
+        <!-- CAPTCHA Bypass Loading Overlay -->
+        <Border Background="#90000000" IsVisible="{Binding IsBypassing}" ZIndex="100">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20">
+                <ProgressBar IsIndeterminate="True" Width="200" Height="4"
+                             Foreground="#0078D7" Background="#30FFFFFF"/>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding BypassMessage}" 
+                               Foreground="White" FontSize="18" FontWeight="SemiBold" 
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Please do not close the browser window until finished." 
+                               Foreground="#B0FFFFFF" FontSize="12" 
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
     </Panel>
 </UserControl>
