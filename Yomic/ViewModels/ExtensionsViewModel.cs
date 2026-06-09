@@ -116,6 +116,13 @@ namespace Yomic.ViewModels
         
         private List<ExtensionItem> _allExtensionsCache = new();
         public ObservableCollection<ExtensionItem> FilteredExtensions { get; } = new();
+        public ObservableCollection<ExtensionItem> InstalledExtensions { get; } = new();
+        public ObservableCollection<ExtensionItem> AvailableExtensions { get; } = new();
+
+        public int InstalledCount => InstalledExtensions.Count;
+        public int AvailableCount => AvailableExtensions.Count;
+        public bool HasInstalledExtensions => InstalledExtensions.Count > 0;
+        public bool HasAvailableExtensions => AvailableExtensions.Count > 0;
 
         private string _searchText = "";
         public string SearchText
@@ -369,6 +376,8 @@ namespace Yomic.ViewModels
 
         private void FilterExtensions()
         {
+            InstalledExtensions.Clear();
+            AvailableExtensions.Clear();
             FilteredExtensions.Clear();
             
             var query = _searchText?.Trim();
@@ -387,13 +396,26 @@ namespace Yomic.ViewModels
                 ).ToList();
             }
 
-            // Sort: Installed First, then Name
-            var sorted = list.OrderByDescending(x => x.IsInstalled).ThenBy(x => x.Name);
+            // Grouping/Sorting
+            var installed = list.Where(x => x.IsInstalled).OrderBy(x => x.Name).ToList();
+            var available = list.Where(x => !x.IsInstalled).OrderBy(x => x.Name).ToList();
             
-            foreach(var item in sorted)
+            foreach(var item in installed)
             {
+                InstalledExtensions.Add(item);
                 FilteredExtensions.Add(item);
             }
+            
+            foreach(var item in available)
+            {
+                AvailableExtensions.Add(item);
+                FilteredExtensions.Add(item);
+            }
+            
+            this.RaisePropertyChanged(nameof(InstalledCount));
+            this.RaisePropertyChanged(nameof(AvailableCount));
+            this.RaisePropertyChanged(nameof(HasInstalledExtensions));
+            this.RaisePropertyChanged(nameof(HasAvailableExtensions));
             
             UpdateEmptyState();
         }

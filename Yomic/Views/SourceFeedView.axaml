@@ -526,7 +526,7 @@
         <!-- Sync Overlay -->
         <Border Grid.RowSpan="3" Background="#80000000" IsVisible="{Binding IsBusy}">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
-                 <ProgressBar IsIndeterminate="True" Foreground="{DynamicResource AccentColor}" Width="150" Height="2" Background="#33FFFFFF"/>
+                 <helpers:LoadingArcs Margin="0,0,0,10"/>
                  <TextBlock Text="Loading..." Foreground="White" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
             </StackPanel>
         </Border>

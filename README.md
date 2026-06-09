@@ -30,13 +30,9 @@
 ### Unlimited Sources (Extensions)
 - **Plugin Architecture**: Support for varied sources via external DLL extensions.
 - **Supported Sources**:
-  - **MangaDex** (Global)
-  - **Mangabats** (English)
-  - **Weebcentral** (English)
-  - **Kiryuu** (Indonesia)
-  - **Komiku** (Indonesia)
-  - **KomikCast** (Indonesia)
-- **DLL-Style Indicators**: Extensions view showing downloaded extensions with clear DLL icon indicators.
+  - **Global / English**: MangaDex, Mangabats, Weebcentral, NHentai
+  - **Indonesian**: Aarlas, AstralScans, ComicAzen, Kiryuu, KomikCast, KomikStation, Komiku, Kuromanga, Luvyaa, Maid, ManhwaIndo, WestManga
+- **Grouped Extensions View**: Clear categorization between **Installed** (currently active) and **Available** (remotely hosted, ready to download) extensions with dynamic badges and counts.
 
 ### Immersive & Intelligent Reading
 - **Webtoon Mode**: Smooth, continuous vertical scrolling optimized for webtoons with inertia scroll support.
@@ -69,17 +65,19 @@
 
 ## Extensions Setup
 
-Yomic uses a modular extension system. You need to install extensions to access manga sources.
+Yomic features a modular extension system. You can discover, download, and update extensions directly from the user interface without any manual setup!
 
-1. Download the **[Extensions.zip](https://github.com/ArisaAkiyama/extension-yomic/raw/main/Extensions.zip)**.
-2. Open Yomic and go to the **Extensions** tab.
-3. Click **"Open Extensions Folder"** in the top-right options.
-4. Extract the contents of `Extensions.zip` into this folder.
-   - The folder structure must look like: `.../Plugins/Yomic.Extensions.Mangabats.dll`
-5. **Restart Yomic**.
-6. Go to **Browse Sources** to see your new sources!
+### Automatic Installation (Recommended)
+1. Launch **Yomic** and navigate to the **Extensions** tab.
+2. Under the **Available** section, you will see a list of all official sources fetched dynamically from the extension repository.
+3. Click the **Download** button on any extension you want to install. It will download, install, and load automatically.
+4. Go to the **Browse** tab to start reading!
 
-> **Note**: You can check for extension updates directly within the app or visit the [Extension Repository](https://github.com/ArisaAkiyama/extension-yomic).
+### Manual Installation (For developers or custom DLLs)
+1. Prepare your custom extension DLL (e.g., `Yomic.Extensions.CustomSource.dll`).
+2. Go to the **Extensions** tab in Yomic.
+3. Click the **Add** button in the top-right corner.
+4. Select your `.dll` file from the file explorer. Yomic will copy and load it immediately.
 
 ---
 
@@ -94,14 +92,8 @@ Requirements:
 git clone https://github.com/ArisaAkiyama/yomic.git
 cd yomic
 
-# Restore dependencies
-dotnet restore
-
-# Build Main App
-dotnet build Yomic/Yomic.csproj
-
-# Build Extensions (Optional)
-dotnet build Yomic/Extensions/Mangabats/Yomic.Extensions.Mangabats.csproj
+# Build the Solution
+dotnet build Yomic.sln
 ```
 
 ---

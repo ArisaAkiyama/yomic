@@ -206,7 +206,7 @@
         <!-- Sync Overlay -->
         <Border Background="#80000000" IsVisible="{Binding IsRefreshing}">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
-                 <ProgressBar IsIndeterminate="True" Foreground="#0078D7" Width="150" Height="2" Background="#33FFFFFF"/>
+                 <helpers:LoadingArcs Margin="0,0,0,10"/>
                  <TextBlock Text="Refreshing History..." Foreground="White" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
             </StackPanel>
         </Border>
