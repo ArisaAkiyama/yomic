@@ -48,52 +48,62 @@ namespace Yomic.ViewModels
         {
             try
             {
-                // EmailJS API Endpoint
-                const string url = "https://api.emailjs.com/api/v1.0/email/send";
+                // Google Apps Script Web App URL
+                // TODO: Ganti URL di bawah ini dengan URL hasil deployment Google Apps Script Anda.
+                string url = "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE";
 
-                // IMPORTANT: The user needs to provide their Public Key, Private Key, and Template ID.
-                // Replace these with the actual values from the EmailJS dashboard (Account tab).
-                const string serviceId = "service_6n6gvgp";
-                const string templateId = "template_wc89jwa";
-                const string publicKey = "pXJLrmTiytYnLjiVF";
-                const string privateKey = "RKUs8L_QA9M7C8Anqe8sR";
+                if (url == "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE")
+                {
+                    _showNotificationCallback?.Invoke("Feedback URL is not configured.", NotificationType.Error);
+                    return;
+                }
 
                 var payload = new
                 {
-                    service_id = serviceId,
-                    template_id = templateId,
-                    user_id = publicKey,
-                    accessToken = privateKey,
-                    template_params = new
-                    {
-                        message = text,
-                        // Add other template parameters here if needed, like 'reply_to' or 'from_name'
-                    }
+                    message = text
                 };
 
                 string jsonPayload = JsonSerializer.Serialize(payload);
 
-                using (var client = new HttpClient())
+                // Disable auto-redirect to prevent HttpClient from converting POST to GET on a 302 redirect
+                using (var handler = new HttpClientHandler { AllowAutoRedirect = false })
+                using (var client = new HttpClient(handler))
                 {
                     var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                     var response = await client.PostAsync(url, content);
 
+                    // Google Apps Script redirects with 302 Found to script.googleusercontent.com
+                    if (response.StatusCode == System.Net.HttpStatusCode.Redirect || 
+                        response.StatusCode == System.Net.HttpStatusCode.Found ||
+                        response.StatusCode == System.Net.HttpStatusCode.MovedPermanently)
+                    {
+                        var redirectUrl = response.Headers.Location;
+                        if (redirectUrl != null)
+                        {
+                            // Send a new POST request to the redirect destination to preserve POST body
+                            using (var redirectClient = new HttpClient())
+                            {
+                                response = await redirectClient.PostAsync(redirectUrl, content);
+                            }
+                        }
+                    }
+
                     if (response.IsSuccessStatusCode)
                     {
-                        Console.WriteLine("[Feedback] EmailJS sent successfully!");
+                        Console.WriteLine("[Feedback] Google Apps Script sent successfully!");
                         _showNotificationCallback?.Invoke("Feedback sent successfully! Thank you.", NotificationType.Success);
                     }
                     else
                     {
                         string errorResponse = await response.Content.ReadAsStringAsync();
-                        Console.WriteLine($"[Feedback] EmailJS error: {response.StatusCode} - {errorResponse}");
+                        Console.WriteLine($"[Feedback] Google Apps Script error: {response.StatusCode} - {errorResponse}");
                         _showNotificationCallback?.Invoke("Failed to send feedback. Please try again later.", NotificationType.Error);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Feedback] Error sending via EmailJS: {ex.Message}");
+                Console.WriteLine($"[Feedback] Error sending via Google Apps Script: {ex.Message}");
                 _showNotificationCallback?.Invoke("An error occurred while sending feedback.", NotificationType.Error);
             }
         }
