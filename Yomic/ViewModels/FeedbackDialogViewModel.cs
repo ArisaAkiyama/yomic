@@ -49,8 +49,7 @@ namespace Yomic.ViewModels
             try
             {
                 // Google Apps Script Web App URL
-                // TODO: Ganti URL di bawah ini dengan URL hasil deployment Google Apps Script Anda.
-                string url = "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE";
+                string url = "https://script.google.com/macros/s/AKfycby_qcMGyle2jYmxGmhf3j_L1VcYsyVcy8iBdxfnXzAf5zruVKttJ3FHe8w52XOUVNHi/exec";
 
                 if (url == "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE")
                 {
