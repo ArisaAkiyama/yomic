@@ -79,10 +79,10 @@ namespace Yomic.ViewModels
                         var redirectUrl = response.Headers.Location;
                         if (redirectUrl != null)
                         {
-                            // Send a new POST request to the redirect destination to preserve POST body
+                            // Send a new GET request to the redirect destination to retrieve the script response content
                             using (var redirectClient = new HttpClient())
                             {
-                                response = await redirectClient.PostAsync(redirectUrl, content);
+                                response = await redirectClient.GetAsync(redirectUrl);
                             }
                         }
                     }
