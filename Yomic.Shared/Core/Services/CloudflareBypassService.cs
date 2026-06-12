@@ -351,7 +351,7 @@ namespace Yomic.Core.Services
 
                 // Poll until challenge is solved or browser is closed (max 2 minutes)
                 var solved = false;
-                for (int i = 0; i < 60; i++) // 60 * 2s = 2 minutes max
+                for (int i = 0; i < 150; i++) // 150 * 2s = 5 minutes max
                 {
                     await Task.Delay(2000);
 
@@ -366,17 +366,26 @@ namespace Yomic.Core.Services
 
                         var title = await page.GetTitleAsync();
                         var content = await page.GetContentAsync();
+                        var currentUrl = page.Url;
+                        bool isLoginPage = currentUrl.Contains("/login", StringComparison.OrdinalIgnoreCase) || 
+                                           currentUrl.Contains("wp-login", StringComparison.OrdinalIgnoreCase) || 
+                                           currentUrl.Contains("/register", StringComparison.OrdinalIgnoreCase);
 
                         if (!content.Contains("Just a moment") && 
                             !title.Contains("Just a moment") && 
                             !content.Contains("Enable JavaScript") &&
                             !content.Contains("Checking your browser") &&
+                            !isLoginPage &&
                             content.Length > 500) // Must have actual content
                         {
                             OnStatusUpdate?.Invoke("CAPTCHA Solved!");
                             Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer] CAPTCHA Solved! Extracting tokens...");
                             solved = true;
                             break;
+                        }
+                        else if (isLoginPage)
+                        {
+                            OnStatusUpdate?.Invoke("Please log in...");
                         }
                     }
                     catch (Exception ex)
