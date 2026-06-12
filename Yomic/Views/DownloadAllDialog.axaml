@@ -1,0 +1,90 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Yomic.Views.DownloadAllDialog"
+        Width="520" Height="460"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        CanResize="False"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+
+    <Border Background="{DynamicResource PrimaryBackground}" CornerRadius="16" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1" Padding="26">
+        <Grid RowDefinitions="Auto,*,Auto">
+            <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,22">
+                <TextBlock Text="Download Chapters" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
+                <TextBlock x:Name="MangaTitleText" FontSize="13" Foreground="{DynamicResource SecondaryText}" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Spacing="22">
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+                    <Border Grid.Column="0" Background="{DynamicResource SidebarBackground}" CornerRadius="10" Padding="12" MinHeight="76">
+                        <StackPanel Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="Total" Foreground="{DynamicResource SecondaryText}" FontSize="12" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="TotalCountText" Foreground="{DynamicResource PrimaryText}" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Background="{DynamicResource SidebarBackground}" CornerRadius="10" Padding="12" MinHeight="76">
+                        <StackPanel Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="To Download" Foreground="{DynamicResource SecondaryText}" FontSize="12" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="MissingCountText" Foreground="{DynamicResource PrimaryAccent}" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Background="{DynamicResource SidebarBackground}" CornerRadius="10" Padding="12" MinHeight="76">
+                        <StackPanel Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="Unread" Foreground="{DynamicResource SecondaryText}" FontSize="12" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="UnreadCountText" Foreground="{DynamicResource SuccessColor}" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border Background="{DynamicResource SidebarBackground}" CornerRadius="10" Padding="16">
+                    <StackPanel Spacing="18">
+                        <RadioButton x:Name="NotDownloadedOption"
+                                     GroupName="DownloadMode"
+                                     IsChecked="True"
+                                     Foreground="{DynamicResource PrimaryText}"
+                                     FontSize="13"
+                                     Content="Download all chapters"/>
+                        <RadioButton x:Name="UnreadOption"
+                                     GroupName="DownloadMode"
+                                     Foreground="{DynamicResource PrimaryText}"
+                                     FontSize="13"
+                                     Content="Download unread chapters only"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#08000000" CornerRadius="8" Padding="14,12">
+                    <TextBlock Text="Downloaded chapters will be skipped. Selected chapters will be added to the Downloads queue."
+                               Foreground="{DynamicResource SecondaryText}"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               LineHeight="18"/>
+                </Border>
+            </StackPanel>
+
+            <Border Grid.Row="2" Padding="0,18,0,0" Margin="0,22,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                    <Button Content="Cancel"
+                            Click="OnCancelClick"
+                            Background="{DynamicResource HoverBackground}"
+                            Foreground="{DynamicResource PrimaryText}"
+                            CornerRadius="20"
+                            Padding="24,10"
+                            FontWeight="SemiBold"
+                            BorderThickness="0"/>
+                    <Button Content="Start Download"
+                            Click="OnStartClick"
+                            Background="{DynamicResource AccentColor}"
+                            Foreground="White"
+                            CornerRadius="20"
+                            Padding="24,10"
+                            FontWeight="SemiBold"
+                            BorderThickness="0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

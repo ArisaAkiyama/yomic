@@ -39,6 +39,8 @@ namespace Yomic.Core.Services
         private DownloadRequest? _currentDownload;
         private bool _isProcessing;
         private bool _isPaused;
+        private static readonly TimeSpan PageListTimeout = TimeSpan.FromSeconds(45);
+        private static readonly TimeSpan PageDownloadTimeout = TimeSpan.FromSeconds(30);
 
         // Events
         public event EventHandler<DownloadRequest>? QueueChanged;
@@ -74,8 +76,7 @@ namespace Yomic.Core.Services
             _networkService = networkService;
             
             // Base directory: AppData/Yomic/Downloads
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            _downloadBaseDir = Path.Combine(appData, "Yomic", "Downloads");
+            _downloadBaseDir = DownloadPathService.BaseDirectory;
             if (!Directory.Exists(_downloadBaseDir))
                 Directory.CreateDirectory(_downloadBaseDir);
             
@@ -196,6 +197,9 @@ namespace Yomic.Core.Services
         {
             lock (_queueLock)
             {
+                if (DownloadPathService.IsChapterDownloaded(manga, chapter))
+                    return;
+
                 // Check if already in queue or downloading (use Url for identification, not Id)
                 if (_queue.Any(x => x.Chapter.Url == chapter.Url) || _currentDownload?.Chapter.Url == chapter.Url)
                     return;
@@ -275,7 +279,7 @@ namespace Yomic.Core.Services
                              StatusChanged?.Invoke(this, request);
                              
                              LogService.Warning("Download", $"Retry {request.RetryCount} for {request.Chapter.Name}");
-                             await Task.Delay(2000 * request.RetryCount); 
+                             await Task.Delay(2000 * request.RetryCount, request.CancellationTokenSource.Token); 
                         }
                         else
                         {
@@ -340,7 +344,11 @@ namespace Yomic.Core.Services
                 LogService.Debug("Download", $"Using source: {source.Name}");
 
                 // 1. Get Pages
-                var pages = await source.GetPageListAsync(request.Chapter.Url);
+                var pages = await WithTimeout(
+                    source.GetPageListAsync(request.Chapter.Url),
+                    PageListTimeout,
+                    request.CancellationTokenSource.Token,
+                    $"Fetching page list timed out after {PageListTimeout.TotalSeconds:0} seconds.");
                 LogService.Info("Download", $"Fetched {pages?.Count ?? 0} pages");
                 
                 if (pages == null || pages.Count == 0)
@@ -355,16 +363,27 @@ namespace Yomic.Core.Services
                     LogService.Debug("Download", $"First page: {pages[0].Substring(0, Math.Min(60, pages[0].Length))}...");
                 }
                 
-                // 2. Prepare Directory
-                // Sanitize paths
-                var safeMangaTitle = string.Join("_", request.Manga.Title.Split(Path.GetInvalidFileNameChars()));
-                var safeChapterName = string.Join("_", request.Chapter.Name.Split(Path.GetInvalidFileNameChars()));
-                
-                var chapterDir = Path.Combine(_downloadBaseDir, request.Manga.Source.ToString(), safeMangaTitle, safeChapterName);
-                LogService.Debug("Download", $"Dir: {chapterDir}");
-                
-                if (!Directory.Exists(chapterDir))
-                    Directory.CreateDirectory(chapterDir);
+                // 2. Prepare directories. Write to a temp folder first, then promote to final only after validation.
+                var chapterDir = DownloadPathService.GetChapterDirectory(request.Manga, request.Chapter);
+                var tempChapterDir = DownloadPathService.GetChapterTempDirectory(request.Manga, request.Chapter);
+                LogService.Debug("Download", $"Temp dir: {tempChapterDir}");
+                LogService.Debug("Download", $"Final dir: {chapterDir}");
+
+                if (DownloadPathService.IsChapterDownloaded(request.Manga, request.Chapter))
+                {
+                    request.Progress = 100;
+                    request.Status = "Completed";
+                    request.Chapter.IsDownloaded = true;
+                    StatusChanged?.Invoke(this, request);
+                    await _libraryService.UpdateChapterDownloadStatusByUrlAsync(request.Chapter.Url, true);
+                    return;
+                }
+
+                Directory.CreateDirectory(tempChapterDir);
+                foreach (var partFile in Directory.GetFiles(tempChapterDir, "*.part"))
+                {
+                    TryDeleteFile(partFile);
+                }
 
                 // 3. Download Images (Parallel with limit)
                 int total = pages.Count;
@@ -373,6 +392,7 @@ namespace Yomic.Core.Services
                 
                 // Use Optimized Client with DoH
                 using var client = _networkService.CreateOptimizedHttpClient();
+                client.Timeout = Timeout.InfiniteTimeSpan;
                 
                 // Construct full Referer URL from source BaseUrl
                 string refererUrl = source.BaseUrl;
@@ -408,9 +428,12 @@ namespace Yomic.Core.Services
                     
                     downloadTasks.Add(Task.Run(async () =>
                     {
-                        await semaphore.WaitAsync(request.CancellationTokenSource.Token);
+                        var acquiredSemaphore = false;
                         try
                         {
+                            await semaphore.WaitAsync(request.CancellationTokenSource.Token);
+                            acquiredSemaphore = true;
+
                             if (request.CancellationTokenSource.IsCancellationRequested) return;
                             
                             // Parse Headers
@@ -433,7 +456,7 @@ namespace Yomic.Core.Services
 
                             var ext = Path.GetExtension(requestUrl).Split('?')[0];
                             if (string.IsNullOrEmpty(ext)) ext = ".jpg";
-                            var filePath = Path.Combine(chapterDir, $"{index:D3}{ext}");
+                            var filePath = Path.Combine(tempChapterDir, $"{index:D3}{ext}");
                             var tempFilePath = filePath + ".part";
 
                             // Atomic Check: If final file exists, it's done. 
@@ -449,31 +472,54 @@ namespace Yomic.Core.Services
                                     try
                                     {
                                         if (request.CancellationTokenSource.IsCancellationRequested) return;
-                                        
-                                        var req = new HttpRequestMessage(HttpMethod.Get, requestUrl);
-                                        if (customHeaders.ContainsKey("Referer")) req.Headers.Referrer = new Uri(customHeaders["Referer"]);
 
-                                        if (customHeaders.ContainsKey("User-Agent")) req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
-                                        else req.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                                        using var pageCts = CancellationTokenSource.CreateLinkedTokenSource(request.CancellationTokenSource.Token);
+                                        pageCts.CancelAfter(PageDownloadTimeout);
 
-                                        using var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, request.CancellationTokenSource.Token);
-                                        response.EnsureSuccessStatusCode();
-                                        var data = await response.Content.ReadAsByteArrayAsync();
-                                        
-                                        // Write to .part file first
-                                        await File.WriteAllBytesAsync(tempFilePath, data);
-                                        
-                                        // Atomic Rename (Move)
-                                        File.Move(tempFilePath, filePath, overwrite: true);
-                                        pageSuccess = true;
+                                        try
+                                        {
+                                            var req = new HttpRequestMessage(HttpMethod.Get, requestUrl);
+                                            if (customHeaders.ContainsKey("Referer")) req.Headers.Referrer = new Uri(customHeaders["Referer"]);
+
+                                            if (customHeaders.ContainsKey("User-Agent")) req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
+                                            else req.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+
+                                            using var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, pageCts.Token);
+                                            response.EnsureSuccessStatusCode();
+                                            var data = await response.Content.ReadAsByteArrayAsync(pageCts.Token);
+
+                                            if (data.Length == 0)
+                                            {
+                                                throw new IOException("Downloaded page is empty.");
+                                            }
+
+                                            // Write to .part file first
+                                            await File.WriteAllBytesAsync(tempFilePath, data, pageCts.Token);
+
+                                            // Atomic Rename (Move)
+                                            File.Move(tempFilePath, filePath, overwrite: true);
+                                            pageSuccess = true;
+                                        }
+                                        catch (OperationCanceledException) when (!request.CancellationTokenSource.IsCancellationRequested)
+                                        {
+                                            throw new TimeoutException($"Page timed out after {PageDownloadTimeout.TotalSeconds:0} seconds.");
+                                        }
                                     }
                                     catch (Exception retryEx)
                                     {
+                                        TryDeleteFile(tempFilePath);
                                         pageRetry++;
                                         if (pageRetry < maxPageRetries)
                                         {
                                             LogService.Debug("Download", $"Page {index} retry {pageRetry}/{maxPageRetries}: {retryEx.Message}");
-                                            await Task.Delay(1000 * pageRetry); // Exponential backoff
+                                            try
+                                            {
+                                                await Task.Delay(1000 * pageRetry, request.CancellationTokenSource.Token); // Exponential backoff
+                                            }
+                                            catch (OperationCanceledException) when (request.CancellationTokenSource.IsCancellationRequested)
+                                            {
+                                                return;
+                                            }
                                         }
                                         else
                                         {
@@ -495,7 +541,10 @@ namespace Yomic.Core.Services
                         }
                         finally
                         {
-                            semaphore.Release();
+                            if (acquiredSemaphore)
+                            {
+                                semaphore.Release();
+                            }
                         }
                     }));
                 }
@@ -511,16 +560,40 @@ namespace Yomic.Core.Services
                     // If Paused, it keeps "Paused" status set in Pause()
                 }
 
+                if (request.Status == "Paused")
+                {
+                    return;
+                }
+
+                if (request.Status == "Cancelled")
+                {
+                    try { if (Directory.Exists(tempChapterDir)) Directory.Delete(tempChapterDir, true); } catch { }
+                    return;
+                }
+
                 if (failedCount > 0)
                 {
                     // Throw to trigger retry in ExecuteDownloadAsync
                     throw new Exception($"{failedCount} pages failed to download. Retrying chapter..."); 
                 }
 
+                var downloadedFiles = DownloadPathService.GetReadableFiles(tempChapterDir, includeTempDirectory: true);
+                if (downloadedFiles.Count < total)
+                {
+                    throw new Exception($"Only {downloadedFiles.Count}/{total} pages downloaded. Retrying chapter...");
+                }
+
                 // 4. Mark Complete
                 // Only if NOT Cancelled/Paused
                 if (request.Status != "Cancelled" && request.Status != "Paused")
                 {
+                    if (Directory.Exists(chapterDir))
+                    {
+                        Directory.Delete(chapterDir, true);
+                    }
+
+                    Directory.Move(tempChapterDir, chapterDir);
+
                     request.Status = "Completed";
                     request.Chapter.IsDownloaded = true;
                     StatusChanged?.Invoke(this, request);
@@ -529,10 +602,6 @@ namespace Yomic.Core.Services
                     await _libraryService.UpdateChapterDownloadStatusByUrlAsync(request.Chapter.Url, true);
                     
                     LogService.Success("Download", $"Completed: {request.Chapter.Name}");
-                }
-                else if (request.Status == "Cancelled")
-                {
-                    try { if (Directory.Exists(chapterDir)) Directory.Delete(chapterDir, true); } catch { }
                 }
             }
             catch (Exception ex)
@@ -547,6 +616,41 @@ namespace Yomic.Core.Services
                    LogService.Error("Download", $"Chapter download failed", ex);
                    throw;
                  }
+            }
+        }
+
+        private static async Task<T> WithTimeout<T>(Task<T> task, TimeSpan timeout, CancellationToken cancellationToken, string timeoutMessage)
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var timeoutTask = Task.Delay(timeout, timeoutCts.Token);
+            var completedTask = await Task.WhenAny(task, timeoutTask);
+
+            if (completedTask == task)
+            {
+                timeoutCts.Cancel();
+                return await task;
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(cancellationToken);
+            }
+
+            throw new TimeoutException(timeoutMessage);
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch
+            {
+                // Best-effort cleanup only.
             }
         }
 
@@ -664,9 +768,8 @@ namespace Yomic.Core.Services
             if (request.Status != "Completed") throw new InvalidOperationException("Download must be completed to export.");
 
             // 1. Locate Source Directory
-            var safeMangaTitle = string.Join("_", request.Manga.Title.Split(Path.GetInvalidFileNameChars()));
-            var safeChapterName = string.Join("_", request.Chapter.Name.Split(Path.GetInvalidFileNameChars()));
-            var chapterDir = Path.Combine(_downloadBaseDir, request.Manga.Source.ToString(), safeMangaTitle, safeChapterName);
+            var chapterDir = DownloadPathService.FindCompletedChapterDirectory(request.Manga, request.Chapter)
+                ?? DownloadPathService.GetChapterDirectory(request.Manga, request.Chapter);
 
             if (!Directory.Exists(chapterDir)) throw new FileNotFoundException("Chapter files not found.", chapterDir);
 
@@ -676,6 +779,8 @@ namespace Yomic.Core.Services
             var exportFolder = Path.Combine(userDownloads, "Yomic_Exports");
             if (!Directory.Exists(exportFolder)) Directory.CreateDirectory(exportFolder);
 
+            var safeMangaTitle = DownloadPathService.SanitizePathSegment(request.Manga.Title ?? "Unknown");
+            var safeChapterName = DownloadPathService.SanitizePathSegment(request.Chapter.Name);
             var fileName = $"{safeMangaTitle} - {safeChapterName}.cbz";
             var destPath = Path.Combine(exportFolder, fileName);
 

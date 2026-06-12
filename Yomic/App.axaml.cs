@@ -10,7 +10,6 @@ namespace Yomic
 {
     public partial class App : Application
     {
-        // Static property for global access (used by MainWindow for extension reminder)
         public static SettingsService? SettingsService { get; private set; }
         public App()
         {
@@ -48,7 +47,7 @@ namespace Yomic
                 // Load persisted extensions (DLLs) - Auto-loaded in constructor now
                 
                 var settingsService = new Core.Services.SettingsService();
-                SettingsService = settingsService; // Expose for global access (MainWindow extension reminder)
+                SettingsService = settingsService;
                 var libraryService = new Core.Services.LibraryService();
                 var networkService = new Core.Services.NetworkService(settingsService);
                 var downloadService = new Core.Services.DownloadService(sourceManager, libraryService, networkService);

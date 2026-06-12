@@ -718,17 +718,23 @@ namespace Yomic.ViewModels
             {
                 try
                 {
-                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                    var safeMangaTitle = string.Join("_", _mangaTitle.Split(System.IO.Path.GetInvalidFileNameChars()));
-                    var safeChapterName = string.Join("_", _currentChapter.Title.Split(System.IO.Path.GetInvalidFileNameChars()));
-                    
-                    var chapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", _sourceId.ToString(), safeMangaTitle, safeChapterName);
-                    
-                    if (System.IO.Directory.Exists(chapterDir))
+                    var manga = new Core.Models.Manga
                     {
-                        var files = System.IO.Directory.GetFiles(chapterDir)
-                            .OrderBy(f => f) 
-                            .ToList();
+                        Title = _mangaTitle,
+                        Url = _mangaUrl,
+                        Source = _sourceId
+                    };
+                    var chapter = new Core.Models.Chapter
+                    {
+                        Name = _currentChapter.Title,
+                        Url = _currentChapter.Url,
+                        ChapterNumber = _currentChapter.ChapterNumber
+                    };
+                    var chapterDir = Core.Services.DownloadPathService.FindCompletedChapterDirectory(manga, chapter);
+                    
+                    if (!string.IsNullOrEmpty(chapterDir) && System.IO.Directory.Exists(chapterDir))
+                    {
+                        var files = Core.Services.DownloadPathService.GetReadableFiles(chapterDir).ToList();
                             
                         if (files.Count > 0)
                         {

@@ -143,6 +143,7 @@ namespace Yomic.ViewModels
 
         public ReactiveCommand<LibrarySortMode, Unit> SetSortModeCommand { get; }
         public ReactiveCommand<LibraryFilterMode, Unit> SetFilterModeCommand { get; }
+        public Func<MangaItem, Task<bool>>? ConfirmDeleteFromDiskAsync { get; set; }
         
         // Helper for UI
         public bool HasItems => LibraryItems.Count > 0;
@@ -265,6 +266,12 @@ namespace Yomic.ViewModels
             
             DeleteMangaCommand = ReactiveCommand.CreateFromTask<MangaItem>(async item => 
             {
+                var confirmed = ConfirmDeleteFromDiskAsync == null || await ConfirmDeleteFromDiskAsync(item);
+                if (!confirmed)
+                {
+                    return;
+                }
+
                 var manga = new Core.Models.Manga { Url = item.MangaUrl, Source = item.SourceId };
                 await _libraryService.RemoveFromLibraryAsync(manga, deleteFiles: true);
                 

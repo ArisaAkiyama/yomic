@@ -19,35 +19,6 @@ namespace Yomic.Views
         {
             InitializeComponent();
             DataContextChanged += OnDataContextChanged;
-            
-            // Check daily extension reminder on startup
-            CheckExtensionReminder();
-        }
-        
-        /// <summary>
-        /// Shows extension health check notification once per day
-        /// </summary>
-        private void CheckExtensionReminder()
-        {
-            try
-            {
-                var settings = App.SettingsService;
-                if (settings != null && DateTime.Now.Date > settings.LastExtensionReminderDate.Date)
-                {
-                    // Show notification
-                    ExtensionReminder.Show();
-                    
-                    // Update last reminder date and save
-                    settings.LastExtensionReminderDate = DateTime.Now;
-                    settings.Save();
-                    
-                    LogService.Info("MainWindow", "Extension reminder shown for today");
-                }
-            }
-            catch (Exception ex)
-            {
-                LogService.Error("MainWindow", "Error checking extension reminder", ex);
-            }
         }
 
         private void OnDataContextChanged(object? sender, EventArgs e)

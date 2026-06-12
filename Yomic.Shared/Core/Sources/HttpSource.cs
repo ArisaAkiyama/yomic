@@ -237,6 +237,11 @@ namespace Yomic.Core.Sources
             catch (Exception ex)
             {
                 Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [HttpSource] Request Error ({ex.GetType().Name}): {ex.Message}");
+                if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [HttpSource] 404 Not Found. Skipping Cloudflare Fallback.");
+                    throw; // Don't try to bypass cloudflare for 404s, it will just time out
+                }
                 Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [HttpSource] Attempting Cloudflare/Puppeteer Fallback...");
                 
                 // FAST PATH: If user already solved CAPTCHA via WebView, skip Steps 1-2 and go directly to headless fetch

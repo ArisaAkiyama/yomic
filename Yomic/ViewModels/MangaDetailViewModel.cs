@@ -96,6 +96,20 @@ namespace Yomic.ViewModels
     // Header item for virtualization
     public class MangaDetailHeader { public MangaDetailViewModel ViewModel { get; } public MangaDetailHeader(MangaDetailViewModel vm) => ViewModel = vm; }
 
+    public enum DownloadAllMode
+    {
+        NotDownloaded,
+        UnreadNotDownloaded
+    }
+
+    public class DownloadAllDialogInfo
+    {
+        public string MangaTitle { get; set; } = string.Empty;
+        public int TotalChapters { get; set; }
+        public int NotDownloadedCount { get; set; }
+        public int UnreadNotDownloadedCount { get; set; }
+    }
+
     public class MangaDetailViewModel : ViewModelBase, IDisposable
     {
         // ... (existing properties)
@@ -261,6 +275,7 @@ namespace Yomic.ViewModels
         private readonly LibraryService _libraryService;
         private readonly NetworkService _networkService;
         private readonly DownloadService _downloadService;
+        public Func<DownloadAllDialogInfo, System.Threading.Tasks.Task<DownloadAllMode?>>? ShowDownloadAllDialogAsync { get; set; }
         
         private bool _isOnline = true;
         public bool IsOnline { get => _isOnline; set => this.RaiseAndSetIfChanged(ref _isOnline, value); }
@@ -382,7 +397,7 @@ namespace Yomic.ViewModels
             
             ToggleLibraryCommand = ReactiveCommand.CreateFromTask(ToggleLibrary);
             RefreshCommand = ReactiveCommand.CreateFromTask(RefreshAsync);
-            DownloadAllCommand = ReactiveCommand.Create(DownloadAllChapters);
+            DownloadAllCommand = ReactiveCommand.CreateFromTask(ConfirmDownloadAllChapters);
             StartReadingCommand = ReactiveCommand.Create(StartReading);
             StartReadingCommand = ReactiveCommand.Create(StartReading);
             ResumeReadingCommand = ReactiveCommand.Create<ChapterItem?>(ResumeReading);
@@ -600,22 +615,12 @@ namespace Yomic.ViewModels
 
                     if (existing.Chapters != null && existing.Chapters.Count > 0)
                     {
-                        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                        var safeMangaTitle = string.Join("_", existing.Title.Split(System.IO.Path.GetInvalidFileNameChars()));
-                        
                         var vmChapters = existing.Chapters.OrderByDescending(c => c.ChapterNumber).Select(ch => {
                             // Fallback: check filesystem if DB says not downloaded
                             bool isDownloaded = ch.IsDownloaded;
                             if (!isDownloaded)
                             {
-                                var safeChapterName = string.Join("_", ch.Name.Split(System.IO.Path.GetInvalidFileNameChars()));
-                                var chapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", existing.Source.ToString(), safeMangaTitle, safeChapterName);
-                                isDownloaded = System.IO.Directory.Exists(chapterDir) && System.IO.Directory.GetFiles(chapterDir).Length > 0;
-                                if (!isDownloaded)
-                                {
-                                    var fallbackChapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", existing.Source.ToString(), "Unknown", safeChapterName);
-                                    isDownloaded = System.IO.Directory.Exists(fallbackChapterDir) && System.IO.Directory.GetFiles(fallbackChapterDir).Length > 0;
-                                }
+                                isDownloaded = DownloadPathService.IsChapterDownloaded(existing, ch);
                             }
                             
                             // Create minimal chapter for download request
@@ -830,15 +835,13 @@ namespace Yomic.ViewModels
                         bool isDownloaded = dbDownloaded;
                         if (!isDownloaded)
                         {
-                            var safeChapterName = string.Join("_", ch.Name.Split(System.IO.Path.GetInvalidFileNameChars()));
-                            var chapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", _model.Source.ToString(), safeMangaTitle, safeChapterName);
-                            isDownloaded = System.IO.Directory.Exists(chapterDir) && System.IO.Directory.GetFiles(chapterDir).Length > 0;
-                            
-                            if (!isDownloaded)
+                            var downloadedCheckChapter = new Core.Models.Chapter
                             {
-                                var fallbackChapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", _model.Source.ToString(), "Unknown", safeChapterName);
-                                isDownloaded = System.IO.Directory.Exists(fallbackChapterDir) && System.IO.Directory.GetFiles(fallbackChapterDir).Length > 0;
-                            }
+                                Name = ch.Name,
+                                Url = ch.Url,
+                                ChapterNumber = ch.ChapterNumber
+                            };
+                            isDownloaded = DownloadPathService.IsChapterDownloaded(_model, downloadedCheckChapter);
                         }
 
                         // Create minimal chapter for download request
@@ -1135,20 +1138,67 @@ namespace Yomic.ViewModels
             });
         }
 
-        private void DownloadAllChapters()
+        private async System.Threading.Tasks.Task ConfirmDownloadAllChapters()
         {
-            System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] DownloadAll called. Total chapters: {Chapters.Count}");
-            
-            var chaptersToDownload = Chapters.Where(c => !c.IsDownloaded).ToList();
+            if (Chapters == null || Chapters.Count == 0)
+            {
+                _mainVM.ShowNotification("No chapters available to download.", NotificationType.Error);
+                return;
+            }
+
+            var info = new DownloadAllDialogInfo
+            {
+                MangaTitle = Title,
+                TotalChapters = Chapters.Count,
+                NotDownloadedCount = Chapters.Count(c => !c.IsDownloaded),
+                UnreadNotDownloadedCount = Chapters.Count(c => !c.IsDownloaded && !c.IsRead)
+            };
+
+            if (info.NotDownloadedCount == 0)
+            {
+                _mainVM.ShowNotification("All chapters are already downloaded.", NotificationType.Info);
+                return;
+            }
+
+            var mode = ShowDownloadAllDialogAsync == null
+                ? DownloadAllMode.NotDownloaded
+                : await ShowDownloadAllDialogAsync(info);
+
+            if (mode == null)
+            {
+                return;
+            }
+
+            DownloadAllChapters(mode.Value);
+        }
+
+        private void DownloadAllChapters(DownloadAllMode mode)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] DownloadAll called. Total chapters: {Chapters.Count}, Mode: {mode}");
+
+            var chaptersToDownload = mode switch
+            {
+                DownloadAllMode.UnreadNotDownloaded => Chapters.Where(c => !c.IsDownloaded && !c.IsRead).ToList(),
+                _ => Chapters.Where(c => !c.IsDownloaded).ToList()
+            };
+
+            if (chaptersToDownload.Count == 0)
+            {
+                _mainVM.ShowNotification("No matching chapters to download.", NotificationType.Info);
+                return;
+            }
+
             System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Chapters to download: {chaptersToDownload.Count}");
-            
+
             foreach (var chapter in chaptersToDownload)
             {
                 System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] Queueing: {chapter.Title}");
                 var chapterModel = new Core.Models.Chapter { Name = chapter.Title, Url = chapter.Url };
                 _downloadService.QueueDownload(_model, chapterModel);
-                // chapter.IsDownloaded = true; // Optimistic update
+                chapter.IsDownloading = true;
             }
+
+            _mainVM.ShowNotification($"{chaptersToDownload.Count} chapter(s) added to download queue.", NotificationType.Success);
         }
 
 

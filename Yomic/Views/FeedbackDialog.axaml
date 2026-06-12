@@ -5,7 +5,7 @@
         xmlns:vm="using:Yomic.ViewModels"
         mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="350"
         x:Class="Yomic.Views.FeedbackDialog"
-        Width="480" Height="360"
+        Width="480" Height="400"
         WindowStartupLocation="CenterOwner"
         SystemDecorations="None"
         ShowInTaskbar="False"
@@ -16,7 +16,7 @@
         x:Name="FeedbackWindow">
 
     <Border Background="{DynamicResource PrimaryBackground}" CornerRadius="16" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1" Padding="24">
-        <Grid RowDefinitions="Auto, *, Auto, Auto">
+        <Grid RowDefinitions="Auto, *, Auto, Auto, Auto">
             
             <!-- Header -->
             <TextBlock Grid.Row="0" Text="Send feedback" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" Margin="0,0,0,20"/>
@@ -45,14 +45,67 @@
                      </Style>
                  </TextBox.Styles>
             </TextBox>
-                     
+
+            <!-- Screenshot Attachment -->
+            <StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="8">
+                <Button Command="{Binding AttachScreenshotCommand}"
+                        IsVisible="{Binding CanAttachMoreScreenshots}"
+                        Background="{DynamicResource SidebarBackground}"
+                        Foreground="{DynamicResource PrimaryText}"
+                        CornerRadius="8"
+                        Padding="10,7"
+                        HorizontalAlignment="Left"
+                        BorderThickness="0">
+                    <Button.Styles>
+                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                        </Style>
+                    </Button.Styles>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="&#xE722;" FontFamily="Segoe Fluent Icons" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding AttachScreenshotText}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <ItemsControl ItemsSource="{Binding ScreenshotAttachments}" IsVisible="{Binding HasScreenshot}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:FeedbackScreenshotAttachment}">
+                            <Border Background="{DynamicResource SidebarBackground}"
+                                    CornerRadius="8"
+                                    Padding="10,7"
+                                    Margin="0,0,8,6">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="&#xE8A7;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="{DynamicResource SuccessColor}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding FileName}" FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
+                                    <Button x:CompileBindings="False"
+                                            Command="{Binding DataContext.RemoveScreenshotCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=Window}}"
+                                            CommandParameter="{Binding}"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Padding="4"
+                                            Foreground="{DynamicResource ErrorColor}"
+                                            ToolTip.Tip="Remove screenshot">
+                                        <TextBlock Text="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="12"/>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
             <!-- Privacy Text -->
-            <TextBlock Grid.Row="2" Margin="0,16,0,20" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" FontSize="13" LineHeight="18">
-                Your response is anonymous and will be used to help improve Yomic. By continuing, you allow Yomic Support to review technical information about your account. Your personal messages and library remain completely local and private. <Run Foreground="{DynamicResource AccentColor}" FontWeight="SemiBold">Learn more</Run>
+            <TextBlock Grid.Row="3" Margin="0,16,0,20" TextWrapping="Wrap" Foreground="{DynamicResource SecondaryText}" FontSize="13" LineHeight="18">
+                Your feedback is anonymous and helps us improve Yomic. Only your message and attached screenshots will be sent. Your personal messages and library stay private on your device.
             </TextBlock>
 
             <!-- Action Buttons -->
-            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="16">
+            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="16">
                 <!-- Cancel Button -->
                 <Button Content="Cancel" 
                         Command="{Binding CancelCommand}"
@@ -76,8 +129,8 @@
                 <Button Content="Submit" 
                         Command="{Binding SubmitCommand}"
                         CommandParameter="{Binding ElementName=FeedbackWindow}"
-                        Background="{DynamicResource HoverBackground}" 
-                        Foreground="{DynamicResource SecondaryText}" 
+                        Background="{DynamicResource AccentColor}" 
+                        Foreground="White" 
                         CornerRadius="20" 
                         Padding="24,10"
                         FontWeight="SemiBold"
@@ -85,15 +138,14 @@
                         Cursor="Hand"
                         BorderThickness="0">
                      <Button.Styles>
-                        <!-- Normal Active State -->
-                        <Style Selector="Button:not(:disabled) /template/ ContentPresenter">
-                            <Setter Property="Background" Value="{DynamicResource AccentColor}"/>
-                            <Setter Property="Foreground" Value="White"/>
+                        <Style Selector="Button:disabled">
+                            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                            <Setter Property="Opacity" Value="0.65"/>
                         </Style>
-                        <!-- Hover Active State -->
-                        <Style Selector="Button:not(:disabled):pointerover /template/ ContentPresenter">
-                            <Setter Property="Background" Value="#1A8DF0"/>
-                            <Setter Property="Foreground" Value="White"/>
+                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="{Binding $parent[Button].Background}"/>
+                            <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}"/>
                         </Style>
                     </Button.Styles>
                 </Button>

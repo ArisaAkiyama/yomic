@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Reactive;
@@ -13,12 +15,22 @@ using Avalonia.Platform;
 
 namespace Yomic.ViewModels
 {
+    public enum SourceStatusFilterMode
+    {
+        All,
+        Ongoing,
+        Completed
+    }
+
     public class SourceFeedViewModel : ViewModelBase, IDisposable
     {
         private readonly IMangaSource _source;
         private readonly MainWindowViewModel _mainVm;
         private readonly SourceManager _sourceManager;
         private readonly ImageCacheService _imageCacheService;
+        private readonly List<MangaItem> _allMangaItems = new();
+        private readonly ConcurrentDictionary<string, int> _statusCache = new();
+        private const int FilteredPageSize = 20;
         
         private readonly Bitmap? _gbFlag;
         private readonly Bitmap? _idFlag;
@@ -121,15 +133,45 @@ namespace Yomic.ViewModels
         public ReactiveCommand<Unit, Unit> GoToPageCommand { get; }
         public ReactiveCommand<Unit, Unit> LatestModeCommand { get; }
         public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
-
-        public ReactiveCommand<Unit, Unit> CloseErrorCommand { get; }
-        public ReactiveCommand<Unit, Unit> ContactDevCommand { get; }
-        public ReactiveCommand<Unit, Unit> DownloadUpdateCommand { get; }
+        public ReactiveCommand<SourceStatusFilterMode, Unit> SetStatusFilterCommand { get; }
 
         public string SourceName => _source.Name;
+
+        private SourceStatusFilterMode _selectedStatusFilter = SourceStatusFilterMode.All;
+        public SourceStatusFilterMode SelectedStatusFilter
+        {
+            get => _selectedStatusFilter;
+            set
+            {
+                if (_selectedStatusFilter == value) return;
+
+                this.RaiseAndSetIfChanged(ref _selectedStatusFilter, value);
+                this.RaisePropertyChanged(nameof(IsStatusFilterActive));
+                this.RaisePropertyChanged(nameof(StatusFilterText));
+                this.RaisePropertyChanged(nameof(IsStatusAllSelected));
+                this.RaisePropertyChanged(nameof(IsStatusOngoingSelected));
+                this.RaisePropertyChanged(nameof(IsStatusCompletedSelected));
+                CurrentPage = 1;
+                _ = LoadMangaList(append: false, forceRefresh: true);
+            }
+        }
+
+        public bool IsStatusFilterActive => SelectedStatusFilter != SourceStatusFilterMode.All;
+        public string StatusFilterText => SelectedStatusFilter switch
+        {
+            SourceStatusFilterMode.Ongoing => "Ongoing",
+            SourceStatusFilterMode.Completed => "Completed",
+            _ => "Status"
+        };
+        public bool IsStatusAllSelected => SelectedStatusFilter == SourceStatusFilterMode.All;
+        public bool IsStatusOngoingSelected => SelectedStatusFilter == SourceStatusFilterMode.Ongoing;
+        public bool IsStatusCompletedSelected => SelectedStatusFilter == SourceStatusFilterMode.Completed;
         
         // Show English flag indicator for MangaDex source
         public bool IsMangaDex => _source.Name.Contains("MangaDex", System.StringComparison.OrdinalIgnoreCase);
+
+        // Hide Status filter for CrotPedia specifically
+        public bool IsStatusFilterVisible => !_source.Name.Equals("CrotPedia", System.StringComparison.OrdinalIgnoreCase);
         
         // MangaDex Language Toggle (EN/ID)
         private bool _isEnglish = true; // Default: English
@@ -211,24 +253,6 @@ namespace Yomic.ViewModels
                 }
             });
 
-            // Extension Error Banner Commands
-            CloseErrorCommand = ReactiveCommand.Create(() => 
-            {
-                HasError = false;
-                ErrorMessage = null;
-            });
-
-            ContactDevCommand = ReactiveCommand.Create(() => 
-            {
-                _mainVm.RequestFeedbackDialog?.Invoke();
-            });
-
-            DownloadUpdateCommand = ReactiveCommand.Create(() => 
-            {
-                _mainVm.ShowUpdateDialog();
-            });
-
-
             // Latest Updates Toggle
             LatestModeCommand = ReactiveCommand.Create(() => 
             {
@@ -236,6 +260,11 @@ namespace Yomic.ViewModels
                 CurrentPage = 1;
                 this.RaisePropertyChanged(nameof(IsPaginationVisible));
                 _ = LoadMangaList(append: false);
+            });
+
+            SetStatusFilterCommand = ReactiveCommand.Create<SourceStatusFilterMode>(mode =>
+            {
+                SelectedStatusFilter = mode;
             });
 
             // MangaDex Language Toggle (EN/ID)
@@ -261,7 +290,7 @@ namespace Yomic.ViewModels
                 _sourceManager.InvalidateAllCachesForSource(_source.Id);
                 
                 // Clear current list for immediate visual feedback
-                MangaList.Clear();
+                ClearMangaItems();
                 
                 CurrentPage = 1;
                 // Force refresh to bypass any remaining cache
@@ -356,7 +385,7 @@ namespace Yomic.ViewModels
             // Only clear if query is still valid
             if (SearchText != query) return;
             
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => MangaList.Clear());
+            Avalonia.Threading.Dispatcher.UIThread.Post(ClearMangaItems);
             
             this.RaisePropertyChanged(nameof(PageInfo));
             this.RaisePropertyChanged(nameof(HasPrevPage));
@@ -372,10 +401,7 @@ namespace Yomic.ViewModels
                 LogService.Debug("SourceFeedVM", $"Search Cache Hit: {cacheKey}");
                 Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                 {
-                    foreach (var m in cached.Items)
-                    {
-                        MangaList.Add(ConvertToVm(m, token));
-                    }
+                    ReplaceMangaItems(cached.Items.Select(m => ConvertToVm(m, token)));
                     IsLoading = false;
                     IsBusy = false;
                 });
@@ -405,10 +431,7 @@ namespace Yomic.ViewModels
                         // HasError = true; // Optional
                     }
 
-                    foreach (var m in mangas)
-                    {
-                        MangaList.Add(ConvertToVm(m, token));
-                    }
+                    ReplaceMangaItems(mangas.Select(m => ConvertToVm(m, token)));
                 });
             }
             catch (System.Exception ex)
@@ -447,6 +470,12 @@ namespace Yomic.ViewModels
         private async Task LoadMangaList(bool append = false, bool forceRefresh = false)
         {
             if (IsLoading) return; // Prevent double trigger
+
+            if (SelectedStatusFilter != SourceStatusFilterMode.All && !append && !_isLatestMode)
+            {
+                await LoadFilteredMangaList(forceRefresh);
+                return;
+            }
             
             // Cancel previous image loads if we are resetting list
             if (!append)
@@ -465,7 +494,7 @@ namespace Yomic.ViewModels
             
             if (!append)
             {
-                Avalonia.Threading.Dispatcher.UIThread.Post(() => MangaList.Clear());
+                Avalonia.Threading.Dispatcher.UIThread.Post(ClearMangaItems);
             }
             
             string modeName = _isLatestMode ? "Latest Updates (Pustaka)" : "Directory";
@@ -488,10 +517,7 @@ namespace Yomic.ViewModels
                         this.RaisePropertyChanged(nameof(HasPrevPage));
                         this.RaisePropertyChanged(nameof(HasNextPage));
                         
-                        foreach (var m in cached.Items)
-                        {
-                            MangaList.Add(ConvertToVm(m, token));
-                        }
+                        ReplaceMangaItems(cached.Items.Select(m => ConvertToVm(m, token)));
                         IsLoading = false;
                         IsBusy = false;
                      });
@@ -537,14 +563,7 @@ namespace Yomic.ViewModels
                         this.RaisePropertyChanged(nameof(HasPrevPage));
                         this.RaisePropertyChanged(nameof(HasNextPage));
                         
-                        foreach (var m in items)
-                        {
-                            // Avoid duplicates when appending
-                            if (!append || !MangaList.Any(x => x.MangaUrl == m.Url))
-                            {
-                                MangaList.Add(ConvertToVm(m, token));
-                            }
-                        }
+                        AddMangaItems(items.Select(m => ConvertToVm(m, token)), append);
                     });
                     
                     LogService.Debug("SourceFeedVM", $"Fetched {items.Count} items, Total Pages: {totalPages}");
@@ -568,14 +587,7 @@ namespace Yomic.ViewModels
                         this.RaisePropertyChanged(nameof(HasPrevPage));
                         this.RaisePropertyChanged(nameof(HasNextPage));
 
-                        foreach (var m in mangas)
-                        {
-                            // Avoid duplicates when appending
-                            if (!append || !MangaList.Any(x => x.MangaUrl == m.Url))
-                            {
-                                MangaList.Add(ConvertToVm(m, token));
-                            }
-                        }
+                        AddMangaItems(mangas.Select(m => ConvertToVm(m, token)), append);
                     });
                     
                     LogService.Debug("SourceFeedVM", $"Fetched {mangas.Count} items, Total Pages: {TotalPages}");
@@ -621,6 +633,116 @@ namespace Yomic.ViewModels
             }
         }
 
+        private async Task LoadFilteredMangaList(bool forceRefresh = false)
+        {
+            _cts?.Cancel();
+            _cts = new System.Threading.CancellationTokenSource();
+            var token = _cts.Token;
+            var filter = SelectedStatusFilter;
+            var targetPage = Math.Max(1, CurrentPage);
+            var skip = (targetPage - 1) * FilteredPageSize;
+            var matched = new List<MangaItem>();
+            var sourcePage = 1;
+            var sourceTotalPages = TotalPages > 1 ? TotalPages : 999;
+
+            MonitorLoadingSpeed();
+            IsLoading = true;
+            IsBusy = true;
+            HasError = false;
+            ErrorMessage = null;
+            IsMangaDexBlocked = false;
+
+            Avalonia.Threading.Dispatcher.UIThread.Post(ClearMangaItems);
+
+            try
+            {
+                while (matched.Count < skip + FilteredPageSize && sourcePage <= sourceTotalPages)
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    var cacheKey = $"{_source.Id}:{sourcePage}:{IsLatestMode}";
+                    List<Manga> sourceItems;
+                    int totalPages;
+
+                    var cached = !forceRefresh ? _sourceManager.GetCachedResult(cacheKey) : null;
+                    if (cached != null)
+                    {
+                        sourceItems = cached.Items;
+                        totalPages = cached.TotalPages;
+                    }
+                    else
+                    {
+                        if (_source is IFilterableMangaSource filterable)
+                        {
+                            (sourceItems, totalPages) = await filterable.GetMangaListAsync(sourcePage);
+                        }
+                        else
+                        {
+                            sourceItems = await _source.GetPopularMangaAsync(sourcePage);
+                            totalPages = sourceItems.Count == 0 ? sourcePage : (_source.IsHasMorePages ? 999 : sourcePage);
+                        }
+
+                        _sourceManager.SetCachedResult(cacheKey, sourceItems, totalPages);
+                    }
+
+                    sourceTotalPages = totalPages;
+                    if (sourceItems.Count == 0)
+                    {
+                        break;
+                    }
+
+                    var pageItems = sourceItems.Select(m => ConvertToVm(m, token)).ToList();
+                    await EnsureStatusesAsync(pageItems);
+                    matched.AddRange(pageItems.Where(item => MatchesStatusFilter(item, filter)));
+
+                    sourcePage++;
+                }
+
+                if (filter != SelectedStatusFilter)
+                {
+                    return;
+                }
+
+                var pageItemsToShow = matched.Skip(skip).Take(FilteredPageSize).ToList();
+
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    _allMangaItems.Clear();
+                    _allMangaItems.AddRange(pageItemsToShow);
+                    MangaList.Clear();
+                    foreach (var item in pageItemsToShow)
+                    {
+                        MangaList.Add(item);
+                    }
+
+                    TotalPages = Math.Max(targetPage, sourceTotalPages);
+                    this.RaisePropertyChanged(nameof(PageInfo));
+                    this.RaisePropertyChanged(nameof(HasPrevPage));
+                    this.RaisePropertyChanged(nameof(HasNextPage));
+                    this.RaisePropertyChanged(nameof(IsSourceEmpty));
+
+                    if (pageItemsToShow.Count == 0)
+                    {
+                        ErrorMessage = $"No {StatusFilterText.ToLowerInvariant()} manga found on this page.";
+                    }
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("SourceFeedVM", $"Error loading filtered manga list: {ex.Message}", ex);
+                ErrorMessage = $"Failed to load filtered content: {ex.Message}";
+                HasError = true;
+            }
+            finally
+            {
+                IsLoading = false;
+                IsBusy = false;
+            }
+        }
+
         private MangaItem ConvertToVm(Manga m, System.Threading.CancellationToken token = default)
         {
             var vm = new MangaItem
@@ -633,8 +755,136 @@ namespace Yomic.ViewModels
                 Status = m.Status
             };
             
-            
+            if (_statusCache.TryGetValue(GetStatusCacheKey(vm.MangaUrl), out var cachedStatus) && cachedStatus != Manga.UNKNOWN)
+            {
+                vm.Status = cachedStatus;
+            }
+
             return vm;
+        }
+
+        private void ClearMangaItems()
+        {
+            _allMangaItems.Clear();
+            MangaList.Clear();
+            this.RaisePropertyChanged(nameof(IsSourceEmpty));
+        }
+
+        private void ReplaceMangaItems(IEnumerable<MangaItem> items)
+        {
+            _allMangaItems.Clear();
+            _allMangaItems.AddRange(items);
+            _ = ApplyStatusFilterAsync();
+        }
+
+        private void AddMangaItems(IEnumerable<MangaItem> items, bool append)
+        {
+            if (!append)
+            {
+                _allMangaItems.Clear();
+            }
+
+            foreach (var item in items)
+            {
+                if (!append || !_allMangaItems.Any(x => x.MangaUrl == item.MangaUrl))
+                {
+                    _allMangaItems.Add(item);
+                }
+            }
+
+            _ = ApplyStatusFilterAsync();
+        }
+
+        private async Task ApplyStatusFilterAsync()
+        {
+            var filter = SelectedStatusFilter;
+            var snapshot = _allMangaItems.ToList();
+
+            if (filter != SourceStatusFilterMode.All)
+            {
+                await EnsureStatusesAsync(snapshot);
+            }
+
+            if (filter != SelectedStatusFilter)
+            {
+                return;
+            }
+
+            var filtered = snapshot.Where(item => MatchesStatusFilter(item, filter)).ToList();
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                MangaList.Clear();
+                foreach (var item in filtered)
+                {
+                    MangaList.Add(item);
+                }
+                this.RaisePropertyChanged(nameof(IsSourceEmpty));
+            });
+        }
+
+        private async Task EnsureStatusesAsync(List<MangaItem> items)
+        {
+            var targets = items
+                .Where(item => item.Status == Manga.UNKNOWN && !string.IsNullOrWhiteSpace(item.MangaUrl))
+                .ToList();
+
+            if (targets.Count == 0)
+            {
+                return;
+            }
+
+            using var semaphore = new System.Threading.SemaphoreSlim(4);
+            var tasks = targets.Select(async item =>
+            {
+                var cacheKey = GetStatusCacheKey(item.MangaUrl);
+                if (_statusCache.TryGetValue(cacheKey, out var cachedStatus))
+                {
+                    if (cachedStatus != Manga.UNKNOWN)
+                    {
+                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => item.Status = cachedStatus);
+                    }
+                    return;
+                }
+
+                await semaphore.WaitAsync();
+                try
+                {
+                    var details = await _source.GetMangaDetailsAsync(item.MangaUrl);
+                    var status = details.Status;
+                    _statusCache[cacheKey] = status;
+
+                    if (status != Manga.UNKNOWN)
+                    {
+                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => item.Status = status);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _statusCache[cacheKey] = Manga.UNKNOWN;
+                    LogService.Warning("SourceFeedVM", $"Could not resolve status for {item.Title}: {ex.Message}");
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(tasks);
+        }
+
+        private static bool MatchesStatusFilter(MangaItem item, SourceStatusFilterMode filter)
+        {
+            return filter switch
+            {
+                SourceStatusFilterMode.Ongoing => item.Status == Manga.ONGOING,
+                SourceStatusFilterMode.Completed => item.Status == Manga.COMPLETED || item.Status == Manga.PUBLISHING_FINISHED,
+                _ => true
+            };
+        }
+
+        private string GetStatusCacheKey(string mangaUrl)
+        {
+            return $"{_source.Id}:{mangaUrl}";
         }
 
         private bool _hasShownVpnTip = false;

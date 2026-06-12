@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Reactive;
 using System.Threading.Tasks;
 using System.Net.Http;
@@ -25,6 +28,16 @@ namespace Yomic.ViewModels
 
         public ReactiveCommand<Avalonia.Controls.Window, Unit> CancelCommand { get; }
         public ReactiveCommand<Avalonia.Controls.Window, Unit> SubmitCommand { get; }
+        public ReactiveCommand<Unit, Unit> AttachScreenshotCommand { get; }
+        public ReactiveCommand<FeedbackScreenshotAttachment, Unit> RemoveScreenshotCommand { get; }
+
+        public const int MaxScreenshotCount = 3;
+        public Func<int, Task<IReadOnlyList<FeedbackScreenshotAttachment>>>? OpenScreenshotPickerAsync { get; set; }
+
+        public ObservableCollection<FeedbackScreenshotAttachment> ScreenshotAttachments { get; } = new();
+        public bool HasScreenshot => ScreenshotAttachments.Count > 0;
+        public bool CanAttachMoreScreenshots => ScreenshotAttachments.Count < MaxScreenshotCount;
+        public string AttachScreenshotText => HasScreenshot ? $"Attach Screenshot ({ScreenshotAttachments.Count}/{MaxScreenshotCount})" : "Attach Screenshot";
 
         private readonly Action<string, NotificationType>? _showNotificationCallback;
 
@@ -39,12 +52,61 @@ namespace Yomic.ViewModels
 
             SubmitCommand = ReactiveCommand.CreateFromTask<Avalonia.Controls.Window>(async window =>
             {
-                await SendEmailAsync(FeedbackText);
-                window?.Close();
+                var success = await SendEmailAsync(FeedbackText);
+                if (success)
+                {
+                    window?.Close();
+                }
             }, this.WhenAnyValue(x => x.CanSubmit));
+
+            AttachScreenshotCommand = ReactiveCommand.CreateFromTask(async () =>
+            {
+                if (OpenScreenshotPickerAsync == null)
+                {
+                    _showNotificationCallback?.Invoke("Screenshot picker is not available.", NotificationType.Error);
+                    return;
+                }
+
+                var remainingSlots = MaxScreenshotCount - ScreenshotAttachments.Count;
+                if (remainingSlots <= 0)
+                {
+                    _showNotificationCallback?.Invoke($"You can attach up to {MaxScreenshotCount} screenshots.", NotificationType.Error);
+                    return;
+                }
+
+                var attachments = await OpenScreenshotPickerAsync(remainingSlots);
+                if (attachments.Count > 0)
+                {
+                    foreach (var attachment in attachments.Take(remainingSlots))
+                    {
+                        ScreenshotAttachments.Add(attachment);
+                    }
+
+                    RaiseScreenshotStateChanged();
+                    _showNotificationCallback?.Invoke($"{attachments.Count} screenshot(s) attached.", NotificationType.Success);
+                }
+            });
+
+            RemoveScreenshotCommand = ReactiveCommand.Create<FeedbackScreenshotAttachment>(attachment =>
+            {
+                ScreenshotAttachments.Remove(attachment);
+                RaiseScreenshotStateChanged();
+            });
         }
 
-        private async Task SendEmailAsync(string text)
+        public void ShowPickerError(string message)
+        {
+            _showNotificationCallback?.Invoke(message, NotificationType.Error);
+        }
+
+        private void RaiseScreenshotStateChanged()
+        {
+            this.RaisePropertyChanged(nameof(HasScreenshot));
+            this.RaisePropertyChanged(nameof(CanAttachMoreScreenshots));
+            this.RaisePropertyChanged(nameof(AttachScreenshotText));
+        }
+
+        private async Task<bool> SendEmailAsync(string text)
         {
             try
             {
@@ -54,12 +116,34 @@ namespace Yomic.ViewModels
                 if (url == "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE")
                 {
                     _showNotificationCallback?.Invoke("Feedback URL is not configured.", NotificationType.Error);
-                    return;
+                    return false;
                 }
+
+                var attachments = ScreenshotAttachments.Select(attachment => new
+                {
+                    fileName = attachment.FileName,
+                    name = attachment.FileName,
+                    contentType = attachment.ContentType,
+                    mimeType = attachment.ContentType,
+                    base64 = attachment.Base64Data,
+                    data = attachment.Base64Data
+                }).ToArray();
+
+                var screenshot = attachments.FirstOrDefault();
 
                 var payload = new
                 {
-                    message = text
+                    message = text,
+                    hasScreenshot = attachments.Length > 0,
+                    screenshot,
+                    attachment = screenshot,
+                    attachments,
+                    imageBase64 = screenshot?.base64,
+                    imageName = screenshot?.fileName,
+                    imageContentType = screenshot?.contentType,
+                    screenshotFileName = screenshot?.fileName,
+                    screenshotContentType = screenshot?.contentType,
+                    screenshotBase64 = screenshot?.base64
                 };
 
                 string jsonPayload = JsonSerializer.Serialize(payload);
@@ -71,32 +155,30 @@ namespace Yomic.ViewModels
                     var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                     var response = await client.PostAsync(url, content);
 
-                    // Google Apps Script redirects with 302 Found to script.googleusercontent.com
+                    // Google Apps Script redirects with 302 Found to script.googleusercontent.com on success
+                    bool isSuccess = response.IsSuccessStatusCode;
+                    
                     if (response.StatusCode == System.Net.HttpStatusCode.Redirect || 
                         response.StatusCode == System.Net.HttpStatusCode.Found ||
                         response.StatusCode == System.Net.HttpStatusCode.MovedPermanently)
                     {
-                        var redirectUrl = response.Headers.Location;
-                        if (redirectUrl != null)
-                        {
-                            // Send a new GET request to the redirect destination to retrieve the script response content
-                            using (var redirectClient = new HttpClient())
-                            {
-                                response = await redirectClient.GetAsync(redirectUrl);
-                            }
-                        }
+                        var redirectLocation = response.Headers.Location?.ToString();
+                        isSuccess = !string.IsNullOrWhiteSpace(redirectLocation) &&
+                                    redirectLocation.Contains("script.googleusercontent.com", StringComparison.OrdinalIgnoreCase);
                     }
 
-                    if (response.IsSuccessStatusCode)
+                    if (isSuccess)
                     {
                         Console.WriteLine("[Feedback] Google Apps Script sent successfully!");
                         _showNotificationCallback?.Invoke("Feedback sent successfully! Thank you.", NotificationType.Success);
+                        return true;
                     }
                     else
                     {
                         string errorResponse = await response.Content.ReadAsStringAsync();
                         Console.WriteLine($"[Feedback] Google Apps Script error: {response.StatusCode} - {errorResponse}");
                         _showNotificationCallback?.Invoke("Failed to send feedback. Please try again later.", NotificationType.Error);
+                        return false;
                     }
                 }
             }
@@ -104,7 +186,15 @@ namespace Yomic.ViewModels
             {
                 Console.WriteLine($"[Feedback] Error sending via Google Apps Script: {ex.Message}");
                 _showNotificationCallback?.Invoke("An error occurred while sending feedback.", NotificationType.Error);
+                return false;
             }
         }
+    }
+
+    public class FeedbackScreenshotAttachment
+    {
+        public string FileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = "image/png";
+        public string Base64Data { get; set; } = string.Empty;
     }
 }

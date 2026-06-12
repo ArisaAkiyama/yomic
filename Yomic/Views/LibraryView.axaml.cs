@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Yomic.ViewModels;
 using System;
+using System.Threading.Tasks;
 
 namespace Yomic.Views
 {
@@ -10,6 +11,25 @@ namespace Yomic.Views
         public LibraryView()
         {
             InitializeComponent();
+            DataContextChanged += OnDataContextChanged;
+        }
+
+        private void OnDataContextChanged(object? sender, EventArgs e)
+        {
+            if (DataContext is LibraryViewModel vm)
+            {
+                vm.ConfirmDeleteFromDiskAsync = ShowDeleteFromDiskWarningAsync;
+            }
+        }
+
+        private async Task<bool> ShowDeleteFromDiskWarningAsync(MangaItem item)
+        {
+            var owner = TopLevel.GetTopLevel(this) as Window;
+            var dialog = new ConfirmDialog(
+                "Delete from Disk",
+                $"This will remove \"{item.Title}\" from your library and permanently delete its downloaded chapters from disk. This action cannot be undone.");
+
+            return owner != null && await dialog.ShowDialog<bool>(owner);
         }
         
         private void OnMangaCardPressed(object? sender, PointerPressedEventArgs e)

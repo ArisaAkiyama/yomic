@@ -245,12 +245,6 @@
             </Border>
         </Grid>
         
-        <!-- Extension Reminder Snackbar (Daily Notification) -->
-        <components:ExtensionReminderSnackbar x:Name="ExtensionReminder" 
-                                               VerticalAlignment="Bottom" 
-                                               HorizontalAlignment="Center"
-                                               IsVisible="False"/>
-
         <!-- Global Dialog Overlay (Dimming Effect) -->
         <Border Background="#90000000" 
                 IsVisible="{Binding IsDialogOverlayVisible}"

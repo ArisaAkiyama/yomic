@@ -1,0 +1,7 @@
+ext {
+    extName = 'Komiku'
+    extClass = '.Komiku'
+    extVersionCode = 20
+}
+
+apply plugin: "kei.plugins.extension.legacy"

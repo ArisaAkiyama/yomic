@@ -25,7 +25,16 @@ namespace Yomic.ViewModels
         }
 
         public string? LastReadTime { get; set; }
-        public int Status { get; set; } // 1=Ongoing, 2=Completed, 5=Hiatus, 6=Cancelled
+        private int _status;
+        public int Status
+        {
+            get => _status;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _status, value);
+                this.RaisePropertyChanged(nameof(StatusString));
+            }
+        } // 1=Ongoing, 2=Completed, 5=Hiatus, 6=Cancelled
         public int ChapterCount { get; set; } // Total chapters count
         public System.Collections.Generic.List<string> Genres { get; set; } = new();
 

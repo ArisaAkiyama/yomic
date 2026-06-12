@@ -382,15 +382,15 @@
                             <!-- IsHitTestVisible="True" on Panel to capture clicks for buttons inside -->
                             <Panel Grid.Column="2" Margin="15,0" IsHitTestVisible="True" VerticalAlignment="Center">
                                 <!-- Download Button (Visible when NOT downloaded) -->
-                                <Button Command="{Binding DownloadCommand}" Background="{DynamicResource CardBackground}" 
+                                <Button Command="{Binding DownloadCommand}" Background="Transparent" 
                                         IsVisible="{Binding !IsDownloaded}"
-                                        Padding="10,8" BorderThickness="0"
+                                        Padding="8" BorderThickness="0"
                                         CornerRadius="8"
                                         ToolTip.Tip="Download Chapter"
                                         Foreground="{DynamicResource SecondaryText}">
                                     <Button.Styles>
                                         <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                            <Setter Property="Background" Value="Transparent"/>
                                         </Style>
                                         <Style Selector="Button:pointerover">
                                             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
@@ -406,14 +406,14 @@
                                 </Button>
 
                                 <!-- Delete Button (Visible when Downloaded) -->
-                                <Button Command="{Binding DeleteCommand}" Background="{DynamicResource CardBackground}"
+                                <Button Command="{Binding DeleteCommand}" Background="Transparent"
                                         IsVisible="{Binding IsDownloaded}"
-                                        Padding="10,8" BorderThickness="0"
+                                        Padding="8" BorderThickness="0"
                                         CornerRadius="8"
                                         ToolTip.Tip="Delete Download">
                                     <Button.Styles>
                                         <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                            <Setter Property="Background" Value="#30EF4444"/>
+                                            <Setter Property="Background" Value="Transparent"/>
                                         </Style>
                                     </Button.Styles>
                                     <Panel>

@@ -16,5 +16,9 @@ namespace Yomic.Core.Sources
         /// Get full directory of manga (paginated).
         /// </summary>
         Task<(List<Manga> Items, int TotalPages)> GetMangaListAsync(int page);
+
+        // Server-side filtering support with backwards compatibility
+        Task<(List<Manga> Items, int TotalPages)> GetLatestMangaAsync(int page, int status) => GetLatestMangaAsync(page);
+        Task<(List<Manga> Items, int TotalPages)> GetMangaListAsync(int page, int status) => GetMangaListAsync(page);
     }
 }

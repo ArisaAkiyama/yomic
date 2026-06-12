@@ -63,6 +63,20 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isDownloading, value);
         }
 
+        private double _downloadProgress;
+        public double DownloadProgress
+        {
+            get => _downloadProgress;
+            set => this.RaiseAndSetIfChanged(ref _downloadProgress, value);
+        }
+
+        private string _downloadProgressText = "Downloading...";
+        public string DownloadProgressText
+        {
+            get => _downloadProgressText;
+            set => this.RaiseAndSetIfChanged(ref _downloadProgressText, value);
+        }
+
         public bool CanVerify { get; set; }
 
         public IMangaSource? SourceInstance { get; set; }
@@ -230,9 +244,11 @@ namespace Yomic.ViewModels
 
             try
             {
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
-                var response = await client.GetStringAsync("https://api.github.com/repos/ArisaAkiyama/extension-yomic/contents");
+                if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
+                {
+                    _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
+                }
+                var response = await _httpClient.GetStringAsync("https://api.github.com/repos/ArisaAkiyama/extension-yomic/contents");
                 var files = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(response);
                 
                 if (files.ValueKind == System.Text.Json.JsonValueKind.Array)
@@ -243,6 +259,9 @@ namespace Yomic.ViewModels
                         if (name != null && name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
                         {
                             var downloadUrl = file.GetProperty("download_url").GetString();
+                            
+                            // Use GitHub Raw to avoid CDN caching or stalling issues
+                            
                             var cleanName = name.Replace("Yomic.Extensions.", "").Replace(".dll", "");
                             
                             // Check if we already have it installed
@@ -477,16 +496,48 @@ namespace Yomic.ViewModels
             if (string.IsNullOrEmpty(item.DownloadUrl)) return;
 
             item.IsDownloading = true;
+            item.DownloadProgress = 0;
+            item.DownloadProgressText = "Downloading 0%";
             _mainVM.ShowNotification($"Downloading {item.Name}...", NotificationType.Info);
 
             try
             {
                 var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"{item.Name}.dll");
                 
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
-                var bytes = await client.GetByteArrayAsync(item.DownloadUrl);
-                await System.IO.File.WriteAllBytesAsync(tempPath, bytes);
+                if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
+                {
+                    _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
+                }
+                
+                using (var response = await _httpClient.GetAsync(item.DownloadUrl, HttpCompletionOption.ResponseHeadersRead))
+                {
+                    response.EnsureSuccessStatusCode();
+                    
+                    var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+                    using var stream = await response.Content.ReadAsStreamAsync();
+                    using var fileStream = new System.IO.FileStream(tempPath, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None, 8192, true);
+                    
+                    var buffer = new byte[8192];
+                    long totalRead = 0;
+                    int read;
+                    
+                    while ((read = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                    {
+                        await fileStream.WriteAsync(buffer, 0, read);
+                        totalRead += read;
+                        
+                        if (totalBytes != -1)
+                        {
+                            var progress = (double)totalRead / totalBytes;
+                            item.DownloadProgress = progress;
+                            item.DownloadProgressText = $"Downloading {(int)(progress * 100)}%";
+                        }
+                        else
+                        {
+                            item.DownloadProgressText = $"Downloading {totalRead / 1024} KB";
+                        }
+                    }
+                }
 
                 // Install the downloaded DLL
                 var loadedSource = await System.Threading.Tasks.Task.Run(() => _sourceManager.InstallPlugin(tempPath));
@@ -509,6 +560,7 @@ namespace Yomic.ViewModels
             finally
             {
                 item.IsDownloading = false;
+                item.DownloadProgressText = "Downloading...";
             }
         }
 

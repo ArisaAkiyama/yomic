@@ -12,6 +12,27 @@ namespace Yomic.Views
         {
             InitializeComponent();
         }
+
+        protected override void OnDataContextChanged(System.EventArgs e)
+        {
+            base.OnDataContextChanged(e);
+
+            if (DataContext is MangaDetailViewModel vm)
+            {
+                vm.ShowDownloadAllDialogAsync = ShowDownloadAllDialogAsync;
+            }
+        }
+
+        private async System.Threading.Tasks.Task<DownloadAllMode?> ShowDownloadAllDialogAsync(DownloadAllDialogInfo info)
+        {
+            if (this.VisualRoot is not Window owner)
+            {
+                return DownloadAllMode.NotDownloaded;
+            }
+
+            var dialog = new DownloadAllDialog(info);
+            return await dialog.ShowDialog<DownloadAllMode?>(owner);
+        }
         
         private void OnSynopsisToggleClick(object? sender, RoutedEventArgs e)
         {

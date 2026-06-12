@@ -32,7 +32,6 @@ namespace Yomic.Core.Services
         public bool CheckAppUpdateOnStart { get; set; } = true;
         public bool IsFirstRun { get; set; } = true;
         public int LibrarySortMode { get; set; } = 0; // 0=TitleAsc, 1=TitleDesc, 2=DateModified
-        public DateTime LastExtensionReminderDate { get; set; } = DateTime.MinValue;
         public bool ShowNsfwSources { get; set; } = false;
         public int DnsOverHttpsProvider { get; set; } = 2; // 0=None, 1=Cloudflare, 2=Google, 3=AdGuard
         public bool PreloadNextChapter { get; set; } = true;
@@ -69,7 +68,6 @@ namespace Yomic.Core.Services
                         CheckAppUpdateOnStart = settings.CheckAppUpdateOnStart;
                         IsFirstRun = settings.IsFirstRun;
                         LibrarySortMode = settings.LibrarySortMode;
-                        LastExtensionReminderDate = settings.LastExtensionReminderDate;
                         ShowNsfwSources = settings.ShowNsfwSources;
                         DnsOverHttpsProvider = settings.DnsOverHttpsProvider;
                         PreloadNextChapter = settings.PreloadNextChapter;
@@ -96,7 +94,6 @@ namespace Yomic.Core.Services
                     CheckAppUpdateOnStart = CheckAppUpdateOnStart,
                     IsFirstRun = IsFirstRun,
                     LibrarySortMode = LibrarySortMode,
-                    LastExtensionReminderDate = LastExtensionReminderDate,
                     ShowNsfwSources = ShowNsfwSources,
                     DnsOverHttpsProvider = DnsOverHttpsProvider,
                     PreloadNextChapter = PreloadNextChapter,
@@ -129,7 +126,6 @@ namespace Yomic.Core.Services
                 CheckAppUpdateOnStart = true;
                 IsFirstRun = true;
                 LibrarySortMode = 0;
-                LastExtensionReminderDate = DateTime.MinValue;
                 ShowNsfwSources = false;
                 DnsOverHttpsProvider = 2;
                 PreloadNextChapter = true;
@@ -151,7 +147,6 @@ namespace Yomic.Core.Services
             public bool CheckAppUpdateOnStart { get; set; }
             public bool IsFirstRun { get; set; }
             public int LibrarySortMode { get; set; }
-            public DateTime LastExtensionReminderDate { get; set; }
             public bool ShowNsfwSources { get; set; }
             public int DnsOverHttpsProvider { get; set; } = 2;
             public bool PreloadNextChapter { get; set; } = true;

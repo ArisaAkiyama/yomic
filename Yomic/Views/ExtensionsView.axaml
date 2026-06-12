@@ -37,7 +37,7 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border CornerRadius="2" ClipToBounds="True">
+                                <Border CornerRadius="2" ClipToBounds="True" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1">
                                     <Image Source="{Binding}" Width="24" Height="16" Stretch="UniformToFill"/>
                                 </Border>
                             </DataTemplate>
@@ -66,8 +66,8 @@
 
                         <!-- Downloading State -->
                         <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsDownloading}" VerticalAlignment="Center" Margin="0,0,10,0">
-                            <TextBlock Text="&#xE895;" FontFamily="Segoe Fluent Icons" FontSize="16" Foreground="{DynamicResource PrimaryAccent}" Classes="Spin" VerticalAlignment="Center"/>
-                            <TextBlock Text="Downloading..." Foreground="{DynamicResource PrimaryAccent}" FontSize="14" FontWeight="Medium" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                            <ProgressBar Value="{Binding DownloadProgress}" Maximum="1" Width="80" Height="6" CornerRadius="3" Foreground="{DynamicResource PrimaryAccent}" Background="{DynamicResource HoverBackground}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding DownloadProgressText}" Foreground="{DynamicResource PrimaryAccent}" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" IsHitTestVisible="False"/>
                         </StackPanel>
 
                         <!-- Status Indicator (Installed) -->
@@ -78,8 +78,8 @@
                                     <Binding Path="!IsInstalling"/>
                                 </MultiBinding>
                             </StackPanel.IsVisible>
-                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="#A6E3A1" FontSize="16" VerticalAlignment="Center"/>
-                            <TextBlock Text="Installed" Foreground="#A6E3A1" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SuccessColor}" FontSize="16" VerticalAlignment="Center"/>
+                            <TextBlock Text="Installed" Foreground="{DynamicResource SuccessColor}" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
                         </StackPanel>
 
                         <!-- Actions Divider -->
@@ -107,7 +107,7 @@
                         </Button>
 
                         <!-- Uninstall Button -->
-                        <Button x:CompileBindings="False" Classes="ExtBtn" Background="Transparent" Foreground="#F38BA8"
+                        <Button x:CompileBindings="False" Classes="ExtBtn" Background="Transparent" Foreground="{DynamicResource ErrorColor}"
                                 ToolTip.Tip="Uninstall" Padding="8"
                                 Command="{Binding DataContext.ToggleInstallCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
                                 CommandParameter="{Binding}">
@@ -122,8 +122,8 @@
 
                         <!-- Uninstalling State -->
                         <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsInstalling}" VerticalAlignment="Center" Margin="0,0,10,0">
-                            <TextBlock Text="&#xE895;" FontFamily="Segoe Fluent Icons" FontSize="16" Foreground="#F38BA8" Classes="Spin" VerticalAlignment="Center"/>
-                            <TextBlock Text="Uninstalling..." Foreground="#F38BA8" FontSize="14" FontWeight="Medium" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                            <TextBlock Text="&#xE895;" FontFamily="Segoe Fluent Icons" FontSize="16" Foreground="{DynamicResource ErrorColor}" Classes="Spin" VerticalAlignment="Center"/>
+                            <TextBlock Text="Uninstalling..." Foreground="{DynamicResource ErrorColor}" FontSize="14" FontWeight="Medium" VerticalAlignment="Center" IsHitTestVisible="False"/>
                         </StackPanel>
                     </StackPanel>
                 </Grid>
@@ -191,7 +191,7 @@
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="12,8"/>
             <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
         </Style>
         <Style Selector="Button.header-action:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#15FFFFFF"/>
@@ -209,13 +209,13 @@
         </Style>
 
         <Style Selector="Button.success">
-            <Setter Property="Foreground" Value="#A6E3A1"/>
+            <Setter Property="Foreground" Value="{DynamicResource SuccessColor}"/>
         </Style>
         <Style Selector="Button.success:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#20A6E3A1"/>
         </Style>
         <Style Selector="Button.header-action.success:pointerover">
-            <Setter Property="Foreground" Value="#A6E3A1"/>
+            <Setter Property="Foreground" Value="{DynamicResource SuccessColor}"/>
         </Style>
         <!-- Tab Filter Style (ListBoxItem) -->
         <Style Selector="#LanguageFilterListBox ListBoxItem">
@@ -344,14 +344,6 @@
                 </TextBox>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" Margin="10,0,0,0" VerticalAlignment="Center">
-                    <!-- Add Button -->
-                    <Button Classes="header-action success" Command="{Binding AddExtensionCommand}" ToolTip.Tip="Add Local DLL Extension">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="&#xE109;" FontFamily="Segoe Fluent Icons" FontSize="18" VerticalAlignment="Center"/>
-                            <TextBlock Text="Add" VerticalAlignment="Center" FontSize="14" FontWeight="Medium"/>
-                        </StackPanel>
-                    </Button>
-
                     <!-- Filter Button -->
                     <Button Classes="header-action" ToolTip.Tip="Filter Languages">
                         <Button.Flyout>
@@ -397,9 +389,9 @@
                     <StackPanel Spacing="10" IsVisible="{Binding HasInstalledExtensions}">
                         <Border BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,8" Margin="0,0,0,5">
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="Installed" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource SecondaryText}" Opacity="0.9"/>
+                                <TextBlock Text="Installed" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
                                 <Border Background="{DynamicResource HoverBackground}" CornerRadius="10" Padding="8,2" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding InstalledCount}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource SecondaryText}"/>
+                                    <TextBlock Text="{Binding InstalledCount}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
                                 </Border>
                             </StackPanel>
                         </Border>
@@ -419,9 +411,9 @@
                     <StackPanel Spacing="10" IsVisible="{Binding HasAvailableExtensions}">
                         <Border BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1" Padding="0,0,0,8" Margin="0,0,0,5">
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="Available" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource SecondaryText}" Opacity="0.9"/>
+                                <TextBlock Text="Available" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
                                 <Border Background="{DynamicResource HoverBackground}" CornerRadius="10" Padding="8,2" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding AvailableCount}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource SecondaryText}"/>
+                                    <TextBlock Text="{Binding AvailableCount}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
                                 </Border>
                             </StackPanel>
                         </Border>
@@ -464,7 +456,7 @@
 
         <!-- Offline State -->
         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20" IsVisible="{Binding IsOffline}">
-            <TextBlock Text="&#xEB55;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="#F38BA8" HorizontalAlignment="Center"/>
+            <TextBlock Text="&#xEB55;" FontFamily="Segoe Fluent Icons" FontSize="64" Foreground="{DynamicResource ErrorColor}" HorizontalAlignment="Center"/>
             <StackPanel Spacing="8">
                 <TextBlock Text="No Internet Connection" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
                 <TextBlock Text="You are currently offline. Please check your network settings." Foreground="{DynamicResource SecondaryText}" FontSize="14" HorizontalAlignment="Center"/>

@@ -206,9 +206,7 @@ namespace Yomic.Core.Services
                  {
                      try 
                      {
-                        var appData = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
-                        var safeTitle = string.Join("_", existing.Title.Split(System.IO.Path.GetInvalidFileNameChars()));
-                        var mangaDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", existing.Source.ToString(), safeTitle);
+                        var mangaDir = DownloadPathService.GetMangaDirectory(existing);
 
                         if (System.IO.Directory.Exists(mangaDir))
                         {
@@ -220,14 +218,23 @@ namespace Yomic.Core.Services
                         var dbChapters = await context.Chapters.Where(c => c.MangaId == existing.Id && c.IsDownloaded).ToListAsync();
 
                         // Fallback for "Unknown" title bug
-                        var fallbackDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", existing.Source.ToString(), "Unknown");
+                        var fallbackDir = System.IO.Path.Combine(DownloadPathService.GetSourceDirectory(existing.Source), "Unknown");
                         if (System.IO.Directory.Exists(fallbackDir))
                         {
                             foreach (var c in dbChapters)
                             {
-                                var safeChap = string.Join("_", c.Name.Split(System.IO.Path.GetInvalidFileNameChars()));
-                                var chapDir = System.IO.Path.Combine(fallbackDir, safeChap);
-                                if (System.IO.Directory.Exists(chapDir)) System.IO.Directory.Delete(chapDir, true);
+                                var safeChap = DownloadPathService.SanitizePathSegment(c.Name);
+                                var hashedChap = DownloadPathService.GetChapterDirectoryName(c.Name, c.Url);
+                                foreach (var chapDir in new[]
+                                {
+                                    System.IO.Path.Combine(fallbackDir, hashedChap),
+                                    System.IO.Path.Combine(fallbackDir, hashedChap + DownloadPathService.TempSuffix),
+                                    System.IO.Path.Combine(fallbackDir, safeChap),
+                                    System.IO.Path.Combine(fallbackDir, safeChap + DownloadPathService.TempSuffix)
+                                })
+                                {
+                                    if (System.IO.Directory.Exists(chapDir)) System.IO.Directory.Delete(chapDir, true);
+                                }
                             }
                             // Clean up Unknown folder if empty
                             try { if (!System.IO.Directory.EnumerateFileSystemEntries(fallbackDir).Any()) System.IO.Directory.Delete(fallbackDir, false); } catch { }
@@ -267,25 +274,39 @@ namespace Yomic.Core.Services
                 }
 
                 // 2. Delete files
-                var appData = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
-                var safeMangaTitle = string.Join("_", manga.Title.Split(System.IO.Path.GetInvalidFileNameChars()));
-                var safeChapterName = string.Join("_", chapter.Name.Split(System.IO.Path.GetInvalidFileNameChars()));
-                var chapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", manga.Source.ToString(), safeMangaTitle, safeChapterName);
+                var deleted = false;
+                var safeMangaTitle = DownloadPathService.SanitizePathSegment(manga.Title ?? "Unknown");
+                var safeChapterName = DownloadPathService.SanitizePathSegment(chapter.Name);
+                var hashedChapterName = DownloadPathService.GetChapterDirectoryName(chapter.Name, chapter.Url);
+                var sourceDir = DownloadPathService.GetSourceDirectory(manga.Source);
+                var mangaDirs = new[]
+                {
+                    DownloadPathService.GetMangaDirectory(manga),
+                    System.IO.Path.Combine(sourceDir, safeMangaTitle),
+                    System.IO.Path.Combine(sourceDir, "Unknown")
+                };
 
-                if (System.IO.Directory.Exists(chapterDir))
+                foreach (var mangaDir in mangaDirs.Distinct())
                 {
-                    System.IO.Directory.Delete(chapterDir, true);
-                    LogService.Success("Library", $"Deleted chapter download: {chapter.Name}");
-                }
-                else
-                {
-                    // Fallback for "Unknown" title bug
-                    var fallbackChapterDir = System.IO.Path.Combine(appData, "Yomic", "Downloads", manga.Source.ToString(), "Unknown", safeChapterName);
-                    if (System.IO.Directory.Exists(fallbackChapterDir))
+                    foreach (var chapterDir in new[]
                     {
-                        System.IO.Directory.Delete(fallbackChapterDir, true);
-                        LogService.Success("Library", $"Deleted fallback 'Unknown' chapter download: {chapter.Name}");
+                        System.IO.Path.Combine(mangaDir, hashedChapterName),
+                        System.IO.Path.Combine(mangaDir, hashedChapterName + DownloadPathService.TempSuffix),
+                        System.IO.Path.Combine(mangaDir, safeChapterName),
+                        System.IO.Path.Combine(mangaDir, safeChapterName + DownloadPathService.TempSuffix)
+                    })
+                    {
+                        if (System.IO.Directory.Exists(chapterDir))
+                        {
+                            System.IO.Directory.Delete(chapterDir, true);
+                            deleted = true;
+                        }
                     }
+                }
+
+                if (deleted)
+                {
+                    LogService.Success("Library", $"Deleted chapter download: {chapter.Name}");
                 }
             }
             catch (Exception ex)
