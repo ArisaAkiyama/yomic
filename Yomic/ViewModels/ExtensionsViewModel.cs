@@ -109,7 +109,7 @@ namespace Yomic.ViewModels
         private static readonly HashSet<string> IndonesianExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
             "luvyaa", "aarlas", "ainzscansid", "astralscans", "bacakomik", 
-            "bacami", "comicazen", "cosmicscansid", "crotpedia", "dailysuka", 
+            "bacami", "comicazen", "cosmicscansid", "dailysuka", 
             "dojingnet", "doujindesu", "doujindesuunoriginal", "doujinku", "dreamteamsscans", 
             "hentaicrot", "holotoon", "hwago", "inazumanga", "izanamiscans", 
             "kanzenin", "kiryuu", "klikmanga", "komikav", "komikcast", 

@@ -170,8 +170,8 @@ namespace Yomic.ViewModels
         // Show English flag indicator for MangaDex source
         public bool IsMangaDex => _source.Name.Contains("MangaDex", System.StringComparison.OrdinalIgnoreCase);
 
-        // Hide Status filter for CrotPedia specifically
-        public bool IsStatusFilterVisible => !_source.Name.Equals("CrotPedia", System.StringComparison.OrdinalIgnoreCase);
+        // Show/Hide Status filter depending on source capabilities
+        public bool IsStatusFilterVisible => true;
         
         // MangaDex Language Toggle (EN/ID)
         private bool _isEnglish = true; // Default: English
