@@ -44,6 +44,9 @@
         <DataTemplate DataType="{x:Type vm:UpdatesViewModel}">
             <views:UpdatesView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:JsDebugViewModel}">
+            <views:JsDebugView/>
+        </DataTemplate>
     </Application.DataTemplates>
 
     <Application.Resources>

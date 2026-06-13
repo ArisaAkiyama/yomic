@@ -1,4 +1,4 @@
-﻿<Window xmlns="https://github.com/avaloniaui"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Yomic.ViewModels"
         xmlns:components="using:Yomic.Views.Components"
@@ -190,6 +190,12 @@
                                     <StackPanel Orientation="Horizontal" Spacing="16">
                                         <TextBlock Text="&#xEA86;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Extensions" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsJsDebugActive}" Click="OnJsDebugClick">
+                                    <StackPanel Orientation="Horizontal" Spacing="16">
+                                        <TextBlock Text="&#xE7BF;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="JS Debug" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
                             </StackPanel>

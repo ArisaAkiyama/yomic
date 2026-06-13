@@ -140,6 +140,7 @@ namespace Yomic.ViewModels
                 this.RaisePropertyChanged(nameof(IsDownloadsActive));
                 this.RaisePropertyChanged(nameof(IsBrowseActive));
                 this.RaisePropertyChanged(nameof(IsExtensionsActive));
+                this.RaisePropertyChanged(nameof(IsJsDebugActive));
                 this.RaisePropertyChanged(nameof(IsSettingsActive));
             }
         }
@@ -153,6 +154,7 @@ namespace Yomic.ViewModels
         public bool IsDownloadsActive => _currentPage == _downloadsVM && _downloadsVM != null;
         public bool IsBrowseActive => _currentPage == _browseVM && _browseVM != null;
         public bool IsExtensionsActive => _currentPage == _extensionsVM && _extensionsVM != null;
+        public bool IsJsDebugActive => _currentPage == _jsDebugVM && _jsDebugVM != null;
         public bool IsSettingsActive => _currentPage == _settingsVM && _settingsVM != null;
 
         private LibraryViewModel? _libraryVM;
@@ -424,6 +426,24 @@ namespace Yomic.ViewModels
                 ClearStack();
                 _extensionsVM = null;
                 CurrentPage = ExtensionsVM;
+                DisposeDelayed(oldPage);
+            }
+        }
+
+        private JsDebugViewModel? _jsDebugVM;
+        public JsDebugViewModel JsDebugVM
+        {
+            get => _jsDebugVM ??= new JsDebugViewModel(this);
+        }
+
+        public void GoToJsDebug()
+        {
+            if (CurrentPage != JsDebugVM)
+            {
+                var oldPage = CurrentPage;
+                ClearStack();
+                _jsDebugVM = null;
+                CurrentPage = JsDebugVM;
                 DisposeDelayed(oldPage);
             }
         }
