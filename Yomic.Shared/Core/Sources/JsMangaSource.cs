@@ -77,7 +77,16 @@ namespace Yomic.Core.Sources
             ");
 
             // Read metadata properties from the "source" object
-            var sourceObj = _engine.GetValue("source");
+            JsValue? sourceObj = null;
+            try
+            {
+                sourceObj = _engine.Evaluate("source");
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Script does not define a global 'source' object. Make sure the script declares a 'source' object.", ex);
+            }
+
             if (sourceObj != null && sourceObj.IsObject())
             {
                 var obj = sourceObj.AsObject();

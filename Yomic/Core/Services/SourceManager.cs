@@ -113,7 +113,7 @@ namespace Yomic.Core.Services
                     _sources.Remove(source);
                     
                     // 1. Delete the path currently tracked
-                    if (_sourceIdToPath.TryGetValue(id, out var path))
+                    if (_sourceIdToPath.TryGetValue(id, out var path) && path != null)
                     {
                         SafeDeleteFile(System.IO.Path.GetFullPath(path));
                         _sourceIdToPath.Remove(id);
@@ -122,7 +122,7 @@ namespace Yomic.Core.Services
                     // 2. Also aggressively delete from both plugin directories using the filename or Assembly Name
                     if (source is JsMangaSource)
                     {
-                        string jsName = System.IO.Path.GetFileName(path);
+                        string? jsName = System.IO.Path.GetFileName(path);
                         if (!string.IsNullOrEmpty(jsName))
                         {
                             SafeDeleteFile(System.IO.Path.Combine(_localPluginsDir, jsName));
@@ -313,6 +313,16 @@ namespace Yomic.Core.Services
             try
             {
                 if (!System.IO.File.Exists(path)) return null;
+
+                // Read a tiny bit first to check if it's a valid Yomic extension
+                var content = System.IO.File.ReadAllText(path);
+                if (!content.Contains("source") && !content.Contains("baseUrl"))
+                {
+                    // Probably a helper script (like vrf.js), silently skip
+                    LogService.Info("SourceManager", $"Skipped non-extension JS file: {System.IO.Path.GetFileName(path)}");
+                    return null;
+                }
+
                 var source = new JsMangaSource(path);
                 AddSource(source);
                 lock (_sourcesLock)
