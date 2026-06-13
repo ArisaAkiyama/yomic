@@ -183,7 +183,7 @@ namespace Yomic.Core.Sources
             }
         }
         
-        public new long Id => _id;
+        public override long Id => _id;
 
         public override async Task<List<Manga>> GetPopularMangaAsync(int page)
         {

@@ -14,7 +14,7 @@ namespace Yomic.Core.Sources
         /// Unique stable ID generated from the class name.
         /// This ensures no collision between extensions from different developers.
         /// </summary>
-        public long Id => GenerateStableId();
+        public virtual long Id => GenerateStableId();
         
         private long GenerateStableId()
         {
