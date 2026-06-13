@@ -338,9 +338,21 @@ namespace Yomic.ViewModels
             else if (lowerName == "mangadex" || lowerName == "nhentai")
                 lang = "global";
 
+            long stableId;
+            try
+            {
+                var hashName = "JS_" + cleanName + "_" + lang;
+                var hash = System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes(hashName));
+                stableId = BitConverter.ToInt64(hash, 0);
+            }
+            catch
+            {
+                stableId = cleanName.GetHashCode();
+            }
+
             var extItem = new ExtensionItem
             {
-                Id = cleanName.GetHashCode(),
+                Id = stableId,
                 Name = cleanName,
                 Description = "Available on GitHub",
                 IsInstalled = false,

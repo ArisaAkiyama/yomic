@@ -387,9 +387,20 @@ namespace Yomic.Core.Sources
         private List<Manga> ParseMangaListFromJs(JsValue jsResult)
         {
             var list = new List<Manga>();
-            if (jsResult.IsArray())
+            var target = jsResult;
+            if (jsResult.IsObject() && !jsResult.IsArray())
             {
-                var arr = jsResult.AsArray();
+                var obj = jsResult.AsObject();
+                var itemsVal = obj.Get("items");
+                if (itemsVal.IsArray())
+                {
+                    target = itemsVal;
+                }
+            }
+
+            if (target.IsArray())
+            {
+                var arr = target.AsArray();
                 for (int i = 0; i < arr.Length; i++)
                 {
                     var item = arr.Get(i);
