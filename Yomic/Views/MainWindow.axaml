@@ -192,12 +192,6 @@
                                         <TextBlock Text="Extensions" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
-                                <Button Classes="SidebarBtn" Classes.active="{Binding IsJsDebugActive}" Click="OnJsDebugClick">
-                                    <StackPanel Orientation="Horizontal" Spacing="16">
-                                        <TextBlock Text="&#xE7BF;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
-                                        <TextBlock Text="JS Debug" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
-                                    </StackPanel>
-                                </Button>
                             </StackPanel>
                         </ScrollViewer>
                         

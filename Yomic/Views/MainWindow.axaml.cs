@@ -358,21 +358,6 @@ namespace Yomic.Views
             }
         }
 
-        private void OnJsDebugClick(object? sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (DataContext is MainWindowViewModel vm)
-                {
-                    vm.GoToJsDebug();
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Navigation Error: {ex}");
-            }
-        }
-
         private void OnReloadClick(object? sender, RoutedEventArgs e)
         {
             try
