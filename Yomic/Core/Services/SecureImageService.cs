@@ -88,6 +88,24 @@ namespace Yomic.Core.Services
             return await DownloadAndCacheAsync(url, cachePath, referer);
         }
 
+        public void ClearDiskCache()
+        {
+            try
+            {
+                _imageCacheService.Clear();
+                if (!Directory.Exists(_cacheFolder)) return;
+
+                foreach (var file in Directory.GetFiles(_cacheFolder))
+                {
+                    try { File.Delete(file); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SecureImageService] Error clearing disk cache: {ex.Message}");
+            }
+        }
+
         private async Task<Bitmap?> DownloadAndCacheAsync(string url, string cachePath, string? referer)
         {
             await _downloadSemaphore.WaitAsync();

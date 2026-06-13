@@ -44,7 +44,7 @@ namespace Yomic
                 Core.Services.SourceIdMigrationService.RunMigrationIfNeeded();
                 
                 var sourceManager = new Core.Services.SourceManager();
-                // Load persisted extensions (DLLs) - Auto-loaded in constructor now
+                // Load persisted JS extensions - auto-loaded in constructor.
                 
                 var settingsService = new Core.Services.SettingsService();
                 SettingsService = settingsService;

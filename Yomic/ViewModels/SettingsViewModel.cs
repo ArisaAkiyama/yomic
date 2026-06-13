@@ -417,8 +417,11 @@ namespace Yomic.ViewModels
         {
             _mainViewModel.ShowNotification("Clearing cache and connections...", NotificationType.Info);
             
-            // Clear image cache
+            // Clear image cache, cover disk cache, source feed cache, and reader page cache.
             _mainViewModel.ImageCacheService.Clear();
+            _mainViewModel.SecureImageService.ClearDiskCache();
+            _sourceManager.ClearAllCache();
+            ClearReaderCache();
             
             // Reset network connections and DNS cache
             await _networkService.ResetConnectionsAsync();
@@ -427,6 +430,22 @@ namespace Yomic.ViewModels
             GC.Collect();
             
             _mainViewModel.ShowNotification("Cache & Cookies cleared successfully!", NotificationType.Success);
+        }
+
+        private static void ClearReaderCache()
+        {
+            try
+            {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var cacheDir = Path.Combine(appData, "Yomic", "Cache", "Reader");
+                if (!Directory.Exists(cacheDir)) return;
+
+                Directory.Delete(cacheDir, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CacheCleanup] Error clearing reader cache: {ex.Message}");
+            }
         }
 
         public async System.Threading.Tasks.Task ProcessBackupAsync(string path)

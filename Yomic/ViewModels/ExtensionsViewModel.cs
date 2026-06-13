@@ -255,45 +255,18 @@ namespace Yomic.ViewModels
                 {
                     foreach (var file in files.EnumerateArray())
                     {
-                        var name = file.GetProperty("name").GetString();
-                        if (name != null && name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var downloadUrl = file.GetProperty("download_url").GetString();
-                            
-                            // Use GitHub Raw to avoid CDN caching or stalling issues
-                            
-                            var cleanName = name.Replace("Yomic.Extensions.", "").Replace(".dll", "");
-                            
-                            // Check if we already have it installed
-                            var existing = _allExtensionsCache.FirstOrDefault(x => x.Name.Equals(cleanName, StringComparison.OrdinalIgnoreCase) || 
-                                                                                  (x.FilePath != null && x.FilePath.EndsWith(name, StringComparison.OrdinalIgnoreCase)));
-                            if (existing == null)
-                            {
-                                // It's not installed, add a placeholder
-                                string lowerName = cleanName.ToLower();
-                                string lang = "en";
-                                if (IndonesianExtensions.Contains(lowerName) || 
-                                    lowerName.Contains("komik") || 
-                                    lowerName.Contains("indo"))
-                                    lang = "id";
-                                else if (lowerName == "mangadex" || lowerName == "nhentai")
-                                    lang = "global";
+                        var type = file.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
+                        var name = file.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(name)) continue;
 
-                                var extItem = new ExtensionItem
-                                {
-                                    Id = cleanName.GetHashCode(), // Fake ID
-                                    Name = cleanName,
-                                    Description = "Available on GitHub",
-                                    IsInstalled = false,
-                                    DownloadUrl = downloadUrl,
-                                    IconText = cleanName.Substring(0, 1),
-                                    Version = "Latest",
-                                    Language = lang
-                                };
-                                LoadLanguageFlags(extItem);
-                                LoadDefaultDllIcon(extItem);
-                                _allExtensionsCache.Add(extItem);
-                            }
+                        if (string.Equals(type, "file", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AddRemoteJsExtension(file);
+                        }
+                        else if (string.Equals(type, "dir", StringComparison.OrdinalIgnoreCase) &&
+                                 !name.Equals("icons", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await FetchRemoteJsExtensionsFromFolderAsync(name);
                         }
                     }
                     FilterExtensions();
@@ -303,6 +276,76 @@ namespace Yomic.ViewModels
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to fetch remote extensions: {ex.Message}");
             }
+        }
+
+        private async System.Threading.Tasks.Task FetchRemoteJsExtensionsFromFolderAsync(string folderName)
+        {
+            try
+            {
+                var url = $"https://api.github.com/repos/ArisaAkiyama/extension-yomic/contents/{Uri.EscapeDataString(folderName)}";
+                var response = await _httpClient.GetStringAsync(url);
+                var files = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(response);
+                if (files.ValueKind != System.Text.Json.JsonValueKind.Array) return;
+
+                foreach (var file in files.EnumerateArray())
+                {
+                    AddRemoteJsExtension(file);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to fetch JS extensions from {folderName}: {ex.Message}");
+            }
+        }
+
+        private void AddRemoteJsExtension(System.Text.Json.JsonElement file)
+        {
+            var type = file.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
+            var name = file.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
+            if (!string.Equals(type, "file", StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(name) ||
+                !name.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var downloadUrl = file.TryGetProperty("download_url", out var downloadProp) ? downloadProp.GetString() : null;
+            if (string.IsNullOrWhiteSpace(downloadUrl)) return;
+
+            var cleanName = name
+                .Replace("Yomic.Extensions.", "", StringComparison.OrdinalIgnoreCase)
+                .Replace(".js", "", StringComparison.OrdinalIgnoreCase);
+
+            var existing = _allExtensionsCache.FirstOrDefault(x =>
+                x.Name.Equals(cleanName, StringComparison.OrdinalIgnoreCase) ||
+                (x.DownloadUrl != null && x.DownloadUrl.Equals(downloadUrl, StringComparison.OrdinalIgnoreCase)) ||
+                (x.FilePath != null && x.FilePath.EndsWith(name, StringComparison.OrdinalIgnoreCase)));
+            if (existing != null) return;
+
+            string lowerName = cleanName.ToLower();
+            string lang = "en";
+            if (IndonesianExtensions.Contains(lowerName) ||
+                lowerName.Contains("komik") ||
+                lowerName.Contains("indo"))
+                lang = "id";
+            else if (lowerName == "mangadex" || lowerName == "nhentai")
+                lang = "global";
+
+            var extItem = new ExtensionItem
+            {
+                Id = cleanName.GetHashCode(),
+                Name = cleanName,
+                Description = "Available on GitHub",
+                IsInstalled = false,
+                DownloadUrl = downloadUrl,
+                IconText = cleanName.Substring(0, 1),
+                Version = "Latest",
+                Language = lang
+            };
+
+            LoadLanguageFlags(extItem);
+            LoadDefaultExtensionIcon(extItem);
+            _allExtensionsCache.Add(extItem);
         }
 
         private async void VerifyExtension(ExtensionItem item)
@@ -362,7 +405,7 @@ namespace Yomic.ViewModels
                     IconBackground = iconBg,
                     Description = !string.IsNullOrEmpty(source.Description) ? source.Description : $"{source.Name} Source",
                     
-                    // IsInstalled = TRUE if in AppData/ProgramFiles, FALSE if just loaded from random DLL
+                    // IsInstalled = TRUE if in AppData/ProgramFiles, FALSE if just loaded from a temporary path
                     IsInstalled = _sourceManager.IsInstalledSource(source.Id),
                     
                     SourceInstance = source,
@@ -465,6 +508,12 @@ namespace Yomic.ViewModels
 
                 var path = file.Path.LocalPath;
                 string fileName = System.IO.Path.GetFileName(path);
+                if (!fileName.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
+                {
+                    _mainVM.ShowNotification("Only JS extensions can be installed.", NotificationType.Error);
+                    return;
+                }
+
                 _mainVM.ShowNotification($"Installing {fileName}...", NotificationType.Info);
 
                 // INSTALL PERSISTENTLY (Copy to AppData/Plugins and Load)
@@ -502,7 +551,13 @@ namespace Yomic.ViewModels
 
             try
             {
-                var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"{item.Name}.dll");
+                if (!item.DownloadUrl.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
+                {
+                    _mainVM.ShowNotification("Only JS extensions are supported from GitHub.", NotificationType.Error);
+                    return;
+                }
+
+                var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"{item.Name}.js");
                 
                 if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
                 {
@@ -539,7 +594,7 @@ namespace Yomic.ViewModels
                     }
                 }
 
-                // Install the downloaded DLL
+                // Install the downloaded JS extension
                 var loadedSource = await System.Threading.Tasks.Task.Run(() => _sourceManager.InstallPlugin(tempPath));
                 
                 if (loadedSource != null)
@@ -602,11 +657,11 @@ namespace Yomic.ViewModels
             }
         }
 
-        private void LoadDefaultDllIcon(ExtensionItem item)
+        private void LoadDefaultExtensionIcon(ExtensionItem item)
         {
             try
             {
-                var uri = new Uri("avares://Yomic/Assets/Icons/WindowsIcons/dll.ico");
+                var uri = new Uri("avares://Yomic/Assets/Icons/WindowsIcons/extensions.ico");
                 if (AssetLoader.Exists(uri))
                 {
                     using var stream = AssetLoader.Open(uri);
@@ -617,7 +672,7 @@ namespace Yomic.ViewModels
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to load default DLL icon: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Failed to load default extension icon: {ex.Message}");
             }
         }
         

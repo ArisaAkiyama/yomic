@@ -6,6 +6,7 @@ namespace Yomic.Core.Sources
 {
     public interface IFilterableMangaSource
     {
+        bool SupportsStatusFilter => false;
 
         /// <summary>
         /// Get latest updated manga (paginated).

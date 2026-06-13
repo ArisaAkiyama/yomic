@@ -27,6 +27,8 @@ namespace Yomic.Core.Sources
         private bool _isHasMorePages = true;
 
         private Engine? _engine;
+        private readonly object _engineLock = new();
+        private bool _supportsStatusFilter;
         private long _id;
 
         public override string Name => _name;
@@ -40,6 +42,7 @@ namespace Yomic.Core.Sources
         public override string IconForeground => _iconForeground;
         public bool IsNsfw => _isNsfw;
         public override bool IsHasMorePages => _isHasMorePages;
+        public bool SupportsStatusFilter => _supportsStatusFilter;
 
         public JsMangaSource(string scriptPath)
         {
@@ -75,6 +78,7 @@ namespace Yomic.Core.Sources
                     return typeof source === 'object' && source !== null && typeof source[methodName] === 'function';
                 };
             ");
+            _supportsStatusFilter = _engine.Invoke("__hasMethod", "getMangaList").AsBoolean();
 
             // Read metadata properties from the "source" object
             var sourceObj = _engine.GetValue("source");
@@ -189,12 +193,15 @@ namespace Yomic.Core.Sources
         {
             return await Task.Run(() =>
             {
-                if (_engine == null) return new List<Manga>();
-                var hasMethod = _engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
-                if (!hasMethod) return new List<Manga>();
+                lock (_engineLock)
+                {
+                    if (_engine == null) return new List<Manga>();
+                    var hasMethod = _engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
+                    if (!hasMethod) return new List<Manga>();
 
-                var jsResult = _engine.Invoke("__callMethod", "getPopularManga", page);
-                return ParseMangaListFromJs(jsResult);
+                    var jsResult = _engine.Invoke("__callMethod", "getPopularManga", page);
+                    return ParseMangaListFromJs(jsResult);
+                }
             });
         }
 
@@ -202,12 +209,15 @@ namespace Yomic.Core.Sources
         {
             return await Task.Run(() =>
             {
-                if (_engine == null) return new List<Manga>();
-                var hasMethod = _engine.Invoke("__hasMethod", "getSearchManga").AsBoolean();
-                if (!hasMethod) return new List<Manga>();
+                lock (_engineLock)
+                {
+                    if (_engine == null) return new List<Manga>();
+                    var hasMethod = _engine.Invoke("__hasMethod", "getSearchManga").AsBoolean();
+                    if (!hasMethod) return new List<Manga>();
 
-                var jsResult = _engine.Invoke("__callMethod", "getSearchManga", query, page);
-                return ParseMangaListFromJs(jsResult);
+                    var jsResult = _engine.Invoke("__callMethod", "getSearchManga", query, page);
+                    return ParseMangaListFromJs(jsResult);
+                }
             });
         }
 
@@ -236,12 +246,15 @@ namespace Yomic.Core.Sources
         {
             return await Task.Run(() =>
             {
-                if (_engine == null) return (new List<Manga>(), page);
-                var hasMethod = _engine.Invoke("__hasMethod", "getLatestUpdates").AsBoolean();
-                if (!hasMethod) return (new List<Manga>(), page);
+                lock (_engineLock)
+                {
+                    if (_engine == null) return (new List<Manga>(), page);
+                    var hasMethod = _engine.Invoke("__hasMethod", "getLatestUpdates").AsBoolean();
+                    if (!hasMethod) return (new List<Manga>(), page);
 
-                var jsResult = _engine.Invoke("__callMethod", "getLatestUpdates", page);
-                return ParsePagedMangaListFromJs(jsResult, page);
+                    var jsResult = _engine.Invoke("__callMethod", "getLatestUpdates", page);
+                    return ParsePagedMangaListFromJs(jsResult, page);
+                }
             });
         }
 
@@ -249,12 +262,39 @@ namespace Yomic.Core.Sources
         {
             return await Task.Run(() =>
             {
-                if (_engine == null) return (new List<Manga>(), page);
-                var hasMethod = _engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
-                if (!hasMethod) return (new List<Manga>(), page);
+                lock (_engineLock)
+                {
+                    if (_engine == null) return (new List<Manga>(), page);
+                    var hasMethod = _engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
+                    if (!hasMethod) return (new List<Manga>(), page);
 
-                var jsResult = _engine.Invoke("__callMethod", "getPopularManga", page);
-                return ParsePagedMangaListFromJs(jsResult, page);
+                    var jsResult = _engine.Invoke("__callMethod", "getPopularManga", page);
+                    return ParsePagedMangaListFromJs(jsResult, page);
+                }
+            });
+        }
+
+        public async Task<(List<Manga> Items, int TotalPages)> GetMangaListAsync(int page, int status)
+        {
+            return await Task.Run(() =>
+            {
+                lock (_engineLock)
+                {
+                    if (_engine == null) return (new List<Manga>(), page);
+
+                    var hasFilteredMethod = _engine.Invoke("__hasMethod", "getMangaList").AsBoolean();
+                    if (hasFilteredMethod)
+                    {
+                        var jsResult = _engine.Invoke("__callMethod", "getMangaList", page, status);
+                        return ParsePagedMangaListFromJs(jsResult, page);
+                    }
+
+                    var hasMethod = _engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
+                    if (!hasMethod) return (new List<Manga>(), page);
+
+                    var fallbackResult = _engine.Invoke("__callMethod", "getPopularManga", page);
+                    return ParsePagedMangaListFromJs(fallbackResult, page);
+                }
             });
         }
 
@@ -262,27 +302,30 @@ namespace Yomic.Core.Sources
         {
             return await Task.Run(() =>
             {
-                if (_engine == null) return new Manga();
-                var hasMethod = _engine.Invoke("__hasMethod", "getMangaDetails").AsBoolean();
-                if (!hasMethod) return new Manga();
-
-                var jsResult = _engine.Invoke("__callMethod", "getMangaDetails", url);
-                if (jsResult.IsObject())
+                lock (_engineLock)
                 {
-                    var obj = jsResult.AsObject();
-                    return new Manga
+                    if (_engine == null) return new Manga();
+                    var hasMethod = _engine.Invoke("__hasMethod", "getMangaDetails").AsBoolean();
+                    if (!hasMethod) return new Manga();
+
+                    var jsResult = _engine.Invoke("__callMethod", "getMangaDetails", url);
+                    if (jsResult.IsObject())
                     {
-                        Title = obj.Get("title").AsString(),
-                        Url = obj.Get("url").AsString(),
-                        ThumbnailUrl = obj.Get("thumbnailUrl").AsString(),
-                        Author = obj.Get("author").AsString(),
-                        Status = (int)obj.Get("status").AsNumber(),
-                        Description = obj.Get("description").AsString(),
-                        Genre = ParseStringListFromJs(obj.Get("genre")),
-                        Source = Id
-                    };
+                        var obj = jsResult.AsObject();
+                        return new Manga
+                        {
+                            Title = obj.Get("title").AsString(),
+                            Url = obj.Get("url").AsString(),
+                            ThumbnailUrl = obj.Get("thumbnailUrl").AsString(),
+                            Author = obj.Get("author").AsString(),
+                            Status = (int)obj.Get("status").AsNumber(),
+                            Description = obj.Get("description").AsString(),
+                            Genre = ParseStringListFromJs(obj.Get("genre")),
+                            Source = Id
+                        };
+                    }
+                    return new Manga();
                 }
-                return new Manga();
             });
         }
 
@@ -290,27 +333,30 @@ namespace Yomic.Core.Sources
         {
             return await Task.Run(() =>
             {
-                if (_engine == null) return new List<Chapter>();
-                var hasMethod = _engine.Invoke("__hasMethod", "getChapterList").AsBoolean();
-                if (!hasMethod) return new List<Chapter>();
-
-                var jsResult = _engine.Invoke("__callMethod", "getChapterList", mangaUrl);
-                var list = new List<Chapter>();
-                if (jsResult.IsArray())
+                lock (_engineLock)
                 {
-                    var arr = jsResult.AsArray();
-                    for (int i = 0; i < arr.Length; i++)
+                    if (_engine == null) return new List<Chapter>();
+                    var hasMethod = _engine.Invoke("__hasMethod", "getChapterList").AsBoolean();
+                    if (!hasMethod) return new List<Chapter>();
+
+                    var jsResult = _engine.Invoke("__callMethod", "getChapterList", mangaUrl);
+                    var list = new List<Chapter>();
+                    if (jsResult.IsArray())
                     {
-                        var obj = arr.Get(i).AsObject();
-                        list.Add(new Chapter
+                        var arr = jsResult.AsArray();
+                        for (int i = 0; i < arr.Length; i++)
                         {
-                            Name = obj.Get("name").AsString(),
-                            Url = obj.Get("url").AsString(),
-                            DateUpload = (long)obj.Get("dateUpload").AsNumber()
-                        });
+                            var obj = arr.Get(i).AsObject();
+                            list.Add(new Chapter
+                            {
+                                Name = obj.Get("name").AsString(),
+                                Url = obj.Get("url").AsString(),
+                                DateUpload = (long)obj.Get("dateUpload").AsNumber()
+                            });
+                        }
                     }
+                    return list;
                 }
-                return list;
             });
         }
 
@@ -318,12 +364,15 @@ namespace Yomic.Core.Sources
         {
             return await Task.Run(() =>
             {
-                if (_engine == null) return new List<string>();
-                var hasMethod = _engine.Invoke("__hasMethod", "getPageList").AsBoolean();
-                if (!hasMethod) return new List<string>();
+                lock (_engineLock)
+                {
+                    if (_engine == null) return new List<string>();
+                    var hasMethod = _engine.Invoke("__hasMethod", "getPageList").AsBoolean();
+                    if (!hasMethod) return new List<string>();
 
-                var jsResult = _engine.Invoke("__callMethod", "getPageList", chapterUrl);
-                return ParseStringListFromJs(jsResult);
+                    var jsResult = _engine.Invoke("__callMethod", "getPageList", chapterUrl);
+                    return ParseStringListFromJs(jsResult);
+                }
             });
         }
 
@@ -344,6 +393,7 @@ namespace Yomic.Core.Sources
                             Title = obj.Get("title").AsString(),
                             Url = obj.Get("url").AsString(),
                             ThumbnailUrl = obj.Get("thumbnailUrl").AsString(),
+                            Status = obj.Get("status").IsNumber() ? (int)obj.Get("status").AsNumber() : Manga.UNKNOWN,
                             Source = Id
                         });
                     }

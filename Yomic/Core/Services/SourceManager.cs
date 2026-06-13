@@ -19,8 +19,8 @@ namespace Yomic.Core.Services
     {
         private readonly List<IMangaSource> _sources;
         private readonly object _sourcesLock = new();
-        private readonly string _localPluginsDir; // Bundled (Program Files)
-        private readonly string _userPluginsDir;  // User (AppData)
+        private readonly string _localPluginsDir; // Bundled JS plugins (app directory)
+        private readonly string _userPluginsDir;  // User JS plugins (AppData)
         
         // Track source ID to file path mapping
         private readonly Dictionary<long, string> _sourceIdToPath = new();
@@ -111,32 +111,22 @@ namespace Yomic.Core.Services
                 if (source != null)
                 {
                     _sources.Remove(source);
+                    string? trackedPath = null;
                     
                     // 1. Delete the path currently tracked
                     if (_sourceIdToPath.TryGetValue(id, out var path))
                     {
+                        trackedPath = path;
                         SafeDeleteFile(System.IO.Path.GetFullPath(path));
                         _sourceIdToPath.Remove(id);
                     }
 
-                    // 2. Also aggressively delete from both plugin directories using the filename or Assembly Name
-                    if (source is JsMangaSource)
+                    // 2. Also aggressively delete from both plugin directories using the filename
+                    string? jsName = string.IsNullOrWhiteSpace(trackedPath) ? null : System.IO.Path.GetFileName(trackedPath);
+                    if (!string.IsNullOrEmpty(jsName))
                     {
-                        string jsName = System.IO.Path.GetFileName(path);
-                        if (!string.IsNullOrEmpty(jsName))
-                        {
-                            SafeDeleteFile(System.IO.Path.Combine(_localPluginsDir, jsName));
-                            SafeDeleteFile(System.IO.Path.Combine(_userPluginsDir, jsName));
-                        }
-                    }
-                    else
-                    {
-                        string dllName = source.GetType().Assembly.GetName().Name + ".dll";
-                        if (!string.IsNullOrEmpty(dllName) && dllName != "Yomic.Shared.dll")
-                        {
-                            SafeDeleteFile(System.IO.Path.Combine(_localPluginsDir, dllName));
-                            SafeDeleteFile(System.IO.Path.Combine(_userPluginsDir, dllName));
-                        }
+                        SafeDeleteFile(System.IO.Path.Combine(_localPluginsDir, jsName));
+                        SafeDeleteFile(System.IO.Path.Combine(_userPluginsDir, jsName));
                     }
 
                     OnSourcesChanged?.Invoke();
@@ -199,14 +189,9 @@ namespace Yomic.Core.Services
                     }
                 }
 
-                // 1. Scan Bundled Plugins (Program Files)
+                // 1. Scan Bundled JS Plugins (Program Files)
                 if (System.IO.Directory.Exists(_localPluginsDir))
                 {
-                    var dlls = System.IO.Directory.GetFiles(_localPluginsDir, "*.dll");
-                    foreach (var dll in dlls)
-                    {
-                        LoadExtensionAssembly(dll);
-                    }
                     var jss = System.IO.Directory.GetFiles(_localPluginsDir, "*.js");
                     foreach (var js in jss)
                     {
@@ -214,14 +199,9 @@ namespace Yomic.Core.Services
                     }
                 }
 
-                // 2. Scan User Plugins (AppData)
+                // 2. Scan User JS Plugins (AppData)
                 if (System.IO.Directory.Exists(_userPluginsDir))
                 {
-                    var dlls = System.IO.Directory.GetFiles(_userPluginsDir, "*.dll");
-                    foreach (var dll in dlls)
-                    {
-                        LoadExtensionAssembly(dll);
-                    }
                     var jss = System.IO.Directory.GetFiles(_userPluginsDir, "*.js");
                     foreach (var js in jss)
                     {
@@ -241,71 +221,27 @@ namespace Yomic.Core.Services
             {
                 if (!System.IO.File.Exists(sourcePath)) return null;
 
-                // Copy to User Plugins Directory
                 var fileName = System.IO.Path.GetFileName(sourcePath);
+                if (!fileName.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
+                {
+                    LogService.Error("SourceManager", $"Rejected non-JS extension: {fileName}");
+                    return null;
+                }
+
+                // Copy to User Plugins Directory
                 var destPath = System.IO.Path.Combine(_userPluginsDir, fileName);
 
                 // If verifying existence or overwrite needed
                 System.IO.File.Copy(sourcePath, destPath, overwrite: true);
 
                 // Load from the NEW location
-                if (fileName.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
-                {
-                    return LoadJsExtension(destPath);
-                }
-                else
-                {
-                    return LoadExtensionAssembly(destPath);
-                }
+                return LoadJsExtension(destPath);
             }
             catch (Exception ex) 
             {
                  LogService.Error("SourceManager", $"Failed to install plugin: {ex.Message}");
                  return null;
             }
-        }
-
-        public IMangaSource? LoadExtensionAssembly(string path)
-        {
-            try
-            {
-                if (!System.IO.File.Exists(path)) return null;
-
-                // Load Assembly from MEMORY to avoid file locking
-                byte[] assemblyBytes = System.IO.File.ReadAllBytes(path);
-                using var stream = new System.IO.MemoryStream(assemblyBytes);
-
-                var loadContext = new ExtensionLoadContext(path);
-                var assembly = loadContext.LoadFromStream(stream);
-                
-                var types = assembly.GetTypes();
-                
-                var sourceType = types.FirstOrDefault(t => 
-                    t.GetInterfaces().Any(i => i.FullName == typeof(IMangaSource).FullName) 
-                    && !t.IsInterface && !t.IsAbstract);
-
-                if (sourceType != null)
-                {
-                    var source = (IMangaSource?)Activator.CreateInstance(sourceType);
-                    if (source != null)
-                    {
-                        AddSource(source);
-                        
-                        lock (_sourcesLock)
-                        {
-                            // Track path explicitly since Location is empty for Stream loaded assemblies
-                            _sourceIdToPath[source.Id] = path;
-                        }
-                        
-                        return source;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                LogService.Error("SourceManager", $"Failed to load assembly {path}", ex);
-            }
-            return null;
         }
 
         public IMangaSource? LoadJsExtension(string path)
@@ -339,43 +275,19 @@ namespace Yomic.Core.Services
         {
             if (!System.IO.File.Exists(path)) throw new System.IO.FileNotFoundException("Extension file not found", path);
 
-            if (path.EndsWith(".js", System.StringComparison.OrdinalIgnoreCase))
+            if (!path.EndsWith(".js", System.StringComparison.OrdinalIgnoreCase))
             {
-                try
-                {
-                    return new JsMangaSource(path);
-                }
-                catch (Exception ex)
-                {
-                    throw new Exception($"Failed to peek JS extension: {ex.Message}");
-                }
+                throw new Exception("Only JS extensions are supported.");
             }
 
-            byte[] assemblyBytes = System.IO.File.ReadAllBytes(path);
-            using var stream = new System.IO.MemoryStream(assemblyBytes);
-
-            var loadContext = new ExtensionLoadContext(path);
-            var assembly = loadContext.LoadFromStream(stream);
-            
-            var types = assembly.GetTypes();
-            
-            var sourceType = types.FirstOrDefault(t => 
-                t.GetInterfaces().Any(i => i.FullName == typeof(IMangaSource).FullName) 
-                && !t.IsInterface && !t.IsAbstract);
-
-            if (sourceType != null)
+            try
             {
-                try
-                {
-                    return (IMangaSource?)Activator.CreateInstance(sourceType);
-                }
-                catch (System.Reflection.TargetInvocationException ex)
-                {
-                    throw new Exception(ex.InnerException?.Message ?? ex.Message);
-                }
+                return new JsMangaSource(path);
             }
-
-            return null;
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed to peek JS extension: {ex.Message}");
+            }
         }
 
         #endregion
@@ -421,13 +333,9 @@ namespace Yomic.Core.Services
 
         public void InvalidateAllCachesForSource(long sourceId)
         {
-            // Clear all cache entries containing this source ID
-            var keysToRemove = _cache.Keys.Where(k => k.Contains($"source_{sourceId}") || k.Contains($"_{sourceId}_")).ToList();
-            foreach (var key in keysToRemove)
-            {
-                _cache.TryRemove(key, out _);
-            }
-            System.Console.WriteLine($"[SourceManager] Invalidated {keysToRemove.Count} cache entries for source {sourceId}");
+            var cacheCount = _cache.Count;
+            _cache.Clear();
+            System.Console.WriteLine($"[SourceManager] Cleared all {cacheCount} cache entries after source {sourceId} refresh");
         }
 
         public void ClearAllCache()
