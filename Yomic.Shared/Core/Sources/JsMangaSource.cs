@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Threading;
 using Jint;
 using Jint.Native;
 using Jint.Native.Array;
@@ -25,9 +26,10 @@ namespace Yomic.Core.Sources
         private string _iconForeground = "#FF9900";
         private bool _isNsfw = false;
         private bool _isHasMorePages = true;
+        private bool _requiresProxy = false;
 
-        private Engine? _engine;
-        private readonly object _engineLock = new();
+        private readonly SemaphoreSlim _executionLimit = new(4, 4);
+        private string _scriptCode = "";
         private bool _supportsStatusFilter;
         private long _id;
 
@@ -43,6 +45,7 @@ namespace Yomic.Core.Sources
         public bool IsNsfw => _isNsfw;
         public override bool IsHasMorePages => _isHasMorePages;
         public bool SupportsStatusFilter => _supportsStatusFilter;
+        public override bool RequiresProxy => _requiresProxy;
 
         public JsMangaSource(string scriptPath)
         {
@@ -52,36 +55,12 @@ namespace Yomic.Core.Sources
 
         private void Initialize()
         {
-            var code = File.ReadAllText(_scriptPath);
-            _engine = new Engine();
-            
-            // Register fetch
-            _engine.SetValue("fetch", new Func<string, JsValue, JsResponse>(FetchUrl));
-            
-            // Register Html parser
-            _engine.SetValue("Html", new {
-                parse = new Func<string, string, JsDocument>(HtmlParser.parse)
-            });
-            
-            // Register console.log
-            _engine.SetValue("log", new Action<object>(o => Console.WriteLine($"[JS Extension Log] {o}")));
-            
-            // Execute the code
-            _engine.Execute(code);
-
-            // Inject the helper methods for calling object methods with this context
-            _engine.Execute(@"
-                globalThis.__callMethod = function(methodName, ...args) {
-                    return source[methodName].apply(source, args);
-                };
-                globalThis.__hasMethod = function(methodName) {
-                    return typeof source === 'object' && source !== null && typeof source[methodName] === 'function';
-                };
-            ");
-            _supportsStatusFilter = _engine.Invoke("__hasMethod", "getMangaList").AsBoolean();
+            _scriptCode = File.ReadAllText(_scriptPath);
+            var engine = CreateEngine();
+            _supportsStatusFilter = engine.Invoke("__hasMethod", "getMangaList").AsBoolean();
 
             // Read metadata properties from the "source" object
-            var sourceObj = _engine.GetValue("source");
+            var sourceObj = engine.GetValue("source");
             if (sourceObj != null && sourceObj.IsObject())
             {
                 var obj = sourceObj.AsObject();
@@ -105,6 +84,7 @@ namespace Yomic.Core.Sources
                 if (obj.HasProperty("iconForeground")) _iconForeground = obj.Get("iconForeground").AsString();
                 if (obj.HasProperty("isNsfw")) _isNsfw = obj.Get("isNsfw").AsBoolean();
                 if (obj.HasProperty("isHasMorePages")) _isHasMorePages = obj.Get("isHasMorePages").AsBoolean();
+                if (obj.HasProperty("requiresProxy")) _requiresProxy = obj.Get("requiresProxy").AsBoolean();
 
                 var idVal = obj.Get("id");
                 if (idVal.IsNumber())
@@ -119,6 +99,47 @@ namespace Yomic.Core.Sources
             else
             {
                 throw new Exception("Script does not define a global 'source' object.");
+            }
+        }
+
+        private Engine CreateEngine()
+        {
+            var engine = new Engine();
+
+            engine.SetValue("fetch", new Func<string, JsValue, JsResponse>(FetchUrl));
+            engine.SetValue("Html", new
+            {
+                parse = new Func<string, string, JsDocument>(HtmlParser.parse)
+            });
+            engine.SetValue("log", new Action<object>(o => Console.WriteLine($"[JS Extension Log] {o}")));
+
+            engine.Execute(_scriptCode);
+            engine.Execute(@"
+                globalThis.__callMethod = function(methodName, ...args) {
+                    return source[methodName].apply(source, args);
+                };
+                globalThis.__hasMethod = function(methodName) {
+                    return typeof source === 'object' && source !== null && typeof source[methodName] === 'function';
+                };
+            ");
+
+            return engine;
+        }
+
+        private async Task<T> ExecuteJsAsync<T>(Func<Engine, T> action)
+        {
+            await _executionLimit.WaitAsync();
+            try
+            {
+                return await Task.Run(() =>
+                {
+                    var engine = CreateEngine();
+                    return action(engine);
+                });
+            }
+            finally
+            {
+                _executionLimit.Release();
             }
         }
 
@@ -199,33 +220,25 @@ namespace Yomic.Core.Sources
 
         public override async Task<List<Manga>> GetPopularMangaAsync(int page)
         {
-            return await Task.Run(() =>
+            return await ExecuteJsAsync(engine =>
             {
-                lock (_engineLock)
-                {
-                    if (_engine == null) return new List<Manga>();
-                    var hasMethod = _engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
-                    if (!hasMethod) return new List<Manga>();
+                var hasMethod = engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
+                if (!hasMethod) return new List<Manga>();
 
-                    var jsResult = _engine.Invoke("__callMethod", "getPopularManga", page);
-                    return ParseMangaListFromJs(jsResult);
-                }
+                var jsResult = engine.Invoke("__callMethod", "getPopularManga", page);
+                return ParseMangaListFromJs(jsResult);
             });
         }
 
         public override async Task<List<Manga>> GetSearchMangaAsync(string query, int page)
         {
-            return await Task.Run(() =>
+            return await ExecuteJsAsync(engine =>
             {
-                lock (_engineLock)
-                {
-                    if (_engine == null) return new List<Manga>();
-                    var hasMethod = _engine.Invoke("__hasMethod", "getSearchManga").AsBoolean();
-                    if (!hasMethod) return new List<Manga>();
+                var hasMethod = engine.Invoke("__hasMethod", "getSearchManga").AsBoolean();
+                if (!hasMethod) return new List<Manga>();
 
-                    var jsResult = _engine.Invoke("__callMethod", "getSearchManga", query, page);
-                    return ParseMangaListFromJs(jsResult);
-                }
+                var jsResult = engine.Invoke("__callMethod", "getSearchManga", query, page);
+                return ParseMangaListFromJs(jsResult);
             });
         }
 
@@ -252,135 +265,110 @@ namespace Yomic.Core.Sources
 
         public async Task<(List<Manga> Items, int TotalPages)> GetLatestMangaAsync(int page)
         {
-            return await Task.Run(() =>
+            return await ExecuteJsAsync(engine =>
             {
-                lock (_engineLock)
-                {
-                    if (_engine == null) return (new List<Manga>(), page);
-                    var hasMethod = _engine.Invoke("__hasMethod", "getLatestUpdates").AsBoolean();
-                    if (!hasMethod) return (new List<Manga>(), page);
+                var hasMethod = engine.Invoke("__hasMethod", "getLatestUpdates").AsBoolean();
+                if (!hasMethod) return (new List<Manga>(), page);
 
-                    var jsResult = _engine.Invoke("__callMethod", "getLatestUpdates", page);
-                    return ParsePagedMangaListFromJs(jsResult, page);
-                }
+                var jsResult = engine.Invoke("__callMethod", "getLatestUpdates", page);
+                return ParsePagedMangaListFromJs(jsResult, page);
             });
         }
 
         public async Task<(List<Manga> Items, int TotalPages)> GetMangaListAsync(int page)
         {
-            return await Task.Run(() =>
+            return await ExecuteJsAsync(engine =>
             {
-                lock (_engineLock)
-                {
-                    if (_engine == null) return (new List<Manga>(), page);
-                    var hasMethod = _engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
-                    if (!hasMethod) return (new List<Manga>(), page);
+                var hasMethod = engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
+                if (!hasMethod) return (new List<Manga>(), page);
 
-                    var jsResult = _engine.Invoke("__callMethod", "getPopularManga", page);
-                    return ParsePagedMangaListFromJs(jsResult, page);
-                }
+                var jsResult = engine.Invoke("__callMethod", "getPopularManga", page);
+                return ParsePagedMangaListFromJs(jsResult, page);
             });
         }
 
         public async Task<(List<Manga> Items, int TotalPages)> GetMangaListAsync(int page, int status)
         {
-            return await Task.Run(() =>
+            return await ExecuteJsAsync(engine =>
             {
-                lock (_engineLock)
+                var hasFilteredMethod = engine.Invoke("__hasMethod", "getMangaList").AsBoolean();
+                if (hasFilteredMethod)
                 {
-                    if (_engine == null) return (new List<Manga>(), page);
-
-                    var hasFilteredMethod = _engine.Invoke("__hasMethod", "getMangaList").AsBoolean();
-                    if (hasFilteredMethod)
-                    {
-                        var jsResult = _engine.Invoke("__callMethod", "getMangaList", page, status);
-                        return ParsePagedMangaListFromJs(jsResult, page);
-                    }
-
-                    var hasMethod = _engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
-                    if (!hasMethod) return (new List<Manga>(), page);
-
-                    var fallbackResult = _engine.Invoke("__callMethod", "getPopularManga", page);
-                    return ParsePagedMangaListFromJs(fallbackResult, page);
+                    var jsResult = engine.Invoke("__callMethod", "getMangaList", page, status);
+                    return ParsePagedMangaListFromJs(jsResult, page);
                 }
+
+                var hasMethod = engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
+                if (!hasMethod) return (new List<Manga>(), page);
+
+                var fallbackResult = engine.Invoke("__callMethod", "getPopularManga", page);
+                return ParsePagedMangaListFromJs(fallbackResult, page);
             });
         }
 
         public override async Task<Manga> GetMangaDetailsAsync(string url)
         {
-            return await Task.Run(() =>
+            return await ExecuteJsAsync(engine =>
             {
-                lock (_engineLock)
-                {
-                    if (_engine == null) return new Manga();
-                    var hasMethod = _engine.Invoke("__hasMethod", "getMangaDetails").AsBoolean();
-                    if (!hasMethod) return new Manga();
+                var hasMethod = engine.Invoke("__hasMethod", "getMangaDetails").AsBoolean();
+                if (!hasMethod) return new Manga();
 
-                    var jsResult = _engine.Invoke("__callMethod", "getMangaDetails", url);
-                    if (jsResult.IsObject())
+                var jsResult = engine.Invoke("__callMethod", "getMangaDetails", url);
+                if (jsResult.IsObject())
+                {
+                    var obj = jsResult.AsObject();
+                    return new Manga
                     {
-                        var obj = jsResult.AsObject();
-                        return new Manga
-                        {
-                            Title = obj.Get("title").AsString(),
-                            Url = obj.Get("url").AsString(),
-                            ThumbnailUrl = obj.Get("thumbnailUrl").AsString(),
-                            Author = obj.Get("author").AsString(),
-                            Status = (int)obj.Get("status").AsNumber(),
-                            Description = obj.Get("description").AsString(),
-                            Genre = ParseStringListFromJs(obj.Get("genre")),
-                            Source = Id
-                        };
-                    }
-                    return new Manga();
+                        Title = obj.Get("title").AsString(),
+                        Url = obj.Get("url").AsString(),
+                        ThumbnailUrl = obj.Get("thumbnailUrl").AsString(),
+                        Author = obj.Get("author").AsString(),
+                        Status = (int)obj.Get("status").AsNumber(),
+                        Description = obj.Get("description").AsString(),
+                        Genre = ParseStringListFromJs(obj.Get("genre")),
+                        Source = Id
+                    };
                 }
+                return new Manga();
             });
         }
 
         public override async Task<List<Chapter>> GetChapterListAsync(string mangaUrl)
         {
-            return await Task.Run(() =>
+            return await ExecuteJsAsync(engine =>
             {
-                lock (_engineLock)
-                {
-                    if (_engine == null) return new List<Chapter>();
-                    var hasMethod = _engine.Invoke("__hasMethod", "getChapterList").AsBoolean();
-                    if (!hasMethod) return new List<Chapter>();
+                var hasMethod = engine.Invoke("__hasMethod", "getChapterList").AsBoolean();
+                if (!hasMethod) return new List<Chapter>();
 
-                    var jsResult = _engine.Invoke("__callMethod", "getChapterList", mangaUrl);
-                    var list = new List<Chapter>();
-                    if (jsResult.IsArray())
+                var jsResult = engine.Invoke("__callMethod", "getChapterList", mangaUrl);
+                var list = new List<Chapter>();
+                if (jsResult.IsArray())
+                {
+                    var arr = jsResult.AsArray();
+                    for (int i = 0; i < arr.Length; i++)
                     {
-                        var arr = jsResult.AsArray();
-                        for (int i = 0; i < arr.Length; i++)
+                        var obj = arr.Get(i).AsObject();
+                        list.Add(new Chapter
                         {
-                            var obj = arr.Get(i).AsObject();
-                            list.Add(new Chapter
-                            {
-                                Name = obj.Get("name").AsString(),
-                                Url = obj.Get("url").AsString(),
-                                DateUpload = (long)obj.Get("dateUpload").AsNumber()
-                            });
-                        }
+                            Name = obj.Get("name").AsString(),
+                            Url = obj.Get("url").AsString(),
+                            DateUpload = (long)obj.Get("dateUpload").AsNumber()
+                        });
                     }
-                    return list;
                 }
+                return list;
             });
         }
 
         public override async Task<List<string>> GetPageListAsync(string chapterUrl)
         {
-            return await Task.Run(() =>
+            return await ExecuteJsAsync(engine =>
             {
-                lock (_engineLock)
-                {
-                    if (_engine == null) return new List<string>();
-                    var hasMethod = _engine.Invoke("__hasMethod", "getPageList").AsBoolean();
-                    if (!hasMethod) return new List<string>();
+                var hasMethod = engine.Invoke("__hasMethod", "getPageList").AsBoolean();
+                if (!hasMethod) return new List<string>();
 
-                    var jsResult = _engine.Invoke("__callMethod", "getPageList", chapterUrl);
-                    return ParseStringListFromJs(jsResult);
-                }
+                var jsResult = engine.Invoke("__callMethod", "getPageList", chapterUrl);
+                return ParseStringListFromJs(jsResult);
             });
         }
 
