@@ -211,6 +211,27 @@ namespace Yomic.Core.Sources
             });
         }
 
+        private (List<Manga> Items, int TotalPages) ParsePagedMangaListFromJs(Jint.Native.JsValue jsResult, int currentPage)
+        {
+            if (jsResult.IsArray())
+            {
+                var items = ParseMangaListFromJs(jsResult);
+                return (items, items.Count > 0 ? currentPage + 1 : currentPage);
+            }
+            else if (jsResult.IsObject())
+            {
+                var obj = jsResult.AsObject();
+                var itemsJs = obj.Get("items");
+                var items = itemsJs.IsArray() ? ParseMangaListFromJs(itemsJs) : new List<Manga>();
+                
+                var totalPagesJs = obj.Get("totalPages");
+                int totalPages = totalPagesJs.IsNumber() ? (int)totalPagesJs.AsNumber() : (items.Count > 0 ? currentPage + 1 : currentPage);
+                
+                return (items, totalPages);
+            }
+            return (new List<Manga>(), currentPage);
+        }
+
         public async Task<(List<Manga> Items, int TotalPages)> GetLatestMangaAsync(int page)
         {
             return await Task.Run(() =>
@@ -220,15 +241,21 @@ namespace Yomic.Core.Sources
                 if (!hasMethod) return (new List<Manga>(), page);
 
                 var jsResult = _engine.Invoke("__callMethod", "getLatestUpdates", page);
-                var items = ParseMangaListFromJs(jsResult);
-                return (items, items.Count > 0 ? page + 1 : page);
+                return ParsePagedMangaListFromJs(jsResult, page);
             });
         }
 
         public async Task<(List<Manga> Items, int TotalPages)> GetMangaListAsync(int page)
         {
-            var items = await GetPopularMangaAsync(page);
-            return (items, items.Count > 0 ? page + 1 : page);
+            return await Task.Run(() =>
+            {
+                if (_engine == null) return (new List<Manga>(), page);
+                var hasMethod = _engine.Invoke("__hasMethod", "getPopularManga").AsBoolean();
+                if (!hasMethod) return (new List<Manga>(), page);
+
+                var jsResult = _engine.Invoke("__callMethod", "getPopularManga", page);
+                return ParsePagedMangaListFromJs(jsResult, page);
+            });
         }
 
         public override async Task<Manga> GetMangaDetailsAsync(string url)
