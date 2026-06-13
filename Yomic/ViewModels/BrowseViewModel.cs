@@ -37,6 +37,13 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _iconBitmap, value);
         }
 
+        private bool _isLoadingIcon;
+        public bool IsLoadingIcon
+        {
+            get => _isLoadingIcon;
+            set => this.RaiseAndSetIfChanged(ref _isLoadingIcon, value);
+        }
+
         // Multi-Language Support
         public ObservableCollection<Bitmap> LanguageFlags { get; } = new();
 
@@ -362,6 +369,7 @@ namespace Yomic.ViewModels
             var url = source.IconUrl;
             if (string.IsNullOrEmpty(url)) return;
 
+            item.IsLoadingIcon = true;
             try
             {
                 byte[] bytes;
@@ -398,6 +406,10 @@ namespace Yomic.ViewModels
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[BrowseVM] Icon load failed for {source.Name}: {ex.Message}");
+            }
+            finally
+            {
+                item.IsLoadingIcon = false;
             }
         }
 

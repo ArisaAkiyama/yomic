@@ -228,7 +228,10 @@
                                                  <TextBlock Text="{Binding IconText}" Foreground="{Binding IconForeground}" FontWeight="ExtraBold" FontSize="20"
                                                             HorizontalAlignment="Center" VerticalAlignment="Center"
                                                             IsVisible="{Binding IconText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                                 <Image Source="{Binding IconBitmap}" Stretch="UniformToFill"/>
+                                                 <Image Source="{Binding IconBitmap}" Stretch="UniformToFill" IsVisible="{Binding IconBitmap, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                                 <ProgressBar IsIndeterminate="True" Height="4" VerticalAlignment="Bottom" 
+                                                              Foreground="{DynamicResource PrimaryAccent}" Background="Transparent"
+                                                              IsVisible="{Binding IsLoadingIcon}"/>
                                              </Panel>
                                         </Border>
                                         

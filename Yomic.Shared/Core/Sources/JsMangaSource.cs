@@ -93,6 +93,14 @@ namespace Yomic.Core.Sources
                 if (obj.HasProperty("description")) _description = obj.Get("description").AsString();
                 if (obj.HasProperty("author")) _author = obj.Get("author").AsString();
                 if (obj.HasProperty("iconUrl")) _iconUrl = obj.Get("iconUrl").AsString();
+                
+                if (string.IsNullOrEmpty(_iconUrl) && !string.IsNullOrEmpty(_baseUrl))
+                {
+                    if (Uri.TryCreate(_baseUrl, UriKind.Absolute, out var uri))
+                    {
+                        _iconUrl = $"https://www.google.com/s2/favicons?domain={uri.Host}&sz=128";
+                    }
+                }
                 if (obj.HasProperty("iconBackground")) _iconBackground = obj.Get("iconBackground").AsString();
                 if (obj.HasProperty("iconForeground")) _iconForeground = obj.Get("iconForeground").AsString();
                 if (obj.HasProperty("isNsfw")) _isNsfw = obj.Get("isNsfw").AsBoolean();
