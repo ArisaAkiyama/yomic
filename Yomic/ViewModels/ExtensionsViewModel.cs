@@ -42,6 +42,13 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _iconBitmap, value);
         }
 
+        private bool _isLoadingIcon;
+        public bool IsLoadingIcon
+        {
+            get => _isLoadingIcon;
+            set => this.RaiseAndSetIfChanged(ref _isLoadingIcon, value);
+        }
+
         private bool _isInstalled;
         public bool IsInstalled
         {
@@ -344,7 +351,6 @@ namespace Yomic.ViewModels
             };
 
             LoadLanguageFlags(extItem);
-            LoadDefaultExtensionIcon(extItem);
             _ = LoadFaviconFromRemoteJsAsync(extItem);
             _allExtensionsCache.Add(extItem);
         }
@@ -644,6 +650,7 @@ namespace Yomic.ViewModels
         private async System.Threading.Tasks.Task LoadFaviconFromRemoteJsAsync(ExtensionItem item)
         {
             if (string.IsNullOrEmpty(item.DownloadUrl)) return;
+            item.IsLoadingIcon = true;
             try
             {
                 using var optClient = _mainVM.NetworkService.CreateOptimizedHttpClient();
@@ -671,10 +678,15 @@ namespace Yomic.ViewModels
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to load favicon for {item.Name}: {ex.Message}");
             }
+            finally
+            {
+                item.IsLoadingIcon = false;
+            }
         }
 
         private async System.Threading.Tasks.Task LoadIconAsync(ExtensionItem item, string url)
         {
+            item.IsLoadingIcon = true;
             try
             {
                 using var optClient = _mainVM.NetworkService.CreateOptimizedHttpClient();
@@ -691,6 +703,10 @@ namespace Yomic.ViewModels
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ExtensionsVM] Icon load failed: {ex.Message}");
+            }
+            finally
+            {
+                item.IsLoadingIcon = false;
             }
         }
 
