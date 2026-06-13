@@ -323,7 +323,14 @@ namespace Yomic.Core.Services
             }
             catch (Exception ex)
             {
-                LogService.Error("SourceManager", $"Failed to load JS extension {path}", ex);
+                if (ex.InnerException?.Message.Contains("Script does not define a global 'source' object.") == true || ex.Message.Contains("Script does not define a global 'source' object."))
+                {
+                    LogService.Debug("SourceManager", $"Skipped JS helper file (not an extension): {path}");
+                }
+                else
+                {
+                    LogService.Error("SourceManager", $"Failed to load JS extension {path}", ex);
+                }
             }
             return null;
         }
