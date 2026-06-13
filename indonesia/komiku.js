@@ -1,4 +1,4 @@
-const source = {
+var source = {
     name: "Komiku",
     baseUrl: "https://komiku.org",
     apiUrl: "https://api.komiku.org",
