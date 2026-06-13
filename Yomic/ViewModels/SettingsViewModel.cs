@@ -466,6 +466,7 @@ namespace Yomic.ViewModels
                 
                 // 2. Clear Extensions (Plugins + JSON + Cache)
                 _sourceManager.ClearAllCache();
+                _sourceManager.DeleteAllUserPlugins();
 
                 // 3. Clear Settings
                 _settingsService.Reset();

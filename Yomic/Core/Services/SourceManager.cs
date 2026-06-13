@@ -435,6 +435,24 @@ namespace Yomic.Core.Services
             _cache.Clear();
         }
 
+        public void DeleteAllUserPlugins()
+        {
+            try
+            {
+                if (System.IO.Directory.Exists(_userPluginsDir))
+                {
+                    foreach (var file in System.IO.Directory.GetFiles(_userPluginsDir))
+                    {
+                        System.IO.File.Delete(file);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Console.WriteLine($"[SourceManager] Error deleting plugins: {ex.Message}");
+            }
+        }
+
         #endregion
     }
 }
