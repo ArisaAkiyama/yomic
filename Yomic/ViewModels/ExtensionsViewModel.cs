@@ -345,6 +345,7 @@ namespace Yomic.ViewModels
 
             LoadLanguageFlags(extItem);
             LoadDefaultExtensionIcon(extItem);
+            _ = LoadFaviconFromRemoteJsAsync(extItem);
             _allExtensionsCache.Add(extItem);
         }
 
@@ -426,6 +427,10 @@ namespace Yomic.ViewModels
                 if (!string.IsNullOrEmpty(source.IconUrl))
                 {
                      _ = LoadIconAsync(extItem, source.IconUrl);
+                }
+                else if (!string.IsNullOrEmpty(source.BaseUrl) && Uri.TryCreate(source.BaseUrl, UriKind.Absolute, out var uri))
+                {
+                     _ = LoadIconAsync(extItem, $"https://www.google.com/s2/favicons?domain={uri.Host}&sz=128");
                 }
                 
                 LoadLanguageFlags(extItem);
@@ -633,6 +638,38 @@ namespace Yomic.ViewModels
                 _ = FetchRemoteExtensionsAsync();
                 
                 _mainVM.ShowNotification($"{item.Name} removed.", NotificationType.Success);
+            }
+        }
+
+        private async System.Threading.Tasks.Task LoadFaviconFromRemoteJsAsync(ExtensionItem item)
+        {
+            if (string.IsNullOrEmpty(item.DownloadUrl)) return;
+            try
+            {
+                using var optClient = _mainVM.NetworkService.CreateOptimizedHttpClient();
+                var script = await optClient.GetStringAsync(item.DownloadUrl);
+                
+                var matchIcon = System.Text.RegularExpressions.Regex.Match(script, @"iconUrl:\s*['""](.*?)['""]");
+                if (matchIcon.Success && !string.IsNullOrEmpty(matchIcon.Groups[1].Value))
+                {
+                    await LoadIconAsync(item, matchIcon.Groups[1].Value);
+                    return;
+                }
+
+                var matchBaseUrl = System.Text.RegularExpressions.Regex.Match(script, @"baseUrl:\s*['""](.*?)['""]");
+                if (matchBaseUrl.Success && !string.IsNullOrEmpty(matchBaseUrl.Groups[1].Value))
+                {
+                    var baseUrl = matchBaseUrl.Groups[1].Value;
+                    if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
+                    {
+                        var domain = uri.Host;
+                        await LoadIconAsync(item, $"https://www.google.com/s2/favicons?domain={domain}&sz=128");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load favicon for {item.Name}: {ex.Message}");
             }
         }
 
