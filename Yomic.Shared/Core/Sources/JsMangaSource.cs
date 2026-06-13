@@ -11,7 +11,7 @@ using Yomic.Core.Models;
 
 namespace Yomic.Core.Sources
 {
-    public class JsMangaSource : HttpSource
+    public class JsMangaSource : HttpSource, IFilterableMangaSource
     {
         private readonly string _scriptPath;
         private string _name = "";
@@ -209,6 +209,26 @@ namespace Yomic.Core.Sources
                 var jsResult = _engine.Invoke("__callMethod", "getSearchManga", query, page);
                 return ParseMangaListFromJs(jsResult);
             });
+        }
+
+        public async Task<(List<Manga> Items, int TotalPages)> GetLatestMangaAsync(int page)
+        {
+            return await Task.Run(() =>
+            {
+                if (_engine == null) return (new List<Manga>(), page);
+                var hasMethod = _engine.Invoke("__hasMethod", "getLatestUpdates").AsBoolean();
+                if (!hasMethod) return (new List<Manga>(), page);
+
+                var jsResult = _engine.Invoke("__callMethod", "getLatestUpdates", page);
+                var items = ParseMangaListFromJs(jsResult);
+                return (items, items.Count > 0 ? page + 1 : page);
+            });
+        }
+
+        public async Task<(List<Manga> Items, int TotalPages)> GetMangaListAsync(int page)
+        {
+            var items = await GetPopularMangaAsync(page);
+            return (items, items.Count > 0 ? page + 1 : page);
         }
 
         public override async Task<Manga> GetMangaDetailsAsync(string url)

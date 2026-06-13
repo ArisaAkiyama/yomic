@@ -25,6 +25,20 @@ var source = {
         return this.parseMangaList(doc);
     },
 
+    getLatestUpdates: function(page) {
+        let url = `${this.apiUrl}/manga`;
+        if (page > 1) {
+            url += `/page/${page}`;
+        }
+        url += "?orderby=modified";
+        
+        let response = fetch(url);
+        if (response.status !== 200) return [];
+        
+        let doc = Html.parse(response.body, url);
+        return this.parseMangaList(doc);
+    },
+
     getSearchManga: function(query, page) {
         let url = `${this.apiUrl}/manga`;
         if (page > 1) {
