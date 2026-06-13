@@ -689,8 +689,24 @@ namespace Yomic.ViewModels
             item.IsLoadingIcon = true;
             try
             {
-                using var optClient = _mainVM.NetworkService.CreateOptimizedHttpClient();
-                var bytes = await optClient.GetByteArrayAsync(url);
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var iconsDir = System.IO.Path.Combine(appData, "Yomic", "Icons");
+                if (!System.IO.Directory.Exists(iconsDir)) System.IO.Directory.CreateDirectory(iconsDir);
+
+                var iconFile = System.IO.Path.Combine(iconsDir, $"{item.Id}.png");
+                byte[] bytes;
+
+                if (System.IO.File.Exists(iconFile))
+                {
+                    bytes = await System.IO.File.ReadAllBytesAsync(iconFile);
+                }
+                else
+                {
+                    using var optClient = _mainVM.NetworkService.CreateOptimizedHttpClient();
+                    bytes = await optClient.GetByteArrayAsync(url);
+                    await System.IO.File.WriteAllBytesAsync(iconFile, bytes);
+                }
+
                 using var stream = new MemoryStream(bytes);
                 var bitmap = new Bitmap(stream);
                 

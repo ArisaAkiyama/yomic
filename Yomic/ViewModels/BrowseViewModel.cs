@@ -372,25 +372,39 @@ namespace Yomic.ViewModels
             item.IsLoadingIcon = true;
             try
             {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var iconsDir = System.IO.Path.Combine(appData, "Yomic", "Icons");
+                if (!System.IO.Directory.Exists(iconsDir)) System.IO.Directory.CreateDirectory(iconsDir);
+
+                var iconFile = System.IO.Path.Combine(iconsDir, $"{source.Id}.png");
                 byte[] bytes;
-                
-                // If the source is an HttpSource and has specific cookies, use them
-                if (source is Core.Sources.HttpSource httpSource && httpSource.CookieContainer.Count > 0)
+
+                if (System.IO.File.Exists(iconFile))
                 {
-                    using var handler = new HttpClientHandler 
-                    { 
-                        CookieContainer = httpSource.CookieContainer,
-                        UseCookies = true
-                    };
-                    using var client = new HttpClient(handler);
-                    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
-                    bytes = await client.GetByteArrayAsync(url);
+                    bytes = await System.IO.File.ReadAllBytesAsync(iconFile);
                 }
                 else
                 {
-                    // Use Optimized Client (bypasses ISP blocks via DoH or Proxy)
-                    using var optClient = _networkService.CreateOptimizedHttpClient();
-                    bytes = await optClient.GetByteArrayAsync(url);
+                    // If the source is an HttpSource and has specific cookies, use them
+                    if (source is Core.Sources.HttpSource httpSource && httpSource.CookieContainer.Count > 0)
+                    {
+                        using var handler = new HttpClientHandler 
+                        { 
+                            CookieContainer = httpSource.CookieContainer,
+                            UseCookies = true
+                        };
+                        using var client = new HttpClient(handler);
+                        client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+                        bytes = await client.GetByteArrayAsync(url);
+                    }
+                    else
+                    {
+                        // Use Optimized Client (bypasses ISP blocks via DoH or Proxy)
+                        using var optClient = _networkService.CreateOptimizedHttpClient();
+                        bytes = await optClient.GetByteArrayAsync(url);
+                    }
+
+                    await System.IO.File.WriteAllBytesAsync(iconFile, bytes);
                 }
 
                 using var stream = new MemoryStream(bytes);
