@@ -662,8 +662,6 @@ namespace Yomic.ViewModels
                     var status = GetStatusValue(filter);
                     if (status != Manga.UNKNOWN)
                     {
-                        token.ThrowIfCancellationRequested();
-
                         var cacheKey = $"{_source.Id}:STATUS:v14:{status}:{targetPage}:{IsLatestMode}";
                         List<Manga> sourceItems;
                         int totalPages;
@@ -687,8 +685,11 @@ namespace Yomic.ViewModels
                             return;
                         }
 
+                        // We optionally filter locally just in case the source returned some wrong items,
+                        // but we DO NOT try to enforce FilteredPageSize by fetching more pages,
+                        // because the source is already paginating for us.
                         var filteredPageItems = sourceItems
-                            .Where(m => MatchesStatusFilter(m.Status, filter))
+                            .Where(m => MatchesStatusFilter(m.Status, filter) || m.Status == Manga.UNKNOWN)
                             .Select(m => ConvertToVm(m, token))
                             .ToList();
 
