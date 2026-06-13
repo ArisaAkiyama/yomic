@@ -119,14 +119,24 @@ namespace Yomic.Core.Services
                         _sourceIdToPath.Remove(id);
                     }
 
-                    // 2. Also aggressively delete from both plugin directories using the Assembly Name
-                    // This handles cases where a downloaded plugin shadows a local plugin, and uninstalling
-                    // should wipe both so it doesn't reappear on restart.
-                    string dllName = source.GetType().Assembly.GetName().Name + ".dll";
-                    if (!string.IsNullOrEmpty(dllName))
+                    // 2. Also aggressively delete from both plugin directories using the filename or Assembly Name
+                    if (source is JsMangaSource)
                     {
-                        SafeDeleteFile(System.IO.Path.Combine(_localPluginsDir, dllName));
-                        SafeDeleteFile(System.IO.Path.Combine(_userPluginsDir, dllName));
+                        string jsName = System.IO.Path.GetFileName(path);
+                        if (!string.IsNullOrEmpty(jsName))
+                        {
+                            SafeDeleteFile(System.IO.Path.Combine(_localPluginsDir, jsName));
+                            SafeDeleteFile(System.IO.Path.Combine(_userPluginsDir, jsName));
+                        }
+                    }
+                    else
+                    {
+                        string dllName = source.GetType().Assembly.GetName().Name + ".dll";
+                        if (!string.IsNullOrEmpty(dllName) && dllName != "Yomic.Shared.dll")
+                        {
+                            SafeDeleteFile(System.IO.Path.Combine(_localPluginsDir, dllName));
+                            SafeDeleteFile(System.IO.Path.Combine(_userPluginsDir, dllName));
+                        }
                     }
 
                     OnSourcesChanged?.Invoke();
@@ -197,6 +207,11 @@ namespace Yomic.Core.Services
                     {
                         LoadExtensionAssembly(dll);
                     }
+                    var jss = System.IO.Directory.GetFiles(_localPluginsDir, "*.js");
+                    foreach (var js in jss)
+                    {
+                        LoadJsExtension(js);
+                    }
                 }
 
                 // 2. Scan User Plugins (AppData)
@@ -206,6 +221,11 @@ namespace Yomic.Core.Services
                     foreach (var dll in dlls)
                     {
                         LoadExtensionAssembly(dll);
+                    }
+                    var jss = System.IO.Directory.GetFiles(_userPluginsDir, "*.js");
+                    foreach (var js in jss)
+                    {
+                        LoadJsExtension(js);
                     }
                 }
             }
@@ -229,7 +249,14 @@ namespace Yomic.Core.Services
                 System.IO.File.Copy(sourcePath, destPath, overwrite: true);
 
                 // Load from the NEW location
-                return LoadExtensionAssembly(destPath);
+                if (fileName.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
+                {
+                    return LoadJsExtension(destPath);
+                }
+                else
+                {
+                    return LoadExtensionAssembly(destPath);
+                }
             }
             catch (Exception ex) 
             {
@@ -281,10 +308,41 @@ namespace Yomic.Core.Services
             return null;
         }
 
+        public IMangaSource? LoadJsExtension(string path)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(path)) return null;
+                var source = new JsMangaSource(path);
+                AddSource(source);
+                lock (_sourcesLock)
+                {
+                    _sourceIdToPath[source.Id] = path;
+                }
+                return source;
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("SourceManager", $"Failed to load JS extension {path}", ex);
+            }
+            return null;
+        }
+
         public IMangaSource? PeekExtension(string path)
         {
-            // Peek also uses memory loading just to be safe/consistent
-            if (!System.IO.File.Exists(path)) throw new System.IO.FileNotFoundException("Extension DLL not found", path);
+            if (!System.IO.File.Exists(path)) throw new System.IO.FileNotFoundException("Extension file not found", path);
+
+            if (path.EndsWith(".js", System.StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    return new JsMangaSource(path);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"Failed to peek JS extension: {ex.Message}");
+                }
+            }
 
             byte[] assemblyBytes = System.IO.File.ReadAllBytes(path);
             using var stream = new System.IO.MemoryStream(assemblyBytes);
