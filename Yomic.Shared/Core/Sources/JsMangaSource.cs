@@ -319,13 +319,13 @@ namespace Yomic.Core.Sources
                     var obj = jsResult.AsObject();
                     return new Manga
                     {
-                        Title = obj.Get("title").AsString(),
-                        Url = obj.Get("url").AsString(),
-                        ThumbnailUrl = obj.Get("thumbnailUrl").AsString(),
-                        Author = obj.Get("author").AsString(),
-                        Status = (int)obj.Get("status").AsNumber(),
-                        Description = obj.Get("description").AsString(),
-                        Genre = ParseStringListFromJs(obj.Get("genre")),
+                        Title = GetSafeString(obj, "title"),
+                        Url = GetSafeString(obj, "url"),
+                        ThumbnailUrl = GetSafeString(obj, "thumbnailUrl"),
+                        Author = GetSafeString(obj, "author"),
+                        Status = (int)GetSafeNumber(obj, "status"),
+                        Description = GetSafeString(obj, "description"),
+                        Genre = ParseStringListFromJs(obj.Get("genre").IsUndefined() ? obj.Get("genres") : obj.Get("genre")),
                         Source = Id
                     };
                 }
@@ -350,9 +350,9 @@ namespace Yomic.Core.Sources
                         var obj = arr.Get(i).AsObject();
                         list.Add(new Chapter
                         {
-                            Name = obj.Get("name").AsString(),
-                            Url = obj.Get("url").AsString(),
-                            DateUpload = (long)obj.Get("dateUpload").AsNumber()
+                            Name = GetSafeString(obj, "name", GetSafeString(obj, "title")),
+                            Url = GetSafeString(obj, "url"),
+                            DateUpload = (long)GetSafeNumber(obj, "dateUpload")
                         });
                     }
                 }
@@ -397,9 +397,9 @@ namespace Yomic.Core.Sources
                         var obj = item.AsObject();
                         list.Add(new Manga
                         {
-                            Title = obj.Get("title").AsString(),
-                            Url = obj.Get("url").AsString(),
-                            ThumbnailUrl = obj.Get("thumbnailUrl").AsString(),
+                            Title = GetSafeString(obj, "title"),
+                            Url = GetSafeString(obj, "url"),
+                            ThumbnailUrl = GetSafeString(obj, "thumbnailUrl"),
                             Status = obj.Get("status").IsNumber() ? (int)obj.Get("status").AsNumber() : Manga.UNKNOWN,
                             Source = Id
                         });
@@ -417,10 +417,29 @@ namespace Yomic.Core.Sources
                 var arr = jsResult.AsArray();
                 for (int i = 0; i < arr.Length; i++)
                 {
-                    list.Add(arr.Get(i).AsString());
+                    list.Add(GetSafeString(arr.Get(i)));
                 }
             }
             return list;
+        }
+
+        private static string GetSafeString(JsValue value, string defaultValue = "")
+        {
+            return value.IsString() ? value.AsString() : defaultValue;
+        }
+
+        private static string GetSafeString(ObjectInstance obj, string propertyName, string defaultValue = "")
+        {
+            if (obj == null) return defaultValue;
+            var val = obj.Get(propertyName);
+            return val.IsString() ? val.AsString() : defaultValue;
+        }
+
+        private static double GetSafeNumber(ObjectInstance obj, string propertyName, double defaultValue = 0)
+        {
+            if (obj == null) return defaultValue;
+            var val = obj.Get(propertyName);
+            return val.IsNumber() ? val.AsNumber() : defaultValue;
         }
     }
 }
