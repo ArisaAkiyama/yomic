@@ -17,7 +17,7 @@ namespace Yomic.ViewModels
             new Avalonia.Data.Converters.FuncValueConverter<int, int>(val => Math.Max(0, val - 1));
             
         public static Avalonia.Data.Converters.IValueConverter FitScale { get; } = 
-            new Avalonia.Data.Converters.FuncValueConverter<double, double>(val => val * 0.90);
+            new Avalonia.Data.Converters.FuncValueConverter<double, double>(val => val * 0.98);
     }
 
     public enum ReaderMode
