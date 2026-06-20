@@ -285,7 +285,7 @@
                                         MaxWidth="{Binding Bounds.Width, ElementName=PagedScroll, Converter={x:Static vm:MathConverters.FitScale}}">
                             <ContentControl.ContentTemplate>
                                 <DataTemplate x:DataType="vm:PageViewModel">
-                                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                     <Panel>
                                          <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" VerticalAlignment="Center"
                                                     IsVisible="{Binding IsLoading}"/>
 
@@ -297,7 +297,7 @@
                                                  </Image.Effect>
                                              </Image>
                                          </Grid>
-                                     </StackPanel>
+                                     </Panel>
                                 </DataTemplate>
                             </ContentControl.ContentTemplate>
                         </ContentControl>
@@ -320,7 +320,7 @@
                             <ContentControl Content="{Binding CurrentPageLeft}" Grid.Column="0">
                                 <ContentControl.ContentTemplate>
                                     <DataTemplate x:DataType="vm:PageViewModel">
-                                         <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                         <Panel>
                                              <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" VerticalAlignment="Center"
                                                         IsVisible="{Binding IsLoading}"/>
                                              <Grid>
@@ -331,7 +331,7 @@
                                                      </Image.Effect>
                                                  </Image>
                                              </Grid>
-                                         </StackPanel>
+                                         </Panel>
                                     </DataTemplate>
                                 </ContentControl.ContentTemplate>
                             </ContentControl>
@@ -339,7 +339,7 @@
                             <ContentControl Content="{Binding CurrentPageRight}" Grid.Column="1">
                                 <ContentControl.ContentTemplate>
                                     <DataTemplate x:DataType="vm:PageViewModel">
-                                         <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                         <Panel>
                                              <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" VerticalAlignment="Center"
                                                         IsVisible="{Binding IsLoading}"/>
                                              <Grid>
@@ -350,7 +350,7 @@
                                                      </Image.Effect>
                                                  </Image>
                                              </Grid>
-                                         </StackPanel>
+                                         </Panel>
                                     </DataTemplate>
                                 </ContentControl.ContentTemplate>
                             </ContentControl>
