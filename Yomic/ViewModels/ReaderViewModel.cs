@@ -462,6 +462,43 @@ namespace Yomic.ViewModels
                  }
                  else if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1, true); // Prev Chapter -> Last Page
             });
+            
+            NextPageOnlyCommand = ReactiveCommand.Create(() => 
+            {
+                 int step = CurrentMode == ReaderMode.Double ? 2 : 1;
+                 if (CurrentPageIndex < Pages.Count - step)
+                 {
+                     CurrentPageIndex += step;
+                     if (CurrentMode == ReaderMode.Double)
+                     {
+                         if (CurrentPageRight != null) CurrentPageRight.Load();
+                         if (CurrentPageLeft != null) CurrentPageLeft.Load();
+                     }
+                     else
+                     {
+                         if (CurrentPage != null) CurrentPage.Load();
+                     }
+                 }
+            });
+            
+            PrevPageOnlyCommand = ReactiveCommand.Create(() => 
+            {
+                 int step = CurrentMode == ReaderMode.Double ? 2 : 1;
+                 if (CurrentPageIndex > 0)
+                 {
+                     CurrentPageIndex = Math.Max(0, CurrentPageIndex - step);
+                     if (CurrentMode == ReaderMode.Double)
+                     {
+                         if (CurrentPageRight != null) CurrentPageRight.Load();
+                         if (CurrentPageLeft != null) CurrentPageLeft.Load();
+                     }
+                     else
+                     {
+                         if (CurrentPage != null) CurrentPage.Load();
+                     }
+                 }
+            });
+
             ToggleMenuCommand = ReactiveCommand.Create(() => 
             { 
                 bool newState = !IsMenuVisible; // If any is visible, hide all. If none, show all.
@@ -543,6 +580,8 @@ namespace Yomic.ViewModels
 
         public ReactiveCommand<Unit, Unit> NextPageCommand { get; }
         public ReactiveCommand<Unit, Unit> PrevPageCommand { get; }
+        public ReactiveCommand<Unit, Unit> NextPageOnlyCommand { get; }
+        public ReactiveCommand<Unit, Unit> PrevPageOnlyCommand { get; }
         public ReactiveCommand<Unit, Unit> ToggleMenuCommand { get; }
         
         public ReactiveCommand<ReaderMode, Unit> SetModeCommand { get; }
