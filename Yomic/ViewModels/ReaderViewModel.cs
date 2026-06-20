@@ -630,6 +630,16 @@ namespace Yomic.ViewModels
                 this.RaisePropertyChanged(nameof(IsWebtoon));
                 this.RaisePropertyChanged(nameof(IsPaged));
                 this.RaisePropertyChanged(nameof(IsDualPage));
+                
+                // Adjust default ZoomScale for Dual Page mode to avoid oversized images
+                if (value == ReaderMode.Double)
+                {
+                    ZoomScale = 0.4;
+                }
+                else
+                {
+                    ZoomScale = 1.0;
+                }
             }
         }
         
