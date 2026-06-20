@@ -138,7 +138,7 @@ namespace Yomic.Views
                     if (vm.IsWebtoon)
                         vm.NextChapterCommand.Execute().Subscribe(_ => { });
                     else if (vm.IsDualPage)
-                        vm.PrevPageOnlyCommand.Execute().Subscribe(_ => { }); // Manga Mode: Right is Previous Page
+                        vm.PrevPageCommand.Execute().Subscribe(_ => { }); // Manga Mode: Right is Previous Page/Chapter
                     else
                         vm.NextPageCommand.Execute().Subscribe(_ => { });
                         
@@ -149,7 +149,7 @@ namespace Yomic.Views
                     if (vm.IsWebtoon)
                         vm.PrevChapterCommand.Execute().Subscribe(_ => { });
                     else if (vm.IsDualPage)
-                        vm.NextPageOnlyCommand.Execute().Subscribe(_ => { }); // Manga Mode: Left is Next Page
+                        vm.NextPageCommand.Execute().Subscribe(_ => { }); // Manga Mode: Left is Next Page/Chapter
                     else
                         vm.PrevPageCommand.Execute().Subscribe(_ => { });
 
