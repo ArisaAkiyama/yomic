@@ -371,12 +371,11 @@ namespace Yomic.ViewModels
 
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
         
-        private bool _isChapterListDescending = true;
-        public int NextChapterIndex => _isChapterListDescending ? _currentChapterIndex - 1 : _currentChapterIndex + 1;
-        public int PrevChapterIndex => _isChapterListDescending ? _currentChapterIndex + 1 : _currentChapterIndex - 1;
-
-        public bool HasNextChapter => _allChapters != null && NextChapterIndex >= 0 && NextChapterIndex < _allChapters.Count;
-        public bool HasPrevChapter => _allChapters != null && PrevChapterIndex >= 0 && PrevChapterIndex < _allChapters.Count;
+        private bool _isListAscending = false;
+        public bool HasNextChapter => _allChapters != null && (_isListAscending ? _currentChapterIndex < _allChapters.Count - 1 : _currentChapterIndex > 0);
+        public bool HasPrevChapter => _allChapters != null && (_isListAscending ? _currentChapterIndex > 0 : _currentChapterIndex < _allChapters.Count - 1);
+        private int NextChapterIndex => _isListAscending ? _currentChapterIndex + 1 : _currentChapterIndex - 1;
+        private int PrevChapterIndex => _isListAscending ? _currentChapterIndex - 1 : _currentChapterIndex + 1;
         
         public bool IsOnline => _networkService.IsOnline;
 
@@ -397,21 +396,6 @@ namespace Yomic.ViewModels
             _sourceManager = sourceManager;
             _currentChapter = chapter;
             _allChapters = allChapters;
-            
-            if (_allChapters != null && _allChapters.Count > 1)
-            {
-                var first = _allChapters.First();
-                var last = _allChapters.Last();
-                if (first.ChapterNumber != last.ChapterNumber)
-                {
-                    _isChapterListDescending = first.ChapterNumber > last.ChapterNumber;
-                }
-                else
-                {
-                    _isChapterListDescending = true;
-                }
-            }
-            
             _networkService = networkService ?? new Core.Services.NetworkService();
             _libraryService = libraryService;
             _settingsService = settingsService ?? new Core.Services.SettingsService();
@@ -425,7 +409,13 @@ namespace Yomic.ViewModels
             {
                 _currentChapterIndex = _allChapters.FindIndex(c => c.Url == chapter.Url);
                 if (_currentChapterIndex < 0) _currentChapterIndex = 0; // Fallback
-                System.Diagnostics.Debug.WriteLine($"[ReaderVM] Chapter Index: {_currentChapterIndex} of {_allChapters.Count}");
+                
+                if (_allChapters.Count > 1)
+                {
+                    var comparer = new Core.Helpers.NaturalStringComparer();
+                    _isListAscending = comparer.Compare(_allChapters[0].Title, _allChapters[_allChapters.Count - 1].Title) < 0;
+                }
+                System.Diagnostics.Debug.WriteLine($"[ReaderVM] Chapter Index: {_currentChapterIndex} of {_allChapters.Count}, Ascending: {_isListAscending}");
             }
             
             if (chapter != null && _sourceManager != null)
