@@ -54,56 +54,55 @@
         <Panel IsVisible="{Binding !IsOffline}">
             <Grid RowDefinitions="Auto, *">
                 <!-- Header (Fixed) -->
-                <StackPanel Grid.Row="0" Margin="30,30,30,20">
-                    <StackPanel Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
-                        <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons" FontSize="28" 
-                                   Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
-                                   RenderOptions.TextRenderingMode="Antialias"/>
-                        <TextBlock Text="History" FontSize="32" FontWeight="Bold" 
-                                   Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
-                        
-                        <!-- Item Count Badge -->
-                         <Border Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="12,4" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding HistoryItems.Count, StringFormat='{}{0} Items'}" 
-                                       Foreground="{DynamicResource SecondaryText}" FontSize="12" VerticalAlignment="Center"/>
-                        </Border>
-                    </StackPanel>
-                    <TextBlock Text="Recently viewed manga" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" FontSize="14"/>
+                <StackPanel Grid.Row="0" Margin="30,25,30,15">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons" FontSize="24" 
+                                       Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
+                                       RenderOptions.TextRenderingMode="Antialias"/>
+                            <TextBlock Text="History" FontSize="28" FontWeight="Bold" 
+                                       Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
+                            
+                            <!-- Item Count Badge -->
+                             <Border Background="{DynamicResource ControlBackground}" CornerRadius="10" Padding="10,3" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding HistoryItems.Count, StringFormat='{}{0} Items'}" 
+                                           Foreground="{DynamicResource SecondaryText}" FontSize="11" VerticalAlignment="Center" FontWeight="Medium"/>
+                            </Border>
+                        </StackPanel>
 
-                    <!-- Action Row -->
-                    <Grid ColumnDefinitions="*, Auto" Margin="0,20,0,0">
-                         
                          <!-- Refresh/Clear Actions -->
-                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" IsVisible="{Binding HasItems}">
+                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasItems}">
                              <Button Command="{Binding ClearHistoryCommand}"
                                      Classes="header-action"
                                      ToolTip.Tip="Delete All History">
                                      <StackPanel Orientation="Horizontal" Spacing="8">
-                                         <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="18" VerticalAlignment="Center"/>
-                                         <TextBlock Text="Clear All" VerticalAlignment="Center" FontSize="14" FontWeight="Medium"/>
+                                         <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                                         <TextBlock Text="Clear All" VerticalAlignment="Center" FontSize="13" FontWeight="Medium"/>
                                      </StackPanel>
                              </Button>
                              <Button Command="{Binding RefreshCommand}"
                                      Classes="header-action"
                                      ToolTip.Tip="Refresh History">
                                      <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons" 
-                                                FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                              </Button>
                          </StackPanel>
                     </Grid>
+                    <TextBlock Text="Recently viewed manga" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" FontSize="13" Opacity="0.8"/>
                 </StackPanel>
 
                 <!-- Scrollable Content -->
-                <ScrollViewer Grid.Row="1" Padding="30,0,0,30" IsVisible="{Binding HasItems}">
-                    <ItemsControl ItemsSource="{Binding HistoryItems}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
+                <ScrollViewer x:Name="HistoryScrollViewer" Grid.Row="1" Padding="30,0,0,30" IsVisible="{Binding HasItems}">
+                    <StackPanel>
+                        <ItemsControl ItemsSource="{Binding HistoryItems}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
 
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
                                  <Button x:CompileBindings="False" Background="Transparent" Padding="0" Margin="0,0,25,30"
                                          Command="{Binding DataContext.OpenMangaCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
                                          CommandParameter="{Binding}">
@@ -127,7 +126,7 @@
                                          </ContextMenu>
                                      </Button.ContextMenu>
                                      
-                                    <StackPanel Width="150" Spacing="10">
+                                    <StackPanel Width="150" Spacing="8">
                                         <!-- Cover Image -->
                                         <Border Width="150" Height="225" CornerRadius="12" 
                                                 Background="{DynamicResource SidebarBackground}" ClipToBounds="True"
@@ -184,12 +183,19 @@
                                         <!-- Title Below Image -->
                                         <TextBlock Text="{Binding Title}" Foreground="{DynamicResource PrimaryText}" 
                                                    TextAlignment="Left" TextTrimming="CharacterEllipsis"
-                                                   FontSize="14" FontWeight="Medium" MaxLines="2" Height="40"/>
+                                                   FontSize="13" FontWeight="SemiBold" MaxLines="2" Height="36"
+                                                   ToolTip.Tip="{Binding Title}"/>
                                     </StackPanel>
                                  </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <StackPanel Margin="0,0,30,24" HorizontalAlignment="Center" Spacing="8" IsVisible="{Binding IsLoadingMore}">
+                            <helpers:LoadingArcs Width="34" Height="34"/>
+                            <TextBlock Text="Loading more..." Foreground="{DynamicResource SecondaryText}" FontSize="12" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
                 </ScrollViewer>
 
                 <!-- Empty State -->
@@ -203,12 +209,26 @@
             </Grid>
         </Panel>
 
-        <!-- Sync Overlay -->
-        <Border Background="#80000000" IsVisible="{Binding IsRefreshing}">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
-                 <helpers:LoadingArcs Margin="0,0,0,10"/>
-                 <TextBlock Text="Refreshing History..." Foreground="White" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
-            </StackPanel>
+        <!-- Skeleton Loading (replaces dark overlay) -->
+        <Border IsVisible="{Binding IsRefreshing}">
+            <WrapPanel Orientation="Horizontal" Margin="30,100,30,30">
+                <StackPanel Width="150" Margin="10,0,10,20" Spacing="8">
+                    <Border Classes="SkeletonCard" Height="225" Width="150"/>
+                    <Border Classes="SkeletonText" Width="120" Height="14"/>
+                </StackPanel>
+                <StackPanel Width="150" Margin="10,0,10,20" Spacing="8">
+                    <Border Classes="SkeletonCard" Height="225" Width="150"/>
+                    <Border Classes="SkeletonText" Width="100" Height="14"/>
+                </StackPanel>
+                <StackPanel Width="150" Margin="10,0,10,20" Spacing="8">
+                    <Border Classes="SkeletonCard" Height="225" Width="150"/>
+                    <Border Classes="SkeletonText" Width="130" Height="14"/>
+                </StackPanel>
+                <StackPanel Width="150" Margin="10,0,10,20" Spacing="8">
+                    <Border Classes="SkeletonCard" Height="225" Width="150"/>
+                    <Border Classes="SkeletonText" Width="110" Height="14"/>
+                </StackPanel>
+            </WrapPanel>
         </Border>
 
         <!-- Offline State -->

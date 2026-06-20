@@ -28,7 +28,7 @@
                     <Border Name="Container" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}" Padding="{TemplateBinding Padding}" Margin="{TemplateBinding Margin}">
                         <Grid>
                             <!-- Windows 11 Fluent UI Pill Indicator -->
-                            <Border Name="SelectionIndicator" Width="4" Height="16" CornerRadius="2" Background="#0078D4" Opacity="0" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-12,0,0,0"/>
+                            <Border Name="SelectionIndicator" Width="3" Height="16" CornerRadius="1.5" Background="#0078D4" Opacity="0" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-12,0,0,0"/>
                             <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                         </Grid>
                     </Border>
@@ -106,6 +106,13 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
 
+        <Style Selector="Window[WindowState=Normal]">
+            <Setter Property="ExtendClientAreaTitleBarHeightHint" Value="30"/>
+        </Style>
+        <Style Selector="Window[WindowState=Maximized]">
+            <Setter Property="ExtendClientAreaTitleBarHeightHint" Value="38"/>
+        </Style>
+        
         <Style Selector="Window[WindowState=Maximized] Panel#RootContainer">
             <Setter Property="Margin" Value="8"/>
         </Style>
@@ -124,9 +131,18 @@
         <Grid Height="30" VerticalAlignment="Top" IsHitTestVisible="False"
               IsVisible="{Binding !IsFullscreen}">
              <StackPanel Orientation="Horizontal" Spacing="10" Margin="15,0,0,0" VerticalAlignment="Center">
-
                  <Image Source="/Assets/app.ico" Height="20" Width="20" VerticalAlignment="Center" RenderOptions.BitmapInterpolationMode="HighQuality"/>
                  <TextBlock Text="Yomic" FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+             </StackPanel>
+
+             <!-- Network Status Indicator -->
+             <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,0,145,0" VerticalAlignment="Center" Opacity="0.8">
+                 <Panel VerticalAlignment="Center">
+                     <Ellipse Width="8" Height="8" Fill="#10B981" IsVisible="{Binding NetworkService.IsOnline}" />
+                     <Ellipse Width="8" Height="8" Fill="#EF4444" IsVisible="{Binding !NetworkService.IsOnline}" />
+                 </Panel>
+                 <TextBlock Text="Online" FontSize="11" Foreground="{DynamicResource SecondaryText}" FontWeight="Medium" IsVisible="{Binding NetworkService.IsOnline}" VerticalAlignment="Center"/>
+                 <TextBlock Text="Offline" FontSize="11" Foreground="{DynamicResource SecondaryText}" FontWeight="Medium" IsVisible="{Binding !NetworkService.IsOnline}" VerticalAlignment="Center"/>
              </StackPanel>
         </Grid>
 
@@ -152,25 +168,25 @@
                         <!-- Main Navigation -->
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden">
                             <StackPanel Spacing="4">
-                                <Button Classes="SidebarBtn" Classes.active="{Binding IsLibraryActive}" Click="OnLibraryClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsLibraryActive}" Click="OnLibraryClick" ToolTip.Tip="Library">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
                                         <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Library" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
-                                <Button Classes="SidebarBtn" Classes.active="{Binding IsUpdatesActive}" Click="OnUpdatesClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsUpdatesActive}" Click="OnUpdatesClick" ToolTip.Tip="Updates">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
                                         <TextBlock Text="&#xE895;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Updates" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
-                                <Button Classes="SidebarBtn" Classes.active="{Binding IsHistoryActive}" Click="OnHistoryClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsHistoryActive}" Click="OnHistoryClick" ToolTip.Tip="History">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
                                         <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="History" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
-                                <Button Classes="SidebarBtn" Classes.active="{Binding IsDownloadsActive}" Click="OnDownloadsClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsDownloadsActive}" Click="OnDownloadsClick" ToolTip.Tip="Downloads">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
                                         <TextBlock Text="&#xE896;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Downloads" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
@@ -179,14 +195,14 @@
                                 
                                 <Separator Background="{DynamicResource SeparatorBrush}" Height="1" Margin="10,15" Opacity="0.5"/>
                                 
-                                <Button Classes="SidebarBtn" Classes.active="{Binding IsBrowseActive}" Click="OnBrowseClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsBrowseActive}" Click="OnBrowseClick" ToolTip.Tip="Browse Sources">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
                                         <TextBlock Text="&#xE774;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Browse Sources" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
     
-                                <Button Classes="SidebarBtn" Classes.active="{Binding IsExtensionsActive}" Click="OnExtensionsClick">
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsExtensionsActive}" Click="OnExtensionsClick" ToolTip.Tip="Extensions">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
                                         <TextBlock Text="&#xEA86;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Extensions" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
@@ -197,7 +213,7 @@
                         
                         <!-- Bottom Actions (Feedback & Settings) -->
                         <StackPanel Grid.Row="2" Spacing="4" VerticalAlignment="Bottom" Margin="0,0,0,5">
-                            <Button Classes="SidebarBtn" Click="OnFeedbackClick">
+                            <Button Classes="SidebarBtn" Click="OnFeedbackClick" ToolTip.Tip="Send Feedback">
                                 <StackPanel Orientation="Horizontal" Spacing="16">
                                     <TextBlock Text="&#xED15;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                     <TextBlock Text="Send Feedback" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
@@ -206,7 +222,7 @@
 
                             <Separator Background="{DynamicResource SeparatorBrush}" Height="1" Margin="10,5" Opacity="0.5"/>
 
-                            <Button Classes="SidebarBtn" Classes.active="{Binding IsSettingsActive}" Click="OnSettingsClick">
+                            <Button Classes="SidebarBtn" Classes.active="{Binding IsSettingsActive}" Click="OnSettingsClick" ToolTip.Tip="Settings">
                                 <StackPanel Orientation="Horizontal" Spacing="16">
                                     <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                     <TextBlock Text="Settings" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
