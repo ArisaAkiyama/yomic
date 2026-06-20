@@ -261,8 +261,7 @@
                                             Source="{Binding Image}" 
                                             Stretch="Uniform" 
                                             HorizontalAlignment="Center"
-                                            VerticalAlignment="Top"
-                                            RenderOptions.BitmapInterpolationMode="HighQuality">
+                                            VerticalAlignment="Top">
                                          <Image.Effect>
                                              <BlurEffect Radius="{Binding BlurRadius}"/>
                                          </Image.Effect>
