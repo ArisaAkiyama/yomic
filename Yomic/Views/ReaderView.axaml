@@ -22,17 +22,14 @@
         <!-- Image Animation Styles -->
         <Style Selector="Image.PageImage">
             <Setter Property="Opacity" Value="0"/>
-            <Setter Property="RenderTransform" Value="translateY(20px)"/>
             <Setter Property="Transitions">
                 <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.5" Easing="CubicEaseOut"/>
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.5" Easing="CubicEaseOut"/>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.3" Easing="CubicEaseOut"/>
                 </Transitions>
             </Setter>
         </Style>
         <Style Selector="Image.PageImage.Loaded">
             <Setter Property="Opacity" Value="1"/>
-            <Setter Property="RenderTransform" Value="translateY(0px)"/>
         </Style>
         <Style Selector="Button.ActionBtn">
             <Setter Property="Background" Value="#313244"/>
@@ -241,34 +238,35 @@
                      
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <VirtualizingStackPanel Orientation="Vertical"/>
+                                <StackPanel Orientation="Vertical"/>
                             </ItemsPanelTemplate>
                         </ListBox.ItemsPanel>
                      <ListBox.ItemTemplate>
                          <DataTemplate x:DataType="vm:PageViewModel">
-                             <!-- AttachedToVisualTree triggers Lazy Load -->
-                             <Panel Margin="0" AttachedToVisualTree="OnPageAttached"
+                             <!-- Removing AttachedToVisualTree to prevent all items loading instantly. ReaderViewModel.PreloadAroundIndex will handle lazy loading via scroll position. -->
+                             <Panel Margin="0"
                                     x:CompileBindings="False"
                                     MaxWidth="{Binding DataContext.WebtoonWidth, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                     HorizontalAlignment="Center">
-                                 <StackPanel Orientation="Vertical">
-                                     <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" 
-                                                IsVisible="{Binding IsLoading}"/>
+                                 <Grid MinHeight="150">
+                                     <!-- Loading Indicator -->
+                                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" IsVisible="{Binding IsLoading}">
+                                         <TextBlock Text="Loading..." Foreground="#555" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
+                                     </StackPanel>
 
-                                     <Grid>
-                                         <Image Classes="PageImage"
-                                                Classes.Loaded="{Binding !IsLoading}"
-                                                Source="{Binding Image}" 
-                                                Stretch="Uniform" 
-                                                HorizontalAlignment="Center"
-                                                IsVisible="{Binding !IsLoading}">
-                                             <Image.Effect>
-                                                 <BlurEffect Radius="{Binding BlurRadius}"/>
-                                             </Image.Effect>
-                                         </Image>
-                                     </Grid>
-                                     
-                                 </StackPanel>
+                                     <!-- Image (Always participates in layout bounds to prevent VirtualizingStackPanel overlap bugs) -->
+                                     <Image Classes="PageImage"
+                                            Classes.Loaded="{Binding !IsLoading}"
+                                            Source="{Binding Image}" 
+                                            Stretch="Uniform" 
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Top"
+                                            RenderOptions.BitmapInterpolationMode="HighQuality">
+                                         <Image.Effect>
+                                             <BlurEffect Radius="{Binding BlurRadius}"/>
+                                         </Image.Effect>
+                                     </Image>
+                                 </Grid>
                              </Panel>
                          </DataTemplate>
                      </ListBox.ItemTemplate>
@@ -301,6 +299,58 @@
                                 </DataTemplate>
                             </ContentControl.ContentTemplate>
                         </ContentControl>
+                    </LayoutTransformControl>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- Dual Paged Mode (Manga Right-to-Left) -->
+            <Grid IsVisible="{Binding IsDualPage}" Background="Black">
+                <ScrollViewer x:Name="DualPagedScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                    <LayoutTransformControl HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <LayoutTransformControl.LayoutTransform>
+                            <ScaleTransform ScaleX="{Binding ZoomScale}" ScaleY="{Binding ZoomScale}"/>
+                        </LayoutTransformControl.LayoutTransform>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="0">
+                            <!-- Left Side: Next Page (Index + 1) -->
+                            <ContentControl Content="{Binding CurrentPageLeft}">
+                                <ContentControl.ContentTemplate>
+                                    <DataTemplate x:DataType="vm:PageViewModel">
+                                         <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                             <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                        IsVisible="{Binding IsLoading}"/>
+                                             <Grid>
+                                                 <Image Source="{Binding Image}" Stretch="Uniform" Margin="10"
+                                                        IsVisible="{Binding !IsLoading}">
+                                                     <Image.Effect>
+                                                         <BlurEffect Radius="{Binding BlurRadius}"/>
+                                                     </Image.Effect>
+                                                 </Image>
+                                             </Grid>
+                                         </StackPanel>
+                                    </DataTemplate>
+                                </ContentControl.ContentTemplate>
+                            </ContentControl>
+                            <!-- Right Side: Current Page (Index) -->
+                            <ContentControl Content="{Binding CurrentPageRight}">
+                                <ContentControl.ContentTemplate>
+                                    <DataTemplate x:DataType="vm:PageViewModel">
+                                         <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                             <TextBlock Text="Loading..." Foreground="#666" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                        IsVisible="{Binding IsLoading}"/>
+                                             <Grid>
+                                                 <Image Source="{Binding Image}" Stretch="Uniform" Margin="10"
+                                                        IsVisible="{Binding !IsLoading}">
+                                                     <Image.Effect>
+                                                         <BlurEffect Radius="{Binding BlurRadius}"/>
+                                                     </Image.Effect>
+                                                 </Image>
+                                             </Grid>
+                                         </StackPanel>
+                                    </DataTemplate>
+                                </ContentControl.ContentTemplate>
+                            </ContentControl>
+                        </StackPanel>
                     </LayoutTransformControl>
                 </ScrollViewer>
             </Grid>
@@ -368,6 +418,43 @@
                             </Panel>
                         </Button>
                         
+                        <!-- Reading Mode -->
+                        <Button Classes="NavBtn" ToolTip.Tip="Reading Mode">
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedRight" ShowMode="Standard" FlyoutPresenterClasses="TransparentFlyout">
+                                    <Border Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="8" BorderBrush="{DynamicResource HoverBackground}" BorderThickness="1" MinWidth="160" BoxShadow="0 8 24 0 #30000000">
+                                        <StackPanel Orientation="Vertical" Spacing="4">
+                                            <Button Background="Transparent" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,10" CornerRadius="8"
+                                                    Command="{Binding SetModeCommand}" CommandParameter="{x:Static vm:ReaderMode.Webtoon}">
+                                                <Grid ColumnDefinitions="Auto, *, Auto">
+                                                    <TextBlock Grid.Column="0" Text="&#xE81E;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                    <TextBlock Grid.Column="1" Text="Webtoon" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="2" Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AccentColor}" IsVisible="{Binding IsWebtoon}"/>
+                                                </Grid>
+                                            </Button>
+                                            <Button Background="Transparent" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,10" CornerRadius="8"
+                                                    Command="{Binding SetModeCommand}" CommandParameter="{x:Static vm:ReaderMode.Single}">
+                                                <Grid ColumnDefinitions="Auto, *, Auto">
+                                                    <TextBlock Grid.Column="0" Text="&#xE7C3;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                    <TextBlock Grid.Column="1" Text="Single Page" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="2" Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AccentColor}" IsVisible="{Binding IsPaged}"/>
+                                                </Grid>
+                                            </Button>
+                                            <Button Background="Transparent" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,10" CornerRadius="8"
+                                                    Command="{Binding SetModeCommand}" CommandParameter="{x:Static vm:ReaderMode.Double}">
+                                                <Grid ColumnDefinitions="Auto, *, Auto">
+                                                    <TextBlock Grid.Column="0" Text="&#xE8A5;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                    <TextBlock Grid.Column="1" Text="Dual Page" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="2" Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AccentColor}" IsVisible="{Binding IsDualPage}"/>
+                                                </Grid>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+                                </Flyout>
+                            </Button.Flyout>
+                            <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="18"/>
+                        </Button>
+
                         <!-- Zoom Controls -->
                         <Button Classes="NavBtn" ToolTip.Tip="Zoom Options">
                             <Button.Flyout>

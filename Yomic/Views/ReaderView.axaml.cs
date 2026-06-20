@@ -85,22 +85,25 @@ namespace Yomic.Views
             // direction: 1 = Down, -1 = Up
             Dispatcher.UIThread.Post(() =>
             {
-                if (DataContext is ReaderViewModel vm && vm.IsWebtoon)
+                if (DataContext is ReaderViewModel vm)
                 {
-                    if (MainScroll != null)
+                    if (vm.IsWebtoon)
                     {
-                        double offset = MainScroll.Viewport.Height * 0.9 * direction;
-                        MainScroll.Offset = new Vector(MainScroll.Offset.X, MainScroll.Offset.Y + offset);
+                        if (MainScroll != null)
+                        {
+                            double offset = MainScroll.Viewport.Height * 0.9 * direction;
+                            MainScroll.Offset = new Vector(MainScroll.Offset.X, MainScroll.Offset.Y + offset);
+                        }
                     }
-                }
-                else
-                {
-                    // Paged Mode Scrolling (if zoomed)
-                    var pagedScroll = this.FindControl<ScrollViewer>("PagedScroll");
-                    if (pagedScroll != null)
+                    else
                     {
-                        double offset = pagedScroll.Viewport.Height * 0.9 * direction;
-                        pagedScroll.Offset = new Vector(pagedScroll.Offset.X, pagedScroll.Offset.Y + offset);
+                        // Paged Mode Scrolling (if zoomed)
+                        var pagedScroll = vm.IsDualPage ? this.FindControl<ScrollViewer>("DualPagedScroll") : this.FindControl<ScrollViewer>("PagedScroll");
+                        if (pagedScroll != null)
+                        {
+                            double offset = pagedScroll.Viewport.Height * 0.9 * direction;
+                            pagedScroll.Offset = new Vector(pagedScroll.Offset.X, pagedScroll.Offset.Y + offset);
+                        }
                     }
                 }
             });
@@ -174,7 +177,7 @@ namespace Yomic.Views
                     }
                     else if (!vm.IsWebtoon)
                     {
-                        var pagedScroll = this.FindControl<ScrollViewer>("PagedScroll");
+                        var pagedScroll = vm.IsDualPage ? this.FindControl<ScrollViewer>("DualPagedScroll") : this.FindControl<ScrollViewer>("PagedScroll");
                         if (pagedScroll != null)
                         {
                             pagedScroll.Offset = new Avalonia.Vector(pagedScroll.Offset.X, pagedScroll.Offset.Y + scrollAmount);
@@ -191,7 +194,7 @@ namespace Yomic.Views
                     }
                     else if (!vm.IsWebtoon)
                     {
-                        var pagedScroll = this.FindControl<ScrollViewer>("PagedScroll");
+                        var pagedScroll = vm.IsDualPage ? this.FindControl<ScrollViewer>("DualPagedScroll") : this.FindControl<ScrollViewer>("PagedScroll");
                         if (pagedScroll != null)
                         {
                             pagedScroll.Offset = new Avalonia.Vector(pagedScroll.Offset.X, Math.Max(0, pagedScroll.Offset.Y - scrollAmount));
@@ -314,16 +317,7 @@ namespace Yomic.Views
                 }
             }
         }
-        private void OnPageAttached(object? sender, VisualTreeAttachmentEventArgs e)
-        {
-            // When the VirtualizingStackPanel materializes an item (meaning it's near the viewport),
-            // immediately trigger its Load(). The PageViewModel's internal _isLoaded guard
-            // prevents duplicate downloads, and the global SemaphoreSlim throttles concurrency.
-            if (sender is Control control && control.DataContext is PageViewModel page)
-            {
-                page.Load();
-            }
-        }
+
 
         // --- Drag / Pan / AutoScroll Support ---
         private bool _isPanning = false;

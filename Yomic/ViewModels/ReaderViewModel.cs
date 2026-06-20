@@ -349,11 +349,13 @@ namespace Yomic.ViewModels
             {
                 this.RaiseAndSetIfChanged(ref _currentPageIndex, value);
                 this.RaisePropertyChanged(nameof(CurrentPage));
+                this.RaisePropertyChanged(nameof(CurrentPageRight));
+                this.RaisePropertyChanged(nameof(CurrentPageLeft));
                 // Mihon-style: preload pages around the current viewport
                 PreloadAroundIndex(value);
 
                 // Smart Next-Chapter Preloading
-                if (_settingsService != null && _settingsService.PreloadNextChapter && Pages.Count > 0 && value >= Pages.Count - 3)
+                if (_settingsService != null && _settingsService.PreloadNextChapter && Pages.Count > 0 && value >= Pages.Count - 4)
                 {
                     _ = System.Threading.Tasks.Task.Run(() => PreloadNextChapterAsync());
                 }
@@ -361,6 +363,8 @@ namespace Yomic.ViewModels
         }
         
         public PageViewModel? CurrentPage => Pages.Count > _currentPageIndex && _currentPageIndex >= 0 ? Pages[_currentPageIndex] : null;
+        public PageViewModel? CurrentPageRight => Pages.Count > _currentPageIndex && _currentPageIndex >= 0 ? Pages[_currentPageIndex] : null;
+        public PageViewModel? CurrentPageLeft => Pages.Count > _currentPageIndex + 1 && _currentPageIndex + 1 >= 0 ? Pages[_currentPageIndex + 1] : null;
 
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
         
@@ -422,21 +426,39 @@ namespace Yomic.ViewModels
 
             NextPageCommand = ReactiveCommand.Create(() => 
             {
-                 if (CurrentPageIndex < Pages.Count - 1)
+                 int step = CurrentMode == ReaderMode.Double ? 2 : 1;
+                 if (CurrentPageIndex < Pages.Count - step)
                  {
-                     CurrentPageIndex++;
-                     // Ensure the current page is loaded immediately for Paged mode
-                     if (CurrentPage != null) CurrentPage.Load();
+                     CurrentPageIndex += step;
+                     // Ensure the current page(s) is loaded immediately for Paged mode
+                     if (CurrentMode == ReaderMode.Double)
+                     {
+                         if (CurrentPageRight != null) CurrentPageRight.Load();
+                         if (CurrentPageLeft != null) CurrentPageLeft.Load();
+                     }
+                     else
+                     {
+                         if (CurrentPage != null) CurrentPage.Load();
+                     }
                  }
                  else if (HasNextChapter) SwitchToChapter(_allChapters![_currentChapterIndex - 1], _currentChapterIndex - 1, false); // Next Chapter -> Page 0
             });
             PrevPageCommand = ReactiveCommand.Create(() => 
             {
+                 int step = CurrentMode == ReaderMode.Double ? 2 : 1;
                  if (CurrentPageIndex > 0)
                  {
-                     CurrentPageIndex--;
-                     // Ensure the current page is loaded immediately for Paged mode
-                     if (CurrentPage != null) CurrentPage.Load();
+                     CurrentPageIndex = Math.Max(0, CurrentPageIndex - step);
+                     // Ensure the current page(s) is loaded immediately for Paged mode
+                     if (CurrentMode == ReaderMode.Double)
+                     {
+                         if (CurrentPageRight != null) CurrentPageRight.Load();
+                         if (CurrentPageLeft != null) CurrentPageLeft.Load();
+                     }
+                     else
+                     {
+                         if (CurrentPage != null) CurrentPage.Load();
+                     }
                  }
                  else if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1, true); // Prev Chapter -> Last Page
             });
@@ -448,8 +470,7 @@ namespace Yomic.ViewModels
             
             SetModeCommand = ReactiveCommand.Create<ReaderMode>(mode => 
             {
-                IsWebtoon = mode == ReaderMode.Webtoon;
-                this.RaisePropertyChanged(nameof(IsPaged));
+                CurrentMode = mode;
             });
             
             NextChapterCommand = ReactiveCommand.Create(() => 
@@ -560,14 +581,22 @@ namespace Yomic.ViewModels
             }
         }
 
-        private bool _isWebtoon = true;
-        public bool IsWebtoon 
+        private ReaderMode _currentMode = ReaderMode.Webtoon;
+        public ReaderMode CurrentMode 
         { 
-            get => _isWebtoon; 
-            set => this.RaiseAndSetIfChanged(ref _isWebtoon, value); 
+            get => _currentMode; 
+            set 
+            {
+                this.RaiseAndSetIfChanged(ref _currentMode, value); 
+                this.RaisePropertyChanged(nameof(IsWebtoon));
+                this.RaisePropertyChanged(nameof(IsPaged));
+                this.RaisePropertyChanged(nameof(IsDualPage));
+            }
         }
         
-        public bool IsPaged => !IsWebtoon;
+        public bool IsWebtoon => CurrentMode == ReaderMode.Webtoon;
+        public bool IsPaged => CurrentMode == ReaderMode.Single;
+        public bool IsDualPage => CurrentMode == ReaderMode.Double;
         
         public Action? CustomBackAction { get; set; }
 
