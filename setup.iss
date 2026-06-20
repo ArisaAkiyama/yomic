@@ -46,9 +46,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "{app}\Plugins"; Permissions: users-modify
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}\Plugins"
-Type: filesandordirs; Name: "{userappdata}\Yomic\Plugins"
-Type: filesandordirs; Name: "{localappdata}\Yomic\Plugins"
+Type: filesandordirs; Name: "{app}"
+Type: filesandordirs; Name: "{userappdata}\Yomic"
+Type: filesandordirs; Name: "{localappdata}\Yomic"
 
 [Files]
 ; Main Application Files (from Publish folder)
