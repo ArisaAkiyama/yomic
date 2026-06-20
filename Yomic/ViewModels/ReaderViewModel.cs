@@ -15,6 +15,9 @@ namespace Yomic.ViewModels
             
         public static Avalonia.Data.Converters.IValueConverter SubtractOne { get; } = 
             new Avalonia.Data.Converters.FuncValueConverter<int, int>(val => Math.Max(0, val - 1));
+            
+        public static Avalonia.Data.Converters.IValueConverter FitScale { get; } = 
+            new Avalonia.Data.Converters.FuncValueConverter<double, double>(val => val * 0.90);
     }
 
     public enum ReaderMode
@@ -630,16 +633,6 @@ namespace Yomic.ViewModels
                 this.RaisePropertyChanged(nameof(IsWebtoon));
                 this.RaisePropertyChanged(nameof(IsPaged));
                 this.RaisePropertyChanged(nameof(IsDualPage));
-                
-                // Adjust default ZoomScale for Dual Page mode to avoid oversized images
-                if (value == ReaderMode.Double)
-                {
-                    ZoomScale = 0.4;
-                }
-                else
-                {
-                    ZoomScale = 1.0;
-                }
             }
         }
         

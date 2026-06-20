@@ -281,8 +281,8 @@
                         </LayoutTransformControl.LayoutTransform>
 
                         <ContentControl Content="{Binding CurrentPage}"
-                                        MaxHeight="{Binding Bounds.Height, ElementName=PagedScroll}"
-                                        MaxWidth="{Binding Bounds.Width, ElementName=PagedScroll}">
+                                        MaxHeight="{Binding Bounds.Height, ElementName=PagedScroll, Converter={x:Static vm:MathConverters.FitScale}}"
+                                        MaxWidth="{Binding Bounds.Width, ElementName=PagedScroll, Converter={x:Static vm:MathConverters.FitScale}}">
                             <ContentControl.ContentTemplate>
                                 <DataTemplate x:DataType="vm:PageViewModel">
                                      <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -314,8 +314,8 @@
                         </LayoutTransformControl.LayoutTransform>
 
                         <Grid ColumnDefinitions="*,*" HorizontalAlignment="Center" VerticalAlignment="Center"
-                              MaxHeight="{Binding Bounds.Height, ElementName=DualPagedScroll}"
-                              MaxWidth="{Binding Bounds.Width, ElementName=DualPagedScroll}">
+                              MaxHeight="{Binding Bounds.Height, ElementName=DualPagedScroll, Converter={x:Static vm:MathConverters.FitScale}}"
+                              MaxWidth="{Binding Bounds.Width, ElementName=DualPagedScroll, Converter={x:Static vm:MathConverters.FitScale}}">
                             <!-- Left Side: Next Page (Index + 1) -->
                             <ContentControl Content="{Binding CurrentPageLeft}" Grid.Column="0">
                                 <ContentControl.ContentTemplate>
