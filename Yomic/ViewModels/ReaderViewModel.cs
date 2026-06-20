@@ -371,8 +371,12 @@ namespace Yomic.ViewModels
 
         public ReactiveCommand<Unit, Unit> BackCommand { get; }
         
-        public bool HasNextChapter => _allChapters != null && _currentChapterIndex > 0;
-        public bool HasPrevChapter => _allChapters != null && _currentChapterIndex < _allChapters.Count - 1;
+        private bool _isChapterListDescending = true;
+        public int NextChapterIndex => _isChapterListDescending ? _currentChapterIndex - 1 : _currentChapterIndex + 1;
+        public int PrevChapterIndex => _isChapterListDescending ? _currentChapterIndex + 1 : _currentChapterIndex - 1;
+
+        public bool HasNextChapter => _allChapters != null && NextChapterIndex >= 0 && NextChapterIndex < _allChapters.Count;
+        public bool HasPrevChapter => _allChapters != null && PrevChapterIndex >= 0 && PrevChapterIndex < _allChapters.Count;
         
         public bool IsOnline => _networkService.IsOnline;
 
@@ -393,6 +397,21 @@ namespace Yomic.ViewModels
             _sourceManager = sourceManager;
             _currentChapter = chapter;
             _allChapters = allChapters;
+            
+            if (_allChapters != null && _allChapters.Count > 1)
+            {
+                var first = _allChapters.First();
+                var last = _allChapters.Last();
+                if (first.ChapterNumber != last.ChapterNumber)
+                {
+                    _isChapterListDescending = first.ChapterNumber > last.ChapterNumber;
+                }
+                else
+                {
+                    _isChapterListDescending = true;
+                }
+            }
+            
             _networkService = networkService ?? new Core.Services.NetworkService();
             _libraryService = libraryService;
             _settingsService = settingsService ?? new Core.Services.SettingsService();
@@ -444,7 +463,7 @@ namespace Yomic.ViewModels
                          if (CurrentPage != null) CurrentPage.Load();
                      }
                  }
-                 else if (HasNextChapter) SwitchToChapter(_allChapters![_currentChapterIndex - 1], _currentChapterIndex - 1, false); // Next Chapter -> Page 0
+                 else if (HasNextChapter) SwitchToChapter(_allChapters![NextChapterIndex], NextChapterIndex, false); // Next Chapter -> Page 0
             });
             PrevPageCommand = ReactiveCommand.Create(() => 
             {
@@ -463,7 +482,7 @@ namespace Yomic.ViewModels
                          if (CurrentPage != null) CurrentPage.Load();
                      }
                  }
-                 else if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1, true); // Prev Chapter -> Last Page
+                 else if (HasPrevChapter) SwitchToChapter(_allChapters![PrevChapterIndex], PrevChapterIndex, true); // Prev Chapter -> Last Page
             });
             
             NextPageOnlyCommand = ReactiveCommand.Create(() => 
@@ -515,12 +534,12 @@ namespace Yomic.ViewModels
             
             NextChapterCommand = ReactiveCommand.Create(() => 
             {
-                 if (HasNextChapter) SwitchToChapter(_allChapters![_currentChapterIndex - 1], _currentChapterIndex - 1, false);
+                 if (HasNextChapter) SwitchToChapter(_allChapters![NextChapterIndex], NextChapterIndex, false);
             });
             
             PrevChapterCommand = ReactiveCommand.Create(() => 
             {
-                 if (HasPrevChapter) SwitchToChapter(_allChapters![_currentChapterIndex + 1], _currentChapterIndex + 1, false);
+                 if (HasPrevChapter) SwitchToChapter(_allChapters![PrevChapterIndex], PrevChapterIndex, false);
             });
             
             // Zoom Logic
@@ -920,7 +939,7 @@ namespace Yomic.ViewModels
             if (!HasNextChapter) return;
             if (_allChapters == null || _sourceManager == null) return;
 
-            var nextChapter = _allChapters[_currentChapterIndex - 1];
+            var nextChapter = _allChapters[NextChapterIndex];
             var nextChapterUrl = nextChapter.Url;
 
             System.Diagnostics.Debug.WriteLine($"[Preload] Starting background preload for next chapter: {nextChapter.Title}");
