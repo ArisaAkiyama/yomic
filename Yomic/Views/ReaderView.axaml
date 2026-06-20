@@ -203,6 +203,7 @@
             <!-- Virtualizing ListBox for Webtoon Mode -->
             <ListBox x:Name="MainListBox"
                      IsVisible="{Binding IsWebtoon}"
+                     Background="Black"
                      ItemsSource="{Binding Pages}" 
                      HorizontalAlignment="Stretch"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
