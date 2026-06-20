@@ -280,7 +280,9 @@
                             <ScaleTransform ScaleX="{Binding ZoomScale}" ScaleY="{Binding ZoomScale}"/>
                         </LayoutTransformControl.LayoutTransform>
 
-                        <ContentControl Content="{Binding CurrentPage}">
+                        <ContentControl Content="{Binding CurrentPage}"
+                                        MaxHeight="{Binding Bounds.Height, ElementName=PagedScroll}"
+                                        MaxWidth="{Binding Bounds.Width, ElementName=PagedScroll}">
                             <ContentControl.ContentTemplate>
                                 <DataTemplate x:DataType="vm:PageViewModel">
                                      <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -311,9 +313,11 @@
                             <ScaleTransform ScaleX="{Binding ZoomScale}" ScaleY="{Binding ZoomScale}"/>
                         </LayoutTransformControl.LayoutTransform>
 
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="0">
+                        <Grid ColumnDefinitions="*,*" HorizontalAlignment="Center" VerticalAlignment="Center"
+                              MaxHeight="{Binding Bounds.Height, ElementName=DualPagedScroll}"
+                              MaxWidth="{Binding Bounds.Width, ElementName=DualPagedScroll}">
                             <!-- Left Side: Next Page (Index + 1) -->
-                            <ContentControl Content="{Binding CurrentPageLeft}">
+                            <ContentControl Content="{Binding CurrentPageLeft}" Grid.Column="0">
                                 <ContentControl.ContentTemplate>
                                     <DataTemplate x:DataType="vm:PageViewModel">
                                          <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -332,7 +336,7 @@
                                 </ContentControl.ContentTemplate>
                             </ContentControl>
                             <!-- Right Side: Current Page (Index) -->
-                            <ContentControl Content="{Binding CurrentPageRight}">
+                            <ContentControl Content="{Binding CurrentPageRight}" Grid.Column="1">
                                 <ContentControl.ContentTemplate>
                                     <DataTemplate x:DataType="vm:PageViewModel">
                                          <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -350,7 +354,7 @@
                                     </DataTemplate>
                                 </ContentControl.ContentTemplate>
                             </ContentControl>
-                        </StackPanel>
+                        </Grid>
                     </LayoutTransformControl>
                 </ScrollViewer>
             </Grid>
