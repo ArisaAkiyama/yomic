@@ -149,6 +149,8 @@ namespace Yomic.Views
                     {
                         if (readerVM.IsWebtoon)
                             readerVM.NextChapterCommand.Execute().Subscribe(_ => { });
+                        else if (readerVM.IsDualPage)
+                            readerVM.PrevPageCommand.Execute().Subscribe(_ => { });
                         else
                             readerVM.NextPageCommand.Execute().Subscribe(_ => { });
                             
@@ -159,6 +161,8 @@ namespace Yomic.Views
                     {
                         if (readerVM.IsWebtoon)
                             readerVM.PrevChapterCommand.Execute().Subscribe(_ => { });
+                        else if (readerVM.IsDualPage)
+                            readerVM.NextPageCommand.Execute().Subscribe(_ => { });
                         else
                             readerVM.PrevPageCommand.Execute().Subscribe(_ => { });
     
