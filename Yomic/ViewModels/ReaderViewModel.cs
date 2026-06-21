@@ -856,12 +856,15 @@ namespace Yomic.ViewModels
                 {
                     var urls = await source.GetPageListAsync(_currentChapter.Url);
                     
+                    // Capture token before switching to UI thread, because _cts might get disposed while waiting in the UI thread queue.
+                    var token = _cts.Token;
                     Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                     {
+                        if (token.IsCancellationRequested) return;
+                        
                         Pages.Clear();
                         if (urls.Count > 0)
                         {
-                            var token = _cts.Token;
                             foreach(var url in urls)
                             {
                                 var pvm = new PageViewModel(url, _networkService, shouldBlur, token);
