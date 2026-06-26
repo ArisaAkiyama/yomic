@@ -50,7 +50,7 @@ namespace Yomic.Core.Sources
         public CookieContainer CookieContainer => _cookieContainer;
         
         /// <summary>
-        /// Override to true in sources that require VPN proxy (e.g., MangaDex which is ISP-blocked).
+        /// Override to true in sources that require VPN proxy.
         /// Default is false, meaning most sources use direct connection with DoH.
         /// </summary>
         public virtual bool RequiresProxy => false;
@@ -192,7 +192,8 @@ namespace Yomic.Core.Sources
                         try
                         {
                             await socket.ConnectAsync(ipAddress, context.DnsEndPoint.Port, token);
-                            return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                            var networkStream = new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                            return new DpiBypassStream(networkStream);
                         }
                         catch
                         {
@@ -319,8 +320,93 @@ namespace Yomic.Core.Sources
 
         protected async Task<string> ForceBrowserFetchAsync(string url, string? waitForSelector = null)
         {
-             Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [HttpSource] FORCING HEADLESS BROWSER FETCH for: {url} (Wait: {waitForSelector ?? "None"})");
-             return await CloudflareBypassService.Instance.GetContentAsync(url, waitForSelector);
+              Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [HttpSource] FORCING HEADLESS BROWSER FETCH for: {url} (Wait: {waitForSelector ?? "None"})");
+              return await CloudflareBypassService.Instance.GetContentAsync(url, waitForSelector);
+         }
+    }
+
+    public class DpiBypassStream : Stream
+    {
+        private readonly Stream _innerStream;
+        private bool _isFirstWrite = true;
+
+        public DpiBypassStream(Stream innerStream)
+        {
+            _innerStream = innerStream;
+        }
+
+        public override bool CanRead => _innerStream.CanRead;
+        public override bool CanSeek => _innerStream.CanSeek;
+        public override bool CanWrite => _innerStream.CanWrite;
+        public override long Length => _innerStream.Length;
+        public override long Position
+        {
+            get => _innerStream.Position;
+            set => _innerStream.Position = value;
+        }
+
+        public override void Flush() => _innerStream.Flush();
+        public override Task FlushAsync(CancellationToken cancellationToken) => _innerStream.FlushAsync(cancellationToken);
+
+        public override int Read(byte[] buffer, int offset, int count) => _innerStream.Read(buffer, offset, count);
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => _innerStream.ReadAsync(buffer, offset, count, cancellationToken);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => _innerStream.ReadAsync(buffer, cancellationToken);
+
+        public override long Seek(long offset, SeekOrigin origin) => _innerStream.Seek(offset, origin);
+        public override void SetLength(long value) => _innerStream.SetLength(value);
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            if (_isFirstWrite && count > 5 && buffer[offset] == 0x16)
+            {
+                _isFirstWrite = false;
+                _innerStream.Write(buffer, offset, 5);
+                _innerStream.Flush();
+                _innerStream.Write(buffer, offset + 5, count - 5);
+            }
+            else
+            {
+                _innerStream.Write(buffer, offset, count);
+            }
+        }
+
+        public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            if (_isFirstWrite && count > 5 && buffer[offset] == 0x16)
+            {
+                _isFirstWrite = false;
+                await _innerStream.WriteAsync(buffer.AsMemory(offset, 5), cancellationToken);
+                await _innerStream.FlushAsync(cancellationToken);
+                await _innerStream.WriteAsync(buffer.AsMemory(offset + 5, count - 5), cancellationToken);
+            }
+            else
+            {
+                await _innerStream.WriteAsync(buffer.AsMemory(offset, count), cancellationToken);
+            }
+        }
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_isFirstWrite && buffer.Length > 5 && buffer.Span[0] == 0x16)
+            {
+                _isFirstWrite = false;
+                await _innerStream.WriteAsync(buffer.Slice(0, 5), cancellationToken);
+                await _innerStream.FlushAsync(cancellationToken);
+                await _innerStream.WriteAsync(buffer.Slice(5), cancellationToken);
+            }
+            else
+            {
+                await _innerStream.WriteAsync(buffer, cancellationToken);
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _innerStream.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }

@@ -27,7 +27,7 @@
             
             <!-- Slide 1: Intro -->
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="20">
-                <Image Source="avares://Yomic/Assets/app.ico" Width="96" Height="96" HorizontalAlignment="Center"/>
+                <Image Source="avares://Yomic/Assets/yo-app.png" Width="96" Height="96" HorizontalAlignment="Center"/>
                 <TextBlock Text="Welcome to Yomic" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
                 <TextBlock Text="The ultimate manga reader for your desktop." FontSize="18" Foreground="{DynamicResource SecondaryText}" HorizontalAlignment="Center"/>
                 
@@ -63,15 +63,7 @@
                 <TextBlock Text="Install your first extension" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}" HorizontalAlignment="Center"/>
                 
                 <StackPanel Orientation="Horizontal" Spacing="20" Margin="0,30,0,0">
-                    <!-- MangaDex -->
-                    <Border Background="{DynamicResource CardBackground}" CornerRadius="12" Padding="20" Width="150">
-                        <StackPanel Spacing="15">
-                            <TextBlock Text="M" FontWeight="Bold" FontSize="32" HorizontalAlignment="Center" Foreground="#FF6740"/>
-                            <TextBlock Text="MangaDex" HorizontalAlignment="Center" Foreground="{DynamicResource PrimaryText}"/>
-                            <Button Content="Install" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="{DynamicResource PrimaryAccent}" Foreground="#1E1E2E"/>
-                        </StackPanel>
-                    </Border>
-                    
+
                     <!-- Bato -->
                     <Border Background="{DynamicResource CardBackground}" CornerRadius="12" Padding="20" Width="150">
                         <StackPanel Spacing="15">
