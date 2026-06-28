@@ -5,7 +5,7 @@ $dest = 'd:\Project\DesktopKomik\PackedExtensions'
 if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
-$extensions = @('Kiryuu', 'KomikCast', 'Komiku', 'MangaDex', 'Mangabats', 'Weebcentral', 'Softkomik')
+$extensions = @('Kiryuu', 'KomikCast', 'Komiku', 'Mangabats', 'Weebcentral', 'Softkomik')
 foreach ($ext in $extensions) {
     echo "Copying $ext..."
     $src = "d:\Project\DesktopKomik\Yomic\Extensions\$ext\bin\Release\net10.0\Yomic.Extensions.$ext.dll"

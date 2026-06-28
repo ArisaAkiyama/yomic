@@ -18,6 +18,7 @@ namespace Yomic.Core.Services
             using var context = new MangaDbContext();
             return await context.Mangas
                                 .Include(m => m.Chapters)
+                                .Include(m => m.Categories)
                                 .Where(m => m.Favorite)
                                 .OrderBy(m => m.Title)
                                 .ToListAsync();
@@ -81,7 +82,7 @@ namespace Yomic.Core.Services
                 using var context = new MangaDbContext();
                 
                 // Check if exists
-                var existing = await context.Mangas.FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
+                var existing = await context.Mangas.Include(m => m.Categories).FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
                 if (existing != null)
                 {
                     existing.Favorite = true;
@@ -94,6 +95,17 @@ namespace Yomic.Core.Services
                     existing.Status = manga.Status;
                     existing.Description = manga.Description;
                     existing.Initialized = true;
+                    
+                    // Assign default category if it has no categories yet
+                    if (existing.Categories.Count == 0)
+                    {
+                        var defaultCat = await context.Categories.FirstOrDefaultAsync(c => c.IsDefault);
+                        if (defaultCat != null)
+                        {
+                            existing.Categories.Add(defaultCat);
+                        }
+                    }
+
                     context.Update(existing);
                     LogService.Info("Library", $"Updated existing manga: {manga.Title}");
                 }
@@ -101,6 +113,14 @@ namespace Yomic.Core.Services
                 {
                     manga.Favorite = true;
                     manga.DateAdded = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                    
+                    // Assign default category
+                    var defaultCat = await context.Categories.FirstOrDefaultAsync(c => c.IsDefault);
+                    if (defaultCat != null)
+                    {
+                        manga.Categories.Add(defaultCat);
+                    }
+
                     await context.Mangas.AddAsync(manga);
                     LogService.Success("Library", $"Added new manga: {manga.Title}");
                 }
@@ -461,6 +481,40 @@ namespace Yomic.Core.Services
                     // Update LastUpdate timestamp for the Manga
                     dbManga.LastUpdate = now;
                     
+                    // Calculate NextUpdate Prediction (Upcoming Calendar)
+                    if (dbManga.Chapters.Count >= 3)
+                    {
+                            var recentChapters = dbManga.Chapters
+                                .Where(c => c.DateUpload > 0)
+                                .OrderByDescending(c => c.ChapterNumber)
+                                .Take(10)
+                                .ToList();
+
+                            if (recentChapters.Count >= 3)
+                            {
+                                var diffs = new List<long>();
+                                for (int i = 0; i < recentChapters.Count - 1; i++)
+                                {
+                                    long diff = recentChapters[i].DateUpload - recentChapters[i + 1].DateUpload;
+                                    if (diff > 0 && diff < 31536000000) // Sanity check: ignore > 1 year diffs
+                                    {
+                                        diffs.Add(diff);
+                                    }
+                                }
+                                
+                                if (diffs.Count > 0)
+                                {
+                                    diffs.Sort();
+                                    long medianDiff = diffs[diffs.Count / 2];
+                                    if (diffs.Count % 2 == 0)
+                                    {
+                                        medianDiff = (diffs[(diffs.Count / 2) - 1] + diffs[diffs.Count / 2]) / 2;
+                                    }
+                                    dbManga.NextUpdate = recentChapters[0].DateUpload + medianDiff;
+                                }
+                            }
+                    }
+
                     await context.SaveChangesAsync();
                     return newChapters.Count;
                 }
@@ -565,6 +619,47 @@ namespace Yomic.Core.Services
             }
         }
 
+        public async Task SetChapterBookmarkStatusAsync(string chapterUrl, bool isBookmarked, long sourceId = 0, string mangaUrl = "", string chapterTitle = "", float chapterNumber = -1)
+        {
+            try
+            {
+                using var context = new MangaDbContext();
+                var chapter = await context.Chapters.FirstOrDefaultAsync(c => c.Url == chapterUrl);
+                
+                if (chapter != null)
+                {
+                    chapter.Bookmark = isBookmarked;
+                    await context.SaveChangesAsync();
+                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Set chapter bookmark status to {isBookmarked}: {chapter.Name}");
+                }
+                else if (isBookmarked && sourceId > 0 && !string.IsNullOrEmpty(mangaUrl)) 
+                {
+                    // Fallback: Chapter doesn't exist, create it ONLY if marking as Bookmarked
+                     var manga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
+                     if (manga != null)
+                     {
+                         var newChapter = new Chapter
+                         {
+                             MangaId = manga.Id,
+                             Url = chapterUrl,
+                             Name = chapterTitle,
+                             ChapterNumber = chapterNumber,
+                             Bookmark = true,
+                             DateFetch = DateTimeOffset.Now.ToUnixTimeMilliseconds(),
+                             DateUpload = 0
+                         };
+                         await context.Chapters.AddAsync(newChapter);
+                         await context.SaveChangesAsync();
+                         System.Diagnostics.Debug.WriteLine($"[LibraryService] Created and marked online chapter as bookmarked: {chapterTitle}");
+                     }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LibraryService] Error setting bookmark status: {ex}");
+            }
+        }
+
         public async Task MarkChaptersAsReadAsync(Manga manga)
         {
             using var context = new MangaDbContext();
@@ -651,10 +746,77 @@ namespace Yomic.Core.Services
             try
             {
                 var libraryManga = await GetLibraryMangaAsync();
+                
+                // Filter out manga that belong to any category marked as UpdateExcluded
+                libraryManga = libraryManga.Where(m => !m.Categories.Any(c => c.UpdateExcluded)).ToList();
+
+                // Smart Update Logic
+                var settings = new SettingsService();
+                if (settings.UseSmartUpdate)
+                {
+                    long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+                    libraryManga = libraryManga.Where(m => 
+                    {
+                        // 1. Always update if it has 0 chapters or is not initialized
+                        if (m.Chapters.Count == 0 || !m.Initialized) return true;
+
+                        // 2. Completed / Inactive statuses: check at most once a month (30 days)
+                        bool isInactiveStatus = m.Status == Manga.COMPLETED || 
+                                                m.Status == Manga.CANCELLED || 
+                                                m.Status == Manga.PUBLISHING_FINISHED || 
+                                                m.Status == Manga.LICENSED;
+                        if (isInactiveStatus)
+                        {
+                            long oneMonthMs = 30L * 24L * 60L * 60L * 1000L;
+                            return (nowMs - m.LastUpdate) > oneMonthMs;
+                        }
+
+                        // 3. Reader-Activity Interval Heuristics
+                        long timeSinceLastUpdate = nowMs - m.LastUpdate;
+                        long checkInterval = 12L * 60L * 60L * 1000L; // Default: 12 hours
+                        
+                        long timeSinceLastRead = nowMs - m.LastViewed;
+                        if (m.LastViewed == 0)
+                        {
+                            // Never read: check at most once every 7 days
+                            checkInterval = 7L * 24L * 60L * 60L * 1000L;
+                        }
+                        else if (timeSinceLastRead > 30L * 24L * 60L * 60L * 1000L)
+                        {
+                            // Not read in 30 days: check at most once every 7 days
+                            checkInterval = 7L * 24L * 60L * 60L * 1000L;
+                        }
+                        else if (timeSinceLastRead > 7L * 24L * 60L * 60L * 1000L)
+                        {
+                            // Not read in 7 days: check at most once every 3 days
+                            checkInterval = 3L * 24L * 60L * 60L * 1000L;
+                        }
+
+                        // Skip if we checked it too recently based on activity interval
+                        if (timeSinceLastUpdate < checkInterval) return false;
+
+                        // 4. Adaptive Release (NextUpdate check)
+                        // If we have a predicted NextUpdate and we are not close to it (margin of 6 hours), skip.
+                        if (m.NextUpdate > 0 && nowMs < (m.NextUpdate - 6L * 60L * 60L * 1000L))
+                        {
+                            return false;
+                        }
+
+                        return true;
+                    })
+                    // Prioritize active manga (descending by LastUpdate)
+                    .OrderByDescending(m => m.LastUpdate)
+                    .ToList();
+                    
+                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Smart Update Active: Filtered down to {libraryManga.Count} active manga.");
+                }
+
                 int totalManga = libraryManga.Count;
+                if (totalManga == 0) return 0;
+                
                 int currentManga = 0;
                 
-                // Process in parallel (Limit 5 to avoid timeouts/bans)
                 // Process in parallel (Limit 5 to avoid timeouts/bans) using SemaphoreSlim to avoid Parallel assembly issues
                 using var semaphore = new System.Threading.SemaphoreSlim(5);
                 var tasks = libraryManga.Select(async manga =>
@@ -813,5 +975,156 @@ namespace Yomic.Core.Services
                 _dbLock.Release();
             }
         }
+
+        #region Category Management
+
+        public async Task<List<Category>> GetCategoriesAsync()
+        {
+            using var context = new MangaDbContext();
+            return await context.Categories
+                                .OrderBy(c => c.SortOrder)
+                                .ToListAsync();
+        }
+
+        public async Task AddCategoryAsync(Category category)
+        {
+            using var context = new MangaDbContext();
+            // Assign next sort order
+            int maxOrder = 0;
+            if (await context.Categories.AnyAsync())
+            {
+                maxOrder = await context.Categories.MaxAsync(c => c.SortOrder);
+            }
+            category.SortOrder = maxOrder + 1;
+
+            if (category.IsDefault)
+            {
+                // Reset other default categories
+                var defaults = await context.Categories.Where(c => c.IsDefault).ToListAsync();
+                foreach (var d in defaults) d.IsDefault = false;
+            }
+
+            await context.Categories.AddAsync(category);
+            await context.SaveChangesAsync();
+        }
+
+        public async Task UpdateCategoryAsync(Category category)
+        {
+            using var context = new MangaDbContext();
+            var existing = await context.Categories.FindAsync(category.Id);
+            if (existing != null)
+            {
+                existing.Name = category.Name;
+                existing.Color = category.Color;
+                
+                if (category.IsDefault && !existing.IsDefault)
+                {
+                    // Reset other default categories
+                    var defaults = await context.Categories.Where(c => c.IsDefault && c.Id != category.Id).ToListAsync();
+                    foreach (var d in defaults) d.IsDefault = false;
+                    existing.IsDefault = true;
+                }
+                else if (!category.IsDefault && existing.IsDefault)
+                {
+                    existing.IsDefault = false;
+                }
+
+                context.Categories.Update(existing);
+                await context.SaveChangesAsync();
+            }
+        }
+
+        public async Task DeleteCategoryAsync(long categoryId)
+        {
+            using var context = new MangaDbContext();
+            var category = await context.Categories.FindAsync(categoryId);
+            if (category != null)
+            {
+                context.Categories.Remove(category);
+                await context.SaveChangesAsync();
+            }
+        }
+
+        public async Task UpdateCategoryOrderAsync(List<long> categoryIds)
+        {
+            using var context = new MangaDbContext();
+            for (int i = 0; i < categoryIds.Count; i++)
+            {
+                var id = categoryIds[i];
+                var cat = await context.Categories.FindAsync(id);
+                if (cat != null)
+                {
+                    cat.SortOrder = i + 1;
+                    context.Categories.Update(cat);
+                }
+            }
+            await context.SaveChangesAsync();
+        }
+
+        public async Task<Category?> GetDefaultCategoryAsync()
+        {
+            using var context = new MangaDbContext();
+            return await context.Categories.FirstOrDefaultAsync(c => c.IsDefault);
+        }
+
+        public async Task SetDefaultCategoryAsync(long categoryId)
+        {
+            using var context = new MangaDbContext();
+            var categories = await context.Categories.ToListAsync();
+            foreach (var c in categories)
+            {
+                c.IsDefault = (c.Id == categoryId);
+                context.Categories.Update(c);
+            }
+            await context.SaveChangesAsync();
+        }
+
+        public async Task SetCategoryExcludeAsync(long categoryId, bool isExcluded)
+        {
+            using var context = new MangaDbContext();
+            var category = await context.Categories.FindAsync(categoryId);
+            if (category != null)
+            {
+                category.UpdateExcluded = isExcluded;
+                context.Categories.Update(category);
+                await context.SaveChangesAsync();
+            }
+        }
+
+        public async Task SetMangaCategoriesAsync(string mangaUrl, long sourceId, List<long> categoryIds)
+        {
+            using var context = new MangaDbContext();
+            var manga = await context.Mangas
+                                     .Include(m => m.Categories)
+                                     .FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
+            
+            if (manga != null)
+            {
+                manga.Categories.Clear();
+                if (categoryIds != null && categoryIds.Any())
+                {
+                    var selectedCategories = await context.Categories
+                                                          .Where(c => categoryIds.Contains(c.Id))
+                                                          .ToListAsync();
+                    foreach (var cat in selectedCategories)
+                    {
+                        manga.Categories.Add(cat);
+                    }
+                }
+                context.Update(manga);
+                await context.SaveChangesAsync();
+            }
+        }
+
+        public async Task<List<long>> GetMangaCategoryIdsAsync(string mangaUrl, long sourceId)
+        {
+            using var context = new MangaDbContext();
+            var manga = await context.Mangas
+                                     .Include(m => m.Categories)
+                                     .FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
+            return manga?.Categories.Select(c => c.Id).ToList() ?? new List<long>();
+        }
+
+        #endregion
     }
 }

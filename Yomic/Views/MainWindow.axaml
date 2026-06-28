@@ -3,6 +3,7 @@
         xmlns:vm="using:Yomic.ViewModels"
         xmlns:components="using:Yomic.Views.Components"
         x:Class="Yomic.Views.MainWindow"
+        Icon="/Assets/app.ico"
         Title="Yomic Desktop"
         Background="Transparent"
         TransparencyLevelHint="Mica"
@@ -178,6 +179,12 @@
                                     <StackPanel Orientation="Horizontal" Spacing="16">
                                         <TextBlock Text="&#xE895;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Updates" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Classes="SidebarBtn" Classes.active="{Binding IsUpcomingActive}" Click="OnUpcomingClick" ToolTip.Tip="Upcoming Calendar">
+                                    <StackPanel Orientation="Horizontal" Spacing="16">
+                                        <TextBlock Text="&#xE787;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Upcoming" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
                                 <Button Classes="SidebarBtn" Classes.active="{Binding IsHistoryActive}" Click="OnHistoryClick" ToolTip.Tip="History">

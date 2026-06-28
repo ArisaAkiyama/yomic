@@ -32,6 +32,10 @@ namespace Yomic.ViewModels
         // Unread indicator: IsRead=true -> Opacity 0 (hide), IsRead=false -> Opacity 1 (show)
         public static readonly IValueConverter UnreadToOpacity = 
             new FuncValueConverter<bool, double>(isRead => isRead ? 0.0 : 1.0);
+        
+        // Language filter: Selected=1.0, Unselected=0.35
+        public static readonly IValueConverter BoolToFullOpacity = 
+            new FuncValueConverter<bool, double>(b => b ? 1.0 : 0.35);
             
         public static readonly IMultiValueConverter BoolToExpandText = 
             new FuncMultiValueConverter<object, string>(values => 
@@ -39,6 +43,18 @@ namespace Yomic.ViewModels
                 if (values != null && values.Count() > 0 && values.First() is bool isExpanded)
                     return isExpanded ? "\uE70E" : "\uE70D"; // ChevronUp : ChevronDown
                 return "\uE70D";
+            });
+
+        public static readonly IMultiValueConverter StringEqualityConverter = 
+            new FuncMultiValueConverter<object?, bool>(values => 
+            {
+                if (values != null && values.Count() >= 2)
+                {
+                    var val1 = values.ElementAtOrDefault(0)?.ToString();
+                    var val2 = values.ElementAtOrDefault(1)?.ToString();
+                    return string.Equals(val1, val2, StringComparison.OrdinalIgnoreCase);
+                }
+                return false;
             });
 
         // Genre Styling Categories

@@ -14,8 +14,6 @@ namespace Yomic.Views
         {
             if (DataContext is Yomic.ViewModels.SettingsViewModel vm)
             {
-                vm.RequestUpdateDialog -= OpenUpdateDialog;
-                vm.RequestUpdateDialog += OpenUpdateDialog;
 
                 vm.RequestBackupDialog -= OpenBackupDialog;
                 vm.RequestBackupDialog += OpenBackupDialog;
@@ -83,28 +81,6 @@ namespace Yomic.Views
             }
         }
 
-        private async void OpenUpdateDialog()
-        {
-             var dialog = new UpdateDialog
-            {
-                DataContext = new Yomic.ViewModels.UpdateDialogViewModel()
-            };
-            
-            if (this.VisualRoot is Window parentWindow)
-            {
-                var mainVM = parentWindow.DataContext as Yomic.ViewModels.MainWindowViewModel;
-
-                // Toggle Overlay ON
-                if (mainVM != null)
-                    mainVM.IsDialogOverlayVisible = true;
-
-                await dialog.ShowDialog(parentWindow);
-
-                // Toggle Overlay OFF
-                if (mainVM != null)
-                    mainVM.IsDialogOverlayVisible = false;
-            }
-        }
 
         private async void OpenClearDataDialog()
         {
@@ -130,7 +106,7 @@ namespace Yomic.Views
         {
             if (this.VisualRoot is Window parentWindow)
             {
-                var dialog = new ConfirmDialog("Clear Read History", "Are you sure you want to clear your reading history? All chapters will be marked as unread.");
+                var dialog = new ConfirmDialog("Clear Read History & Cache", "Are you sure you want to clear your reading history and image cache? All chapters will be marked as unread and memory will be freed up.");
                 
                 var mainVM = parentWindow.DataContext as Yomic.ViewModels.MainWindowViewModel;
                 if (mainVM != null) mainVM.IsDialogOverlayVisible = true;

@@ -157,19 +157,77 @@ namespace Yomic.Views
                 }
                 else if (e.Key == Key.Space)
                 {
+                    if (vm.IsWebtoon && MainScroll != null)
+                    {
+                        double scrollAmount = MainScroll.Viewport.Height * 0.9;
+                        MainScroll.Offset = new Avalonia.Vector(MainScroll.Offset.X, MainScroll.Offset.Y + scrollAmount);
+                    }
+                    else if (!vm.IsWebtoon)
+                    {
+                        var pagedScroll = vm.IsDualPage ? this.FindControl<ScrollViewer>("DualPagedScroll") : this.FindControl<ScrollViewer>("PagedScroll");
+                        if (pagedScroll != null)
+                        {
+                            double scrollAmount = pagedScroll.Viewport.Height * 0.9;
+                            pagedScroll.Offset = new Avalonia.Vector(pagedScroll.Offset.X, pagedScroll.Offset.Y + scrollAmount);
+                        }
+                    }
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.F || e.Key == Key.F11)
+                {
+                    vm.ToggleFullscreenCommand.Execute().Subscribe(_ => { });
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.Escape)
+                {
+                    if (vm.IsFullscreen)
+                    {
+                        vm.ToggleFullscreenCommand.Execute().Subscribe(_ => { });
+                    }
+                    else
+                    {
+                        vm.BackCommand.Execute().Subscribe(_ => { });
+                    }
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.R)
+                {
+                    vm.RotateCommand.Execute().Subscribe(_ => { });
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.OemPlus || e.Key == Key.Add)
+                {
+                    vm.ZoomInCommand.Execute().Subscribe(_ => { });
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.OemMinus || e.Key == Key.Subtract)
+                {
+                    vm.ZoomOutCommand.Execute().Subscribe(_ => { });
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.H)
+                {
                     vm.ToggleMenuCommand.Execute().Subscribe(_ => { });
                     e.Handled = true;
                 }
-                else if (e.Key == Key.Escape && vm.IsFullscreen)
+                else if (e.Key == Key.D1 || e.Key == Key.NumPad1)
                 {
-                    // ESC to exit fullscreen
-                    vm.ToggleFullscreenCommand.Execute().Subscribe(_ => { });
+                    vm.SetModeCommand.Execute(Yomic.ViewModels.ReaderMode.Webtoon).Subscribe(_ => { });
                     e.Handled = true;
                 }
-                else if (e.Key == Key.F11)
+                else if (e.Key == Key.D2 || e.Key == Key.NumPad2)
                 {
-                    // F11 to toggle fullscreen
-                    vm.ToggleFullscreenCommand.Execute().Subscribe(_ => { });
+                    vm.SetModeCommand.Execute(Yomic.ViewModels.ReaderMode.Single).Subscribe(_ => { });
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.D3 || e.Key == Key.NumPad3)
+                {
+                    vm.SetModeCommand.Execute(Yomic.ViewModels.ReaderMode.Double).Subscribe(_ => { });
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.B && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+                {
+                    vm.ToggleBookmarkCommand.Execute().Subscribe(_ => { });
                     e.Handled = true;
                 }
                 else if (e.Key == Key.Down)
@@ -211,14 +269,13 @@ namespace Yomic.Views
 
         private void OnBackClick(object? sender, RoutedEventArgs e)
         {
-            if (this.VisualRoot is MainWindow mainWindow && 
-                mainWindow.DataContext is MainWindowViewModel vm)
-            {
-                vm.GoToLibrary();
-            }
-            else if (this.VisualRoot is ReaderWindow readerWindow)
+            if (this.VisualRoot is ReaderWindow readerWindow)
             {
                 readerWindow.Close();
+            }
+            else if (DataContext is ReaderViewModel vm)
+            {
+                vm.BackCommand.Execute().Subscribe(_ => { });
             }
         }
 

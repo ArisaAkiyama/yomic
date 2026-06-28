@@ -20,6 +20,7 @@ namespace Yomic.ViewModels
         private readonly LibraryService _libraryService;
         private readonly NetworkService _networkService;
         private readonly SourceManager _sourceManager;
+        private readonly SettingsService _settingsService;
 
         private ObservableCollection<MangaItem> _historyItems = new();
         public ObservableCollection<MangaItem> HistoryItems
@@ -49,19 +50,45 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _isRefreshing, value);
         }
 
+        private bool _isListView;
+        public bool IsListView
+        {
+            get => _isListView;
+            set => this.RaiseAndSetIfChanged(ref _isListView, value);
+        }
+
+        private bool _isLoadingMore;
+        public bool IsLoadingMore
+        {
+            get => _isLoadingMore;
+            set => this.RaiseAndSetIfChanged(ref _isLoadingMore, value);
+        }
+
+        private bool _hasMoreItems = true;
+        public bool HasMoreItems
+        {
+            get => _hasMoreItems;
+            set => this.RaiseAndSetIfChanged(ref _hasMoreItems, value);
+        }
+
         public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
         public ReactiveCommand<Unit, Unit> ClearHistoryCommand { get; }
         public ReactiveCommand<MangaItem, Unit> RemoveHistoryItemCommand { get; }
         public ReactiveCommand<MangaItem, Unit> OpenMangaCommand { get; }
+        public ReactiveCommand<Unit, Unit> ToggleViewModeCommand { get; }
+        public ReactiveCommand<Unit, Unit> LoadMoreCommand { get; }
 
         private readonly MainWindowViewModel _mainVM;
 
-        public HistoryViewModel(LibraryService libraryService, NetworkService networkService, SourceManager sourceManager, MainWindowViewModel mainVM)
+        public HistoryViewModel(LibraryService libraryService, NetworkService networkService, SourceManager sourceManager, SettingsService settingsService, MainWindowViewModel mainVM)
         {
             _libraryService = libraryService;
             _networkService = networkService;
             _sourceManager = sourceManager;
+            _settingsService = settingsService;
             _mainVM = mainVM;
+
+            _isListView = _settingsService.LibraryIsListView;
 
             HistoryItems = new ObservableCollection<MangaItem>();
 
@@ -104,8 +131,16 @@ namespace Yomic.ViewModels
                     IsRefreshing = false;
                 }
             });
+            LoadMoreCommand = ReactiveCommand.CreateFromTask(LoadMoreHistoryAsync);
             ClearHistoryCommand = ReactiveCommand.CreateFromTask(ClearHistoryAsync);
             RemoveHistoryItemCommand = ReactiveCommand.CreateFromTask<MangaItem>(RemoveHistoryItemAsync);
+            
+            ToggleViewModeCommand = ReactiveCommand.Create(() => 
+            {
+                IsListView = !IsListView;
+                _settingsService.LibraryIsListView = IsListView;
+                _settingsService.Save();
+            });
             
             OpenMangaCommand = ReactiveCommand.CreateFromTask<MangaItem>(async item => 
             {
@@ -189,6 +224,59 @@ namespace Yomic.ViewModels
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[HistoryVM] Error clearing history: {ex}");
+            }
+        }
+
+        private async Task LoadMoreHistoryAsync()
+        {
+            if (IsLoadingMore || !HasMoreItems) return;
+            IsLoadingMore = true;
+            try
+            {
+                int pageSize = 18;
+                using var context = new Yomic.Core.Data.MangaDbContext();
+                var query = context.Mangas
+                    .Include(m => m.Chapters)
+                    .Where(m => m.LastViewed > 0)
+                    .OrderByDescending(m => m.LastViewed)
+                    .Skip(HistoryItems.Count)
+                    .Take(pageSize);
+
+                var history = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(query);
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    foreach (var m in history)
+                    {
+                        int unread = m.Chapters?.Count(c => !c.Read) ?? 0;
+                        string? unreadString = unread > 0 ? unread.ToString() : null;
+
+                        var item = new MangaItem
+                        {
+                            Title = m.Title,
+                            CoverUrl = m.ThumbnailUrl,
+                            SourceId = m.Source,
+                            MangaUrl = m.Url,
+                            LastReadTime = GetTimeAgo(m.LastViewed),
+                            Status = m.Status,
+                            ChapterCount = m.Chapters?.Count ?? 0,
+                            UnreadCount = unreadString,
+                        };
+                        if (unread > 0) item.IsNewBadgeVisible = true;
+                        
+                        HistoryItems.Add(item);
+                    }
+                    HasMoreItems = history.Count == pageSize;
+                    HasItems = HistoryItems.Count > 0;
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HistoryVM] Error loading more history: {ex}");
+            }
+            finally
+            {
+                IsLoadingMore = false;
             }
         }
 

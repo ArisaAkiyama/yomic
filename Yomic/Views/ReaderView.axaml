@@ -256,16 +256,19 @@
                                      </StackPanel>
 
                                      <!-- Image (Always participates in layout bounds to prevent VirtualizingStackPanel overlap bugs) -->
-                                     <Image Classes="PageImage"
-                                            Classes.Loaded="{Binding !IsLoading}"
-                                            Source="{Binding Image}" 
-                                            Stretch="Uniform" 
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Top">
-                                         <Image.Effect>
-                                             <BlurEffect Radius="{Binding BlurRadius}"/>
-                                         </Image.Effect>
-                                     </Image>
+                                     <LayoutTransformControl HorizontalAlignment="Center" VerticalAlignment="Top">
+                                         <LayoutTransformControl.LayoutTransform>
+                                             <RotateTransform Angle="{Binding DataContext.RotationAngle, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                                         </LayoutTransformControl.LayoutTransform>
+                                         <Image Classes="PageImage"
+                                                Classes.Loaded="{Binding !IsLoading}"
+                                                Source="{Binding Image}" 
+                                                Stretch="Uniform">
+                                             <Image.Effect>
+                                                 <BlurEffect Radius="{Binding BlurRadius}"/>
+                                             </Image.Effect>
+                                         </Image>
+                                     </LayoutTransformControl>
                                  </Grid>
                              </Panel>
                          </DataTemplate>
@@ -277,7 +280,10 @@
                 <ScrollViewer x:Name="PagedScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                     <LayoutTransformControl HorizontalAlignment="Center" VerticalAlignment="Center">
                         <LayoutTransformControl.LayoutTransform>
-                            <ScaleTransform ScaleX="{Binding ZoomScale}" ScaleY="{Binding ZoomScale}"/>
+                            <TransformGroup>
+                                <ScaleTransform ScaleX="{Binding ZoomScale}" ScaleY="{Binding ZoomScale}"/>
+                                <RotateTransform Angle="{Binding RotationAngle}"/>
+                            </TransformGroup>
                         </LayoutTransformControl.LayoutTransform>
 
                         <ContentControl Content="{Binding CurrentPage}"
@@ -310,7 +316,10 @@
                 <ScrollViewer x:Name="DualPagedScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                     <LayoutTransformControl HorizontalAlignment="Center" VerticalAlignment="Center">
                         <LayoutTransformControl.LayoutTransform>
-                            <ScaleTransform ScaleX="{Binding ZoomScale}" ScaleY="{Binding ZoomScale}"/>
+                            <TransformGroup>
+                                <ScaleTransform ScaleX="{Binding ZoomScale}" ScaleY="{Binding ZoomScale}"/>
+                                <RotateTransform Angle="{Binding RotationAngle}"/>
+                            </TransformGroup>
                         </LayoutTransformControl.LayoutTransform>
 
                         <Grid ColumnDefinitions="*,*" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -357,6 +366,61 @@
                         </Grid>
                     </LayoutTransformControl>
                 </ScrollViewer>
+
+                <!-- Navigation Buttons Overlay (Visible only in Dual Page Mode) -->
+                <!-- Left Button: Next Page (Right-to-Left reading) -->
+                <Button Command="{Binding NextPageCommand}" 
+                        HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                        Width="100" Background="Transparent" BorderThickness="0"
+                        Cursor="Hand" ToolTip.Tip="Next Page">
+                    <Button.Styles>
+                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="#1AFFFFFF"/>
+                        </Style>
+                        <Style Selector="Button:pressed /template/ ContentPresenter">
+                            <Setter Property="Background" Value="#33FFFFFF"/>
+                        </Style>
+                    </Button.Styles>
+                    <TextBlock Text="&#xE76B;" FontFamily="Segoe Fluent Icons" FontSize="48" Foreground="White" Opacity="0.3" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock.Transitions>
+                            <Transitions>
+                                <DoubleTransition Property="Opacity" Duration="0:0:0.2"/>
+                            </Transitions>
+                        </TextBlock.Transitions>
+                        <TextBlock.Styles>
+                            <Style Selector="Button:pointerover TextBlock">
+                                <Setter Property="Opacity" Value="0.8"/>
+                            </Style>
+                        </TextBlock.Styles>
+                    </TextBlock>
+                </Button>
+                
+                <!-- Right Button: Previous Page (Right-to-Left reading) -->
+                <Button Command="{Binding PrevPageCommand}" 
+                        HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                        Width="100" Background="Transparent" BorderThickness="0"
+                        Cursor="Hand" ToolTip.Tip="Previous Page">
+                    <Button.Styles>
+                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="#1AFFFFFF"/>
+                        </Style>
+                        <Style Selector="Button:pressed /template/ ContentPresenter">
+                            <Setter Property="Background" Value="#33FFFFFF"/>
+                        </Style>
+                    </Button.Styles>
+                    <TextBlock Text="&#xE76C;" FontFamily="Segoe Fluent Icons" FontSize="48" Foreground="White" Opacity="0.3" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock.Transitions>
+                            <Transitions>
+                                <DoubleTransition Property="Opacity" Duration="0:0:0.2"/>
+                            </Transitions>
+                        </TextBlock.Transitions>
+                        <TextBlock.Styles>
+                            <Style Selector="Button:pointerover TextBlock">
+                                <Setter Property="Opacity" Value="0.8"/>
+                            </Style>
+                        </TextBlock.Styles>
+                    </TextBlock>
+                </Button>
             </Grid>
             
             <!-- AutoScroll Anchor (Hidden by Default) -->

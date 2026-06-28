@@ -4,6 +4,7 @@
         xmlns:views="using:Yomic.Views"
         x:Class="Yomic.Views.ReaderWindow"
         x:DataType="vm:ReaderViewModel"
+        Icon="/Assets/app.ico"
         Title="{Binding Title}"
         Background="Black"
         Width="1000" Height="700">

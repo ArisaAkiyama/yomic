@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Yomic.Views.DownloadAllDialog"
-        Width="520" Height="460"
+        Width="520" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         SystemDecorations="None"
         ShowInTaskbar="False"
@@ -62,6 +62,18 @@
                                FontSize="12"
                                TextWrapping="Wrap"
                                LineHeight="18"/>
+                </Border>
+
+                <!-- Bulk Warning -->
+                <Border x:Name="BulkWarningBorder" Background="#1AFFB900" BorderBrush="#FFB900" BorderThickness="1" CornerRadius="8" Padding="14,12" IsVisible="False" Margin="0,12,0,0">
+                    <Grid ColumnDefinitions="Auto, *">
+                        <TextBlock Grid.Column="0" Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" Foreground="#FFB900" FontSize="16" VerticalAlignment="Top" Margin="0,2,10,0"/>
+                        <TextBlock Grid.Column="1" Text="Peringatan Unduhan Massal:&#x0a;Mengunduh lebih dari 20 bab secara bersamaan dapat memicu proteksi Anti-Bot (seperti Cloudflare) pada server sumber. Jika IP Anda diblokir, Anda tidak akan bisa membaca komik dari sumber ini untuk sementara waktu."
+                                   Foreground="{DynamicResource PrimaryText}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   LineHeight="18"/>
+                    </Grid>
                 </Border>
             </StackPanel>
 

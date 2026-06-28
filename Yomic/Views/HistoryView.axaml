@@ -63,15 +63,23 @@
                             <TextBlock Text="History" FontSize="28" FontWeight="Bold" 
                                        Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
                             
-                            <!-- Item Count Badge -->
-                             <Border Background="{DynamicResource ControlBackground}" CornerRadius="10" Padding="10,3" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding HistoryItems.Count, StringFormat='{}{0} Items'}" 
-                                           Foreground="{DynamicResource SecondaryText}" FontSize="11" VerticalAlignment="Center" FontWeight="Medium"/>
-                            </Border>
+
                         </StackPanel>
 
                          <!-- Refresh/Clear Actions -->
                          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasItems}">
+                             <Button Command="{Binding ToggleViewModeCommand}"
+                                     Classes="header-action"
+                                     ToolTip.Tip="Toggle View Mode (Grid/List)">
+                                 <Panel>
+                                     <TextBlock Text="&#xE8FD;" FontFamily="Segoe Fluent Icons" 
+                                                FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                IsVisible="{Binding !IsListView}"/>
+                                     <TextBlock Text="&#xE8A9;" FontFamily="Segoe Fluent Icons" 
+                                                FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                IsVisible="{Binding IsListView}"/>
+                                 </Panel>
+                             </Button>
                              <Button Command="{Binding ClearHistoryCommand}"
                                      Classes="header-action"
                                      ToolTip.Tip="Delete All History">
@@ -88,22 +96,23 @@
                              </Button>
                          </StackPanel>
                     </Grid>
-                    <TextBlock Text="Recently viewed manga" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" FontSize="13" Opacity="0.8"/>
+
                 </StackPanel>
 
                 <!-- Scrollable Content -->
-                <ScrollViewer x:Name="HistoryScrollViewer" Grid.Row="1" Padding="30,0,0,30" IsVisible="{Binding HasItems}">
+                <ScrollViewer x:Name="HistoryScrollViewer" Grid.Row="1" Padding="0,0,0,30" IsVisible="{Binding HasItems}">
                     <StackPanel>
-                        <ItemsControl ItemsSource="{Binding HistoryItems}">
+                        <!-- Grid View Mode -->
+                        <ItemsControl ItemsSource="{Binding HistoryItems}" IsVisible="{Binding !IsListView}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel />
+                                    <WrapPanel HorizontalAlignment="Center" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
 
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                 <Button x:CompileBindings="False" Background="Transparent" Padding="0" Margin="0,0,25,30"
+                                 <Button x:CompileBindings="False" Background="Transparent" Padding="0" Margin="10,0,10,30"
                                          Command="{Binding DataContext.OpenMangaCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
                                          CommandParameter="{Binding}">
                                      <Button.Styles>
@@ -190,6 +199,97 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- List View Mode -->
+                        <ListBox x:Name="HistoryListModeBox" ItemsSource="{Binding HistoryItems}" 
+                                 Background="Transparent" BorderThickness="0" 
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 IsVisible="{Binding IsListView}">
+                            <ListBox.Styles>
+                                <Style Selector="ListBoxItem">
+                                     <Setter Property="Padding" Value="0"/>
+                                     <Setter Property="Margin" Value="0"/>
+                                     <Setter Property="Background" Value="Transparent"/>
+                                </Style>
+                                <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                </Style>
+                                <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                </Style>
+                            </ListBox.Styles>
+
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <VirtualizingStackPanel Orientation="Vertical" Margin="30,0,30,0"/> 
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                     <Button x:CompileBindings="False" Background="Transparent" Padding="0" Margin="0,0,0,4"
+                                             Command="{Binding DataContext.OpenMangaCommand, RelativeSource={RelativeSource FindAncestor, AncestorType=UserControl}}"
+                                             CommandParameter="{Binding}"
+                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                         <Button.Styles>
+                                            <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                                <Setter Property="Background" Value="{DynamicResource SidebarBackground}"/>
+                                            </Style>
+                                         </Button.Styles>
+                                         
+                                         <Border CornerRadius="8" Padding="8" Background="Transparent">
+                                             <Border.ContextMenu>
+                                                 <ContextMenu>
+                                                     <MenuItem Header="Remove from History" 
+                                                               x:CompileBindings="False"
+                                                               Command="{Binding #root.DataContext.RemoveHistoryItemCommand}"
+                                                               CommandParameter="{Binding}"
+                                                               Foreground="#FF5555">
+                                                         <MenuItem.Icon>
+                                                             <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons"/>
+                                                         </MenuItem.Icon>
+                                                     </MenuItem>
+                                                 </ContextMenu>
+                                             </Border.ContextMenu>
+
+                                            <Grid ColumnDefinitions="40, 16, *, Auto">
+                                                <Border Grid.Column="0" Height="55" Width="40" CornerRadius="4" ClipToBounds="True" Background="{DynamicResource SidebarBackground}">
+                                                    <Image helpers:SecureImageLoader.Url="{Binding CoverUrl}" Stretch="UniformToFill"/>
+                                                </Border>
+                                                
+                                                <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="4">
+                                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource PrimaryText}" 
+                                                               TextAlignment="Left" TextTrimming="CharacterEllipsis"
+                                                               FontSize="14" FontWeight="SemiBold" MaxLines="1"/>
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <TextBlock Text="{Binding SourceName}" Foreground="{DynamicResource SecondaryText}" 
+                                                                   FontSize="12" Opacity="0.7" MaxLines="1" TextTrimming="CharacterEllipsis"
+                                                                   IsVisible="{Binding SourceName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                        <TextBlock Text="·" Foreground="{DynamicResource SecondaryText}" FontSize="12" Opacity="0.5"
+                                                                   IsVisible="{Binding LastReadTime, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                        <TextBlock Text="{Binding LastReadTime}" Foreground="{DynamicResource SecondaryText}" 
+                                                                   FontSize="12" Opacity="0.6" MaxLines="1"
+                                                                   IsVisible="{Binding LastReadTime, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+
+                                                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                    <Border Background="#89B4FA" CornerRadius="4" Padding="6,2"
+                                                            IsVisible="{Binding IsNewBadgeVisible}">
+                                                        <TextBlock Text="NEW" Foreground="#1E1E2E" FontSize="10" FontWeight="Bold"/>
+                                                    </Border>
+                                                    <Border Background="{Binding StatusString, Converter={x:Static vm:StatusToColorConverter.Instance}}" 
+                                                            Opacity="0.95" CornerRadius="4" Padding="6,3"
+                                                            IsVisible="{Binding StatusString, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                        <TextBlock Text="{Binding StatusString}" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Grid>
+                                         </Border>
+                                     </Button>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
 
                         <StackPanel Margin="0,0,30,24" HorizontalAlignment="Center" Spacing="8" IsVisible="{Binding IsLoadingMore}">
                             <helpers:LoadingArcs Width="34" Height="34"/>

@@ -12,6 +12,13 @@ using Avalonia.Collections;
 
 namespace Yomic.ViewModels
 {
+    public enum ChapterFilterMode
+    {
+        All,
+        Unread,
+        Bookmarked
+    }
+
     public class ChapterItem : ReactiveObject
     {
         // ... (existing code)
@@ -30,6 +37,13 @@ namespace Yomic.ViewModels
                 // Auto-clear NEW badge when marked as Read
                 if (value && IsNewRelease) IsNewRelease = false;
             }
+        }
+
+        private bool _bookmark;
+        public bool Bookmark
+        {
+            get => _bookmark;
+            set => this.RaiseAndSetIfChanged(ref _bookmark, value);
         }
 
         private bool _isNewRelease;
@@ -75,11 +89,13 @@ namespace Yomic.ViewModels
         public ReactiveCommand<Unit, Unit> MarkAsReadCommand { get; }
         public ReactiveCommand<Unit, Unit> MarkAsUnreadCommand { get; }
         public ReactiveCommand<Unit, Unit> MarkPreviousAsReadCommand { get; }
+        public ReactiveCommand<Unit, Unit> ToggleBookmarkCommand { get; }
 
         public ChapterItem(Action? downloadAction, Action? deleteAction, 
                            Func<System.Threading.Tasks.Task>? markReadAction, 
                            Func<System.Threading.Tasks.Task>? markUnreadAction, 
-                           Func<System.Threading.Tasks.Task>? markPreviousAction)
+                           Func<System.Threading.Tasks.Task>? markPreviousAction,
+                           Func<System.Threading.Tasks.Task>? toggleBookmarkAction = null)
         {
             var canDownload = this.WhenAnyValue(x => x.IsDownloaded, downloaded => !downloaded);
             DownloadCommand = ReactiveCommand.Create(downloadAction ?? (() => { }), canDownload);
@@ -90,6 +106,7 @@ namespace Yomic.ViewModels
             MarkAsReadCommand = ReactiveCommand.CreateFromTask(markReadAction ?? (() => System.Threading.Tasks.Task.CompletedTask));
             MarkAsUnreadCommand = ReactiveCommand.CreateFromTask(markUnreadAction ?? (() => System.Threading.Tasks.Task.CompletedTask));
             MarkPreviousAsReadCommand = ReactiveCommand.CreateFromTask(markPreviousAction ?? (() => System.Threading.Tasks.Task.CompletedTask));
+            ToggleBookmarkCommand = ReactiveCommand.CreateFromTask(toggleBookmarkAction ?? (() => System.Threading.Tasks.Task.CompletedTask));
         }
     }
 
@@ -205,6 +222,41 @@ namespace Yomic.ViewModels
             }
         }
 
+        private ChapterFilterMode _chapterFilter = ChapterFilterMode.All;
+        public ChapterFilterMode ChapterFilter
+        {
+            get => _chapterFilter;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _chapterFilter, value);
+                this.RaisePropertyChanged(nameof(IsFilterAll));
+                this.RaisePropertyChanged(nameof(IsFilterUnread));
+                this.RaisePropertyChanged(nameof(IsFilterBookmarked));
+                UpdateDisplayItems();
+            }
+        }
+
+        public bool IsFilterAll => ChapterFilter == ChapterFilterMode.All;
+        public bool IsFilterUnread => ChapterFilter == ChapterFilterMode.Unread;
+        public bool IsFilterBookmarked => ChapterFilter == ChapterFilterMode.Bookmarked;
+
+        public IEnumerable<ChapterItem> FilteredChapters
+        {
+            get
+            {
+                if (_chapters == null) return Enumerable.Empty<ChapterItem>();
+                
+                return _chapters.Where(c => 
+                {
+                    if (ChapterFilter == ChapterFilterMode.Unread) return !c.IsRead;
+                    if (ChapterFilter == ChapterFilterMode.Bookmarked) return c.Bookmark;
+                    return true;
+                });
+            }
+        }
+
+        public int VisibleChaptersCount => FilteredChapters.Count();
+
         public AvaloniaList<object> DisplayItems { get; } = new();
 
         private void UpdateDisplayItems()
@@ -216,27 +268,29 @@ namespace Yomic.ViewModels
 
             if (_chapters == null) return;
 
-            // Synchronize DisplayItems (starting at index 1) with _chapters
+            var filteredChapters = FilteredChapters.ToList();
+
+            // Synchronize DisplayItems (starting at index 1) with filteredChapters
             // This prevents scroll jumps by avoiding Clear() / Reset
             
             int displayIdx = 1;
             int chapterIdx = 0;
 
-            while (chapterIdx < _chapters.Count)
+            while (chapterIdx < filteredChapters.Count)
             {
                 if (displayIdx < DisplayItems.Count)
                 {
                     // Existing slot: Replace if different
-                    if (DisplayItems[displayIdx] != _chapters[chapterIdx])
+                    if (DisplayItems[displayIdx] != filteredChapters[chapterIdx])
                     {
-                        DisplayItems[displayIdx] = _chapters[chapterIdx];
+                        DisplayItems[displayIdx] = filteredChapters[chapterIdx];
                     }
                     displayIdx++;
                 }
                 else
                 {
                     // Append remaining
-                    DisplayItems.Add(_chapters[chapterIdx]);
+                    DisplayItems.Add(filteredChapters[chapterIdx]);
                     displayIdx++;
                 }
                 chapterIdx++;
@@ -247,6 +301,8 @@ namespace Yomic.ViewModels
             {
                 DisplayItems.RemoveRange(displayIdx, DisplayItems.Count - displayIdx);
             }
+            
+            this.RaisePropertyChanged(nameof(VisibleChaptersCount));
         }
 
         public ReactiveCommand<Unit, Unit> ToggleLibraryCommand { get; }
@@ -254,6 +310,7 @@ namespace Yomic.ViewModels
         public ReactiveCommand<Unit, Unit> StartReadingCommand { get; }
         public ReactiveCommand<ChapterItem?, Unit> ResumeReadingCommand { get; }
         public ReactiveCommand<Unit, Unit> OpenWebViewCommand { get; }
+        public ReactiveCommand<string, Unit> SetChapterFilterCommand { get; }
         
         private bool _isBypassing;
         public bool IsBypassing
@@ -399,9 +456,7 @@ namespace Yomic.ViewModels
             RefreshCommand = ReactiveCommand.CreateFromTask(RefreshAsync);
             DownloadAllCommand = ReactiveCommand.CreateFromTask(ConfirmDownloadAllChapters);
             StartReadingCommand = ReactiveCommand.Create(StartReading);
-            StartReadingCommand = ReactiveCommand.Create(StartReading);
             ResumeReadingCommand = ReactiveCommand.Create<ChapterItem?>(ResumeReading);
-            
             OpenWebViewCommand = ReactiveCommand.CreateFromTask(async () => 
             {
                 var url = _model.Url;
@@ -457,6 +512,7 @@ namespace Yomic.ViewModels
                     IsBypassing = false;
                 }
             });
+            SetChapterFilterCommand = ReactiveCommand.Create<string>(SetChapterFilter);
 
             // Subscribe to Cloudflare bypass status updates
             CloudflareBypassService.Instance.OnStatusUpdate += (msg) =>
@@ -632,7 +688,8 @@ namespace Yomic.ViewModels
                                 () => DeleteChapterDownload(chapterModel, ch.Url),
                                 () => MarkChapterAsRead(item!),
                                 () => MarkChapterAsUnread(item!),
-                                () => MarkPreviousAsRead(item!))
+                                () => MarkPreviousAsRead(item!),
+                                () => ToggleChapterBookmark(item!))
                             {
                                 Title = ch.Name,
                                 ChapterNumber = ch.ChapterNumber,
@@ -853,7 +910,8 @@ namespace Yomic.ViewModels
                              () => DeleteChapterDownload(chapterModel, ch.Url),
                              () => MarkChapterAsRead(newOnlineItem!),
                              () => MarkChapterAsUnread(newOnlineItem!),
-                             () => MarkPreviousAsRead(newOnlineItem!))
+                             () => MarkPreviousAsRead(newOnlineItem!),
+                             () => ToggleChapterBookmark(newOnlineItem!))
                         {
                             Title = ch.Name,
                             ChapterNumber = ch.ChapterNumber,
@@ -973,6 +1031,35 @@ namespace Yomic.ViewModels
                 }
             });
         }
+
+        private async System.Threading.Tasks.Task ToggleChapterBookmark(ChapterItem item)
+        {
+            if (item == null) return;
+            item.Bookmark = !item.Bookmark; // Visual Feedback
+            await _libraryService.SetChapterBookmarkStatusAsync(item.Url, item.Bookmark, _model.Source, _model.Url, item.Title, item.ChapterNumber);
+            
+            if (ChapterFilter == ChapterFilterMode.Bookmarked)
+            {
+                UpdateDisplayItems();
+            }
+        }
+
+        // --- Downloading ---
+        private void QueueDownload(Core.Models.Chapter chapter)
+        {
+             // Ensure model has ID if possible
+             if (_model.Id == 0)
+             {
+                 // Must be in library to download? Not necessarily but good for persistence
+                 // For now allow downloading temp
+             }
+             
+             _downloadService.QueueDownload(_model, chapter);
+             
+             // Update UI status immediately to show spinner
+             var item = Chapters.FirstOrDefault(x => x.Url == chapter.Url);
+             if (item != null) item.IsDownloading = true;
+        }
         
         private async void DeleteChapterDownload(Core.Models.Chapter chapter, string chapterUrl)
         {
@@ -999,23 +1086,7 @@ namespace Yomic.ViewModels
                 item.IsDeleting = false;
             }
         }
-
-        private void QueueDownload(Core.Models.Chapter chapter)
-        {
-             // Ensure model has ID if possible
-             if (_model.Id == 0)
-             {
-                 // Must be in library to download? Not necessarily but good for persistence
-                 // For now allow downloading temp
-             }
-             
-             _downloadService.QueueDownload(_model, chapter);
-             
-             // Update UI status immediately to show spinner
-             var item = Chapters.FirstOrDefault(x => x.Url == chapter.Url);
-             if (item != null) item.IsDownloading = true;
-        }
-
+        
         /// <summary>
         /// Navigate to reader starting from Chapter 1 (first available chapter).
         /// This always starts from the beginning regardless of reading history.
@@ -1038,7 +1109,16 @@ namespace Yomic.ViewModels
             }
 
             System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] StartReading: Opening first chapter '{firstChapter.Title}'");
-            _mainVM.GoToReader(firstChapter, Chapters, SourceId, Title, Url, IsExplicitContent);
+            var chaptersToPass = _mainVM.SettingsService?.SkipFilteredChapters == true ? FilteredChapters.ToList() : Chapters;
+            _mainVM.GoToReader(firstChapter, chaptersToPass, SourceId, Title, Url, IsExplicitContent);
+        }
+
+        private void SetChapterFilter(string filter)
+        {
+            if (Enum.TryParse<ChapterFilterMode>(filter, true, out var mode))
+            {
+                ChapterFilter = mode;
+            }
         }
 
         /// <summary>
@@ -1064,7 +1144,8 @@ namespace Yomic.ViewModels
             if (targetChapter != null)
             {
                 System.Diagnostics.Debug.WriteLine($"[MangaDetailVM] ResumeReading: Opening chapter '{targetChapter.Title}'");
-                _mainVM.GoToReader(targetChapter, Chapters, SourceId, Title, Url, IsExplicitContent);
+                var chaptersToPass = _mainVM.SettingsService?.SkipFilteredChapters == true ? FilteredChapters.ToList() : Chapters;
+                _mainVM.GoToReader(targetChapter, chaptersToPass, SourceId, Title, Url, IsExplicitContent);
             }
         }
 

@@ -148,7 +148,7 @@ namespace Yomic.ViewModels
             if (source != null)
             {
                 // Navigate to SourceFeedViewModel
-                _mainViewModel.CurrentPage = new SourceFeedViewModel(source, _mainViewModel, _sourceManager, _mainViewModel.ImageCacheService, _mainViewModel.NetworkService);
+                _mainViewModel.CurrentPage = new SourceFeedViewModel(source, _mainViewModel, _sourceManager, _mainViewModel.ImageCacheService, _mainViewModel.NetworkService, _mainViewModel.SettingsService);
             }
         }
 
@@ -446,13 +446,6 @@ namespace Yomic.ViewModels
         private void LoadLanguageFlags(SourceItem item)
         {
              item.LanguageFlags.Clear();
-
-             if (item.Name.Equals("MangaDex", StringComparison.OrdinalIgnoreCase))
-             {
-                 AddFlag(item, "id.png");
-                 AddFlag(item, "gb.png");
-                 return;
-             }
 
              if (item.Language.Equals("id", StringComparison.OrdinalIgnoreCase))
              {

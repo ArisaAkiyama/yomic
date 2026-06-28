@@ -307,7 +307,7 @@ namespace Yomic.Core.Services
             var client = new System.Net.Http.HttpClient(handler);
             client.Timeout = TimeSpan.FromSeconds(60);
             
-            // Add required headers (MangaDex requires User-Agent)
+            // Add required headers
             client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
             client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8");
             client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");

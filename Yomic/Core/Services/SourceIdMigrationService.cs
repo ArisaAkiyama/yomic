@@ -21,7 +21,6 @@ namespace Yomic.Core.Services
         {
             { 3, "Yomic.Extensions.Komiku.KomikuSource" },
             { 4, "Yomic.Extensions.KomikCast.KomikCastSource" },
-            { 5, "Yomic.Extensions.MangaDex.MangaDexSource" },
             { 6, "Yomic.Extensions.Mangabats.MangabatsSource" },
             { 20, "Yomic.Extensions.Kiryuu.KiryuuSource" }
         };
@@ -41,7 +40,6 @@ namespace Yomic.Core.Services
 
                 if (System.IO.File.Exists(migrationFlagFile))
                 {
-                    LogService.Debug("Migration", "Source ID migration already completed, skipping.");
                     return;
                 }
 

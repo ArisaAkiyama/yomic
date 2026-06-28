@@ -45,8 +45,10 @@ namespace Yomic.Core.Services
         {
             if (string.IsNullOrEmpty(url)) return null;
 
-            // Handle URL|Referer= syntax
-            // Example: https://url.com/image.jpg|Referer=xyz
+            string? userAgent = null;
+
+            // Handle URL|Referer= and URL|UserAgent= syntax
+            // Example: https://url.com/image.jpg|Referer=xyz|UserAgent=abc
             if (url.Contains("|"))
             {
                 var parts = url.Split(new[] { "|" }, StringSplitOptions.RemoveEmptyEntries);
@@ -56,6 +58,8 @@ namespace Yomic.Core.Services
                 {
                     if (parts[i].StartsWith("Referer="))
                         referer = parts[i].Substring("Referer=".Length);
+                    else if (parts[i].StartsWith("UserAgent="))
+                        userAgent = parts[i].Substring("UserAgent=".Length);
                 }
             }
 
@@ -85,7 +89,7 @@ namespace Yomic.Core.Services
             }
 
             // 4. Download
-            return await DownloadAndCacheAsync(url, cachePath, referer);
+            return await DownloadAndCacheAsync(url, cachePath, referer, userAgent);
         }
 
         public void ClearDiskCache()
@@ -106,7 +110,7 @@ namespace Yomic.Core.Services
             }
         }
 
-        private async Task<Bitmap?> DownloadAndCacheAsync(string url, string cachePath, string? referer)
+        private async Task<Bitmap?> DownloadAndCacheAsync(string url, string cachePath, string? referer, string? userAgent)
         {
             await _downloadSemaphore.WaitAsync();
             try
@@ -114,8 +118,12 @@ namespace Yomic.Core.Services
                 var client = _sharedClient ??= _networkService.CreateOptimizedHttpClient();
                 var req = new HttpRequestMessage(HttpMethod.Get, url);
 
-                // User-Agent is already set in NetworkService.CreateOptimizedHttpClient
-                // Do not add it again to avoid duplication
+                // Apply custom User-Agent if provided
+                if (!string.IsNullOrEmpty(userAgent))
+                {
+                    req.Headers.Remove("User-Agent");
+                    req.Headers.TryAddWithoutValidation("User-Agent", userAgent);
+                }
                 
                 // Smart Referer
                 if (!string.IsNullOrEmpty(referer))

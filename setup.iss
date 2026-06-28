@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Yomic"
-#define MyAppVersion "1.4.0"
+#define MyAppVersion "1.5.0"
 #define MyAppPublisher "ArisaAkiyama"
 #define MyAppURL "https://github.com/ArisaAkiyama/yomic"
 #define MyAppExeName "Yomic.exe"
@@ -27,6 +27,8 @@ PrivilegesRequired=admin
 OutputDir=Output
 OutputBaseFilename=Yomic_Setup_v{#MyAppVersion}
 SetupIconFile=d:\Project\DesktopKomik\Yomic\Assets\app.ico
+WizardSmallImageFile=d:\Project\DesktopKomik\Yomic\Assets\yo-app.png
+WizardImageFile=d:\Project\DesktopKomik\Yomic\Assets\wizard-image.png
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 Compression=lzma
@@ -35,6 +37,12 @@ WizardStyle=modern
 LicenseFile=d:\Project\DesktopKomik\LICENSE
 CloseApplications=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} Setup
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
+VersionInfoProductTextVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

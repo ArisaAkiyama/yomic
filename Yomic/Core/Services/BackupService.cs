@@ -10,6 +10,7 @@ namespace Yomic.Core.Services
         private readonly string _appDataFolder;
         private readonly string _dbPath;
         private readonly string _settingsPath;
+        private readonly string _coversFolder;
 
         public BackupService()
         {
@@ -17,6 +18,7 @@ namespace Yomic.Core.Services
             _appDataFolder = Path.Combine(folder, "Yomic");
             _dbPath = Path.Combine(_appDataFolder, "manga.db");
             _settingsPath = Path.Combine(_appDataFolder, "settings.json");
+            _coversFolder = Path.Combine(_appDataFolder, "covers");
         }
 
         public async Task<bool> CreateBackupAsync(string destinationPath)
@@ -50,6 +52,16 @@ namespace Yomic.Core.Services
                     if (File.Exists(_settingsPath))
                     {
                         archive.CreateEntryFromFile(_settingsPath, "settings.json");
+                    }
+
+                    // Add covers cache
+                    if (Directory.Exists(_coversFolder))
+                    {
+                        foreach (var file in Directory.GetFiles(_coversFolder))
+                        {
+                            var fileName = Path.GetFileName(file);
+                            archive.CreateEntryFromFile(file, $"covers/{fileName}");
+                        }
                     }
                 }
 
@@ -88,7 +100,11 @@ namespace Yomic.Core.Services
                 if (File.Exists(extractedDb))
                 {
                     if (File.Exists(_dbPath))
-                        File.Delete(_dbPath); // Might throw if currently locked by DbContext
+                    {
+                        // Clear connection pools to release any file locks held by EF Core / SQLite
+                        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+                        File.Delete(_dbPath);
+                    }
                     
                     File.Move(extractedDb, _dbPath);
                     restoredDb = true;
@@ -103,6 +119,27 @@ namespace Yomic.Core.Services
 
                     File.Move(extractedSettings, _settingsPath);
                     restoredSettings = true;
+                }
+
+                // Restore covers cache
+                string extractedCovers = Path.Combine(tempDir, "covers");
+                if (Directory.Exists(extractedCovers))
+                {
+                    if (!Directory.Exists(_coversFolder))
+                    {
+                        Directory.CreateDirectory(_coversFolder);
+                    }
+
+                    foreach (var file in Directory.GetFiles(extractedCovers))
+                    {
+                        string fileName = Path.GetFileName(file);
+                        string destPath = Path.Combine(_coversFolder, fileName);
+                        if (File.Exists(destPath))
+                        {
+                            File.Delete(destPath);
+                        }
+                        File.Move(file, destPath);
+                    }
                 }
 
                 // Cleanup

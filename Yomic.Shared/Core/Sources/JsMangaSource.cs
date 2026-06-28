@@ -27,11 +27,19 @@ namespace Yomic.Core.Sources
         private bool _isNsfw = false;
         private bool _isHasMorePages = true;
         private bool _requiresProxy = false;
+        private string? _userAgent = null;
 
         private readonly SemaphoreSlim _executionLimit = new(4, 4);
         private string _scriptCode = "";
         private bool _supportsStatusFilter;
         private long _id;
+
+        private static string _selectedLanguage = "en";
+        public static string SelectedLanguage
+        {
+            get => _selectedLanguage;
+            set => _selectedLanguage = value;
+        }
 
         public override string Name => _name;
         public override string BaseUrl => _baseUrl;
@@ -46,6 +54,16 @@ namespace Yomic.Core.Sources
         public override bool IsHasMorePages => _isHasMorePages;
         public bool SupportsStatusFilter => _supportsStatusFilter;
         public override bool RequiresProxy => _requiresProxy;
+
+        protected override void ConfigureClient(System.Net.Http.HttpClient client)
+        {
+            base.ConfigureClient(client);
+            if (!string.IsNullOrEmpty(_userAgent))
+            {
+                client.DefaultRequestHeaders.UserAgent.Clear();
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(_userAgent);
+            }
+        }
 
         public JsMangaSource(string scriptPath)
         {
@@ -82,9 +100,15 @@ namespace Yomic.Core.Sources
                 }
                 if (obj.HasProperty("iconBackground")) _iconBackground = obj.Get("iconBackground").AsString();
                 if (obj.HasProperty("iconForeground")) _iconForeground = obj.Get("iconForeground").AsString();
-                if (obj.HasProperty("isNsfw")) _isNsfw = obj.Get("isNsfw").AsBoolean();
                 if (obj.HasProperty("isHasMorePages")) _isHasMorePages = obj.Get("isHasMorePages").AsBoolean();
-                if (obj.HasProperty("requiresProxy")) _requiresProxy = obj.Get("requiresProxy").AsBoolean();
+                if (obj.HasProperty("isNsfw")) _isNsfw = obj.Get("isNsfw").AsBoolean();
+                 if (obj.HasProperty("requiresProxy")) _requiresProxy = obj.Get("requiresProxy").AsBoolean();
+                 if (obj.HasProperty("userAgent")) _userAgent = obj.Get("userAgent").AsString();
+
+                 if (string.IsNullOrEmpty(_userAgent) && (_name.Contains("MangaDex", StringComparison.OrdinalIgnoreCase) || _baseUrl.Contains("mangadex.org", StringComparison.OrdinalIgnoreCase)))
+                 {
+                     _userAgent = "Yomic/1.0.3";
+                 }
 
                 var idVal = obj.Get("id");
                 if (idVal.IsNumber())
@@ -114,6 +138,7 @@ namespace Yomic.Core.Sources
             engine.SetValue("log", new Action<object>(o => Console.WriteLine($"[JS Extension Log] {o}")));
 
             engine.Execute(_scriptCode);
+            engine.Execute($"if (typeof source === 'object' && source !== null) {{ source.selectedLanguage = '{_selectedLanguage}'; }}");
             engine.Execute(@"
                 globalThis.__callMethod = function(methodName, ...args) {
                     return source[methodName].apply(source, args);
@@ -212,6 +237,7 @@ namespace Yomic.Core.Sources
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[JsMangaSource] Fetch failed for {url}. Error: {ex}");
                 return new JsResponse { body = ex.Message, status = 500 };
             }
         }
@@ -317,11 +343,17 @@ namespace Yomic.Core.Sources
                 if (jsResult.IsObject())
                 {
                     var obj = jsResult.AsObject();
+                    var thumbUrl = GetSafeString(obj, "thumbnailUrl");
+                    if (!string.IsNullOrEmpty(thumbUrl) && !string.IsNullOrEmpty(_userAgent) && !thumbUrl.Contains("|UserAgent="))
+                    {
+                        thumbUrl += $"|UserAgent={_userAgent}";
+                    }
+
                     return new Manga
                     {
                         Title = GetSafeString(obj, "title"),
                         Url = GetSafeString(obj, "url"),
-                        ThumbnailUrl = GetSafeString(obj, "thumbnailUrl"),
+                        ThumbnailUrl = thumbUrl,
                         Author = GetSafeString(obj, "author"),
                         Status = (int)GetSafeNumber(obj, "status"),
                         Description = GetSafeString(obj, "description"),
@@ -368,7 +400,7 @@ namespace Yomic.Core.Sources
                 if (!hasMethod) return new List<string>();
 
                 var jsResult = engine.Invoke("__callMethod", "getPageList", chapterUrl);
-                return ParseStringListFromJs(jsResult);
+                return ParseStringListFromJs(jsResult, true);
             });
         }
 
@@ -395,11 +427,17 @@ namespace Yomic.Core.Sources
                     if (item.IsObject())
                     {
                         var obj = item.AsObject();
+                        var thumbUrl = GetSafeString(obj, "thumbnailUrl");
+                        if (!string.IsNullOrEmpty(thumbUrl) && !string.IsNullOrEmpty(_userAgent) && !thumbUrl.Contains("|UserAgent="))
+                        {
+                            thumbUrl += $"|UserAgent={_userAgent}";
+                        }
+
                         list.Add(new Manga
                         {
                             Title = GetSafeString(obj, "title"),
                             Url = GetSafeString(obj, "url"),
-                            ThumbnailUrl = GetSafeString(obj, "thumbnailUrl"),
+                            ThumbnailUrl = thumbUrl,
                             Status = obj.Get("status").IsNumber() ? (int)obj.Get("status").AsNumber() : Manga.UNKNOWN,
                             Source = Id
                         });
@@ -409,7 +447,7 @@ namespace Yomic.Core.Sources
             return list;
         }
 
-        private List<string> ParseStringListFromJs(JsValue jsResult)
+        private List<string> ParseStringListFromJs(JsValue jsResult, bool isUrlList = false)
         {
             var list = new List<string>();
             if (jsResult.IsArray())
@@ -417,7 +455,12 @@ namespace Yomic.Core.Sources
                 var arr = jsResult.AsArray();
                 for (int i = 0; i < arr.Length; i++)
                 {
-                    list.Add(GetSafeString(arr.Get(i)));
+                    var pageUrl = GetSafeString(arr.Get(i));
+                    if (isUrlList && !string.IsNullOrEmpty(pageUrl) && !string.IsNullOrEmpty(_userAgent) && !pageUrl.Contains("|UserAgent="))
+                    {
+                        pageUrl += $"|UserAgent={_userAgent}";
+                    }
+                    list.Add(pageUrl);
                 }
             }
             return list;

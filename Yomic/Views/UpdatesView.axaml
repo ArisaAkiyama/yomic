@@ -61,11 +61,6 @@
                             <TextBlock Text="Updates" FontSize="28" FontWeight="Bold" 
                                        Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
                             
-                            <!-- Count Badge -->
-                             <Border Background="{DynamicResource ControlBackground}" CornerRadius="10" Padding="10,3" IsVisible="{Binding HasItems}" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding UpdatesCount, StringFormat='{}{0} New Chapters'}" 
-                                           Foreground="{DynamicResource SecondaryText}" FontSize="11" VerticalAlignment="Center" FontWeight="Medium"/>
-                            </Border>
                         </StackPanel>
 
                         <!-- Right Side: Actions -->
@@ -89,7 +84,18 @@
                             </Button>
                         </StackPanel>
                     </Grid>
-                    <TextBlock Text="Recent chapters from your library" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" FontSize="13" Opacity="0.8"/>
+                    <!-- Global Update Education Warning -->
+                    <Border IsVisible="False" Background="#1AFFB900" BorderBrush="#FFB900" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,15,0,0">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons" Foreground="#FFB900" FontSize="14" VerticalAlignment="Center" Margin="0,0,0,0"/>
+                            <TextBlock Text="Hindari sinkronisasi massal berlebihan untuk mencegah pemblokiran IP oleh proteksi bot (seperti Cloudflare)."
+                                       Foreground="{DynamicResource PrimaryText}"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Center"
+                                       LineHeight="16"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- Scrollable Content -->

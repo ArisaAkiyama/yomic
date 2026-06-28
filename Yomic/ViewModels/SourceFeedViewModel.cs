@@ -191,6 +191,18 @@ namespace Yomic.ViewModels
         public string LanguageCode => IsEnglish ? "EN" : "ID";
         public Bitmap? LanguageFlagBitmap => IsEnglish ? _gbFlag : _idFlag;
         public ReactiveCommand<Unit, Unit> ToggleLanguageCommand { get; }
+        public ReactiveCommand<Unit, Unit> ToggleViewModeCommand { get; }
+
+        public string IconColor => !string.IsNullOrEmpty(_source.IconBackground) ? _source.IconBackground : "#333333";
+        public string IconForeground => !string.IsNullOrEmpty(_source.IconForeground) ? _source.IconForeground : "White";
+        public string IconText => !string.IsNullOrEmpty(_source.Name) ? _source.Name.Substring(0, 1) : "?";
+        
+        private Bitmap? _iconBitmap;
+        public Bitmap? IconBitmap
+        {
+            get => _iconBitmap;
+            set => this.RaiseAndSetIfChanged(ref _iconBitmap, value);
+        }
 
         private bool _isLatestMode = false; // Default: Directory Mode (false) vs Pustaka Mode (true)
         public bool IsLatestMode 
@@ -200,12 +212,22 @@ namespace Yomic.ViewModels
         }
         public bool IsPaginationVisible => !_isLatestMode && !IsMangaDexBlocked && !IsLoading;
 
+        private bool _isListView;
+        public bool IsListView
+        {
+            get => _isListView;
+            set => this.RaiseAndSetIfChanged(ref _isListView, value);
+        }
+
         private readonly NetworkService _networkService;
+        private readonly Core.Services.SettingsService _settingsService;
         
-        public SourceFeedViewModel(IMangaSource source, MainWindowViewModel mainVm, SourceManager sourceManager, ImageCacheService imageCacheService, NetworkService networkService)
+        public SourceFeedViewModel(IMangaSource source, MainWindowViewModel mainVm, SourceManager sourceManager, ImageCacheService imageCacheService, NetworkService networkService, Core.Services.SettingsService settingsService)
         {
             _source = source;
             _mainVm = mainVm;
+            _settingsService = settingsService;
+            _isListView = _settingsService.LibraryIsListView;
             _sourceManager = sourceManager;
             _imageCacheService = imageCacheService;
             _networkService = networkService; // Store for usage
@@ -219,6 +241,11 @@ namespace Yomic.ViewModels
             {
                 LogService.Error("SourceFeedVM", "Failed to load flag icons", ex);
                 // Fallback or handle nulls if necessary, but for now we assume assets exist
+            }
+
+            if (!string.IsNullOrEmpty(_source.IconUrl))
+            {
+                _ = LoadIconAsync();
             }
 
             SearchCommand = ReactiveCommand.CreateFromTask(async () => await PerformSearch());
@@ -295,6 +322,13 @@ namespace Yomic.ViewModels
                 CurrentPage = 1;
                 // Force refresh to bypass any remaining cache
                 _ = LoadMangaList(append: false, forceRefresh: true);
+            });
+
+            ToggleViewModeCommand = ReactiveCommand.Create(() => 
+            {
+                IsListView = !IsListView;
+                _settingsService.LibraryIsListView = IsListView;
+                _settingsService.Save();
             });
 
             PrevPageCommand = ReactiveCommand.Create(() => 
@@ -986,7 +1020,7 @@ namespace Yomic.ViewModels
                      {
                          if (IsLoading && !_hasShownVpnTip) // Double check
                          {
-                             _mainVm.ShowNotification("Loading taking too long? Try enabling VPN Bypass in Settings.", NotificationType.Warning);
+                             _mainVm.ShowNotification("Loading taking too long? Try enabling DNS over HTTPS in Settings.", NotificationType.Warning);
                              _hasShownVpnTip = true;
                          }
                      });
@@ -1033,6 +1067,59 @@ namespace Yomic.ViewModels
             _idFlag?.Dispose();
 
             System.Diagnostics.Debug.WriteLine("[SourceFeedVM] Disposed and memory references cleared.");
+        }
+
+        private async Task LoadIconAsync()
+        {
+            var url = _source.IconUrl;
+            if (string.IsNullOrEmpty(url)) return;
+
+            try
+            {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var iconsDir = System.IO.Path.Combine(appData, "Yomic", "Icons");
+                if (!System.IO.Directory.Exists(iconsDir)) System.IO.Directory.CreateDirectory(iconsDir);
+
+                var iconFile = System.IO.Path.Combine(iconsDir, $"{_source.Id}.png");
+                byte[] bytes;
+
+                if (System.IO.File.Exists(iconFile))
+                {
+                    bytes = await System.IO.File.ReadAllBytesAsync(iconFile);
+                }
+                else
+                {
+                    if (_source is Core.Sources.HttpSource httpSource && httpSource.CookieContainer.Count > 0)
+                    {
+                        using var handler = new System.Net.Http.HttpClientHandler 
+                        { 
+                            CookieContainer = httpSource.CookieContainer,
+                            UseCookies = true
+                        };
+                        using var client = new System.Net.Http.HttpClient(handler);
+                        client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+                        bytes = await client.GetByteArrayAsync(url);
+                    }
+                    else
+                    {
+                        using var optClient = _networkService.CreateOptimizedHttpClient();
+                        bytes = await optClient.GetByteArrayAsync(url);
+                    }
+                    await System.IO.File.WriteAllBytesAsync(iconFile, bytes);
+                }
+
+                using var stream = new System.IO.MemoryStream(bytes);
+                var bitmap = new Bitmap(stream);
+                
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    IconBitmap = bitmap;
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SourceFeedVM] Icon load failed for {_source.Name}: {ex.Message}");
+            }
         }
     }
 }

@@ -28,7 +28,11 @@
                     <!-- Col 2: Info -->
                     <StackPanel Grid.Column="1" Margin="15,0,10,0" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" FontSize="16"/>
-                        <TextBlock Text="{Binding Version, StringFormat='v{0}'}" Foreground="{DynamicResource SecondaryText}" FontSize="12" Margin="0,2,0,0"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                            <TextBlock Text="{Binding Version, StringFormat='v{0}'}" Foreground="{DynamicResource SecondaryText}" FontSize="12"/>
+                            <TextBlock Text="•" Foreground="{DynamicResource SecondaryText}" FontSize="12" IsVisible="{Binding HasFileSize}"/>
+                            <TextBlock Text="{Binding FileSizeText}" Foreground="{DynamicResource SecondaryText}" FontSize="12" IsVisible="{Binding HasFileSize}"/>
+                        </StackPanel>
                     </StackPanel>
                     
                     <!-- Col 3: Language Flags -->
@@ -284,12 +288,10 @@
                                            RenderOptions.TextRenderingMode="Antialias"/>
                                 <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                                     <TextBlock Text="Extensions" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
-                                    <TextBlock Text="{Binding FilteredExtensions.Count, StringFormat='({0})'}" 
-                                               FontSize="20" Foreground="{DynamicResource SecondaryText}" 
-                                               VerticalAlignment="Bottom" Margin="0,0,0,4"/>
+
                                 </StackPanel>
                             </StackPanel>
-                        <TextBlock Text="Manage manga sources and extensions" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0"/>
+
                     </StackPanel>
                 </Grid>
             </StackPanel>

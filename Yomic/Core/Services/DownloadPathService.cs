@@ -74,6 +74,44 @@ namespace Yomic.Core.Services
             return FindCompletedChapterDirectory(manga, chapter) != null;
         }
 
+        public static bool HasAnyDownloadedChapter(Manga manga)
+        {
+            var mangaDir = GetMangaDirectory(manga);
+            if (!Directory.Exists(mangaDir))
+            {
+                return false;
+            }
+
+            try
+            {
+                return Directory.EnumerateDirectories(mangaDir)
+                    .Any(d => !d.EndsWith(TempSuffix, StringComparison.OrdinalIgnoreCase) && IsCompletedChapterDirectory(d));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static int GetDownloadedChaptersCount(Manga manga)
+        {
+            var mangaDir = GetMangaDirectory(manga);
+            if (!Directory.Exists(mangaDir))
+            {
+                return 0;
+            }
+
+            try
+            {
+                return Directory.EnumerateDirectories(mangaDir)
+                    .Count(d => !d.EndsWith(TempSuffix, StringComparison.OrdinalIgnoreCase) && IsCompletedChapterDirectory(d));
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
         public static IReadOnlyList<string> GetReadableFiles(string chapterDir, bool includeTempDirectory = false)
         {
             if (!Directory.Exists(chapterDir))

@@ -1,4 +1,4 @@
-﻿using Avalonia;
+using Avalonia;
 using Avalonia.ReactiveUI;
 using System;
 
@@ -14,6 +14,30 @@ class Program
     {
         try
         {
+            if (args != null && Array.Exists(args, a => a.Equals("--background-update", StringComparison.OrdinalIgnoreCase)))
+            {
+                // Run Headless Update
+                System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.TextWriterTraceListener(System.Console.Out));
+                System.Diagnostics.Trace.AutoFlush = true;
+                
+                System.Diagnostics.Debug.WriteLine("[Background] Starting headless background library update...");
+                
+                // Initialize core services manually
+                var settingsService = new Core.Services.SettingsService();
+                var networkService = new Core.Services.NetworkService(settingsService);
+                var sourceManager = new Core.Services.SourceManager();
+                var libraryService = new Core.Services.LibraryService();
+                
+                // Block until complete
+                var task = libraryService.UpdateAllLibraryMangaAsync(sourceManager);
+                task.Wait();
+                
+                int updated = task.Result;
+                System.Diagnostics.Debug.WriteLine($"[Background] Finished. {updated} new chapters found.");
+                
+                return; // Exit without building Avalonia app
+            }
+
             // Redirect Debug.WriteLine to Console
             System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.TextWriterTraceListener(System.Console.Out));
             System.Diagnostics.Trace.AutoFlush = true;

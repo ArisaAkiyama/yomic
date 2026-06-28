@@ -1,4 +1,4 @@
-const source = {
+var source = {
     name: "Komiku",
     baseUrl: "https://komiku.org",
     apiUrl: "https://api.komiku.org",
@@ -12,33 +12,133 @@ const source = {
     isHasMorePages: true,
 
     getPopularManga: function(page) {
-        let url = `${this.apiUrl}/manga`;
-        if (page > 1) {
-            url += `/page/${page}`;
-        }
-        url += "?orderby=meta_value_num";
-        
-        let response = fetch(url);
-        if (response.status !== 200) return [];
-        
-        let doc = Html.parse(response.body, url);
-        return this.parseMangaList(doc);
+        return this.getApiMangaPage(page, "?orderby=meta_value_num", 737, "probe-known-end");
+    },
+
+    getLatestUpdates: function(page) {
+        return this.getApiMangaPage(page, "?orderby=modified", 500);
     },
 
     getSearchManga: function(query, page) {
+        let queryString = "";
+        if (query && query.trim() !== "") {
+            queryString = `?s=${encodeURIComponent(query)}`;
+        }
+        return this.getApiMangaPage(page, queryString, 50);
+    },
+
+    getApiMangaPage: function(page, queryString, estimatedPages, totalMode) {
+        const appPageSize = 14;
+        const apiPageSize = 10;
+        let startIndex = (Math.max(1, page) - 1) * appPageSize;
+        let firstApiPage = Math.floor(startIndex / apiPageSize) + 1;
+        let offset = startIndex % apiPageSize;
+        let collected = [];
+        let sourceTotalPages = estimatedPages || 500;
+        let sourceTotalItems = sourceTotalPages * apiPageSize;
+
+        if (totalMode === "probe-known-end") {
+            sourceTotalItems = this.resolveKnownStatusTotalItems(queryString, sourceTotalPages);
+            sourceTotalPages = Math.max(sourceTotalPages, Math.ceil(sourceTotalItems / apiPageSize));
+        }
+
+        for (let sourcePage = firstApiPage; collected.length < appPageSize && sourcePage <= sourceTotalPages; sourcePage++) {
+            let pageResult = this.getRawApiMangaPage(sourcePage, queryString, sourceTotalPages);
+            if (totalMode !== "probe-known-end") {
+                sourceTotalPages = pageResult.totalPages;
+                sourceTotalItems = sourceTotalPages * apiPageSize;
+            }
+
+            let items = pageResult.items;
+            if (sourcePage === firstApiPage && offset > 0) {
+                items = items.slice(offset);
+            }
+
+            collected = collected.concat(items);
+            if (pageResult.items.length === 0) {
+                break;
+            }
+        }
+
+        return {
+            items: collected.slice(0, appPageSize),
+            totalPages: Math.max(1, Math.ceil(sourceTotalItems / appPageSize))
+        };
+    },
+
+    getRawApiMangaPage: function(page, queryString, estimatedPages) {
         let url = `${this.apiUrl}/manga`;
         if (page > 1) {
-            url += `/page/${page}`;
+            url += `/page/${page}/`;
         }
-        if (query && query.trim() !== "") {
-            url += `?s=${encodeURIComponent(query)}`;
-        }
+        url += queryString || "";
         
         let response = fetch(url);
-        if (response.status !== 200) return [];
+        if (response.status !== 200) return { items: [], totalPages: page };
         
         let doc = Html.parse(response.body, url);
-        return this.parseMangaList(doc);
+        let items = this.parseMangaList(doc);
+        
+        // Komiku uses infinite scroll, so exact total pages is not provided.
+        let hasNext = doc.querySelector("[hx-get]") != null;
+        let total = hasNext ? Math.max(page + 1, estimatedPages || 500) : page;
+        
+        return {
+            items: items,
+            totalPages: total
+        };
+    },
+
+    resolveKnownStatusTotalItems: function(queryString, knownLastPage) {
+        const apiPageSize = 10;
+        let lastPage = Math.max(1, knownLastPage || 1);
+        let lastResult = this.getRawApiMangaPage(lastPage, queryString, lastPage);
+        if (lastResult.items.length === 0) {
+            return lastPage * apiPageSize;
+        }
+
+        // Keep the count live without a slow binary search. Most days this only checks
+        // page 58 and 59 for Completed, but it can grow if Komiku adds new completed pages.
+        let safety = 0;
+        while (lastResult.items.length > 0 && lastResult.totalPages > lastPage && safety < 20) {
+            lastPage++;
+            lastResult = this.getRawApiMangaPage(lastPage, queryString, lastPage);
+            safety++;
+            if (lastResult.items.length === 0) {
+                lastPage--;
+                break;
+            }
+        }
+
+        if (lastResult.items.length === 0) {
+            lastResult = this.getRawApiMangaPage(lastPage, queryString, lastPage);
+        }
+
+        return ((lastPage - 1) * apiPageSize) + lastResult.items.length;
+    },
+
+    getMangaList: function(page, status) {
+        if (status === 1 || status === 2 || status === 4) {
+            return this.getStatusMangaList(page, status);
+        }
+        return this.getPopularManga(page);
+    },
+
+    getStatusMangaList: function(page, status) {
+        let statusParam = status === 1 ? "ongoing" : "end";
+        let queryString = `?statusmanga=${statusParam}&orderby=meta_value_num`;
+        let knownApiPages = status === 2 || status === 4 ? 58 : 646;
+        let totalMode = "probe-known-end";
+        
+        let result = this.getApiMangaPage(page, queryString, knownApiPages, totalMode);
+        
+        if (result && result.items) {
+            for (let i = 0; i < result.items.length; i++) {
+                result.items[i].status = status;
+            }
+        }
+        
+        return result;
     },
 
     getMangaDetails: function(url) {
@@ -71,7 +171,7 @@ const source = {
                     if (val.trim() !== "") {
                         description += "\n\nJudul Indonesia: " + val.trim();
                     }
-                } else if (key.includes("Pengarang") || key.includes("Komikus")) {
+                } else if (key.includes("Pengarang") || key.includes("Komikus") || key.includes("Author")) {
                     author = val.trim();
                 } else if (key.includes("Status")) {
                     let statusStr = val.trim().toLowerCase();
@@ -181,6 +281,69 @@ const source = {
             }
         }
         return mangas;
+    },
+
+    parseDirectoryMangaList: function(doc) {
+        let mangas = [];
+        let items = doc.querySelectorAll("article.manga-card");
+        for (let item of items) {
+            let titleEl = item.querySelector("h4 a");
+            let aEl = item.querySelector("a");
+            let imgEl = item.querySelector("img");
+            let metaEl = item.querySelector("p.meta");
+
+            if (titleEl && aEl) {
+                let href = aEl.attr("href");
+                let relativeUrl = href;
+                if (href.startsWith(this.baseUrl)) {
+                    relativeUrl = href.substring(this.baseUrl.length);
+                }
+
+                let status = 0;
+                let metaText = metaEl ? metaEl.text().toLowerCase() : "";
+                if (metaText.includes("status: ongoing")) {
+                    status = 1;
+                } else if (metaText.includes("status: end") || metaText.includes("status: tamat") || metaText.includes("status: completed")) {
+                    status = 2;
+                }
+
+                let thumbnailUrl = "";
+                if (imgEl) {
+                    thumbnailUrl = imgEl.absUrl("data-src");
+                    if (!thumbnailUrl) thumbnailUrl = imgEl.absUrl("src");
+                }
+
+                mangas.push({
+                    title: titleEl.text().trim(),
+                    url: relativeUrl,
+                    thumbnailUrl: thumbnailUrl,
+                    status: status
+                });
+            }
+        }
+        return mangas;
+    },
+
+    parseTotalPages: function(doc, currentPage) {
+        let pageInfoEls = doc.querySelectorAll(".page-info");
+        for (let el of pageInfoEls) {
+            let text = el.text();
+            let match = text.match(/Halaman\s+\d+\s+dari\s+(\d+)/i);
+            if (match) {
+                return parseInt(match[1]);
+            }
+        }
+
+        let maxPage = currentPage;
+        let links = doc.querySelectorAll(".pagination a");
+        for (let link of links) {
+            let text = link.text().trim();
+            let value = parseInt(text);
+            if (!isNaN(value) && value > maxPage) {
+                maxPage = value;
+            }
+        }
+        return maxPage;
     },
 
     parseDate: function(dateStr) {

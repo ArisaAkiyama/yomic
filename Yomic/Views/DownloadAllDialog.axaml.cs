@@ -11,13 +11,32 @@ namespace Yomic.Views
             InitializeComponent();
         }
 
+        private DownloadAllDialogInfo _info;
+
         public DownloadAllDialog(DownloadAllDialogInfo info) : this()
         {
+            _info = info;
             MangaTitleText.Text = info.MangaTitle;
             TotalCountText.Text = info.TotalChapters.ToString();
             MissingCountText.Text = info.NotDownloadedCount.ToString();
             UnreadCountText.Text = info.UnreadNotDownloadedCount.ToString();
             UnreadOption.IsEnabled = info.UnreadNotDownloadedCount > 0;
+
+            NotDownloadedOption.IsCheckedChanged += OnOptionChanged;
+            UnreadOption.IsCheckedChanged += OnOptionChanged;
+            
+            UpdateWarningVisibility();
+        }
+
+        private void OnOptionChanged(object? sender, RoutedEventArgs e)
+        {
+            UpdateWarningVisibility();
+        }
+
+        private void UpdateWarningVisibility()
+        {
+            int toDownload = UnreadOption.IsChecked == true ? _info.UnreadNotDownloadedCount : _info.NotDownloadedCount;
+            BulkWarningBorder.IsVisible = toDownload > 20;
         }
 
         private void OnCancelClick(object? sender, RoutedEventArgs e)

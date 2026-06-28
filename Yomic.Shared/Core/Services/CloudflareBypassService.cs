@@ -18,6 +18,9 @@ namespace Yomic.Core.Services
         // Store full cookie data (with domain info) from interactive sessions
         private List<CookieParam> _savedCookieParams = new List<CookieParam>();
 
+        private readonly System.Threading.SemaphoreSlim _initLock = new System.Threading.SemaphoreSlim(1, 1);
+
+
         public IReadOnlyList<CookieParam> SavedCookies => _savedCookieParams;
         public string? BypassUserAgent => _userAgent;
 
@@ -50,8 +53,11 @@ namespace Yomic.Core.Services
         {
             if (_browser != null) return;
 
+            await _initLock.WaitAsync();
             try 
             {
+                if (_browser != null) return;
+
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 var downloadPath = System.IO.Path.Combine(appData, "Yomic", "puppeteer");
                 
@@ -98,6 +104,10 @@ namespace Yomic.Core.Services
                 Console.WriteLine($"[CloudflareService] CRITICAL INIT ERROR: {ex.Message}");
                 Console.WriteLine(ex.StackTrace);
                 throw; // Rethrow to ensure caller knows, but logged first
+            }
+            finally
+            {
+                _initLock.Release();
             }
         }
 

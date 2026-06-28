@@ -10,11 +10,19 @@
 
     <Grid>
         <!-- LAYER 2: INTERACTIVE CONTENT (Scrollable) -->
-        <ListBox ItemsSource="{Binding DisplayItems}" 
+        <ListBox x:Name="ChaptersListBox"
+                 ItemsSource="{Binding DisplayItems}" 
                  Background="{DynamicResource PrimaryBackground}" 
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  Padding="0,0,0,50">
             
+            <!-- Disable virtualization to prevent scroll jumps with the large header item -->
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel/>
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+
             <ListBox.Styles>
                 <!-- Clear default ListBox styles -->
                 <Style Selector="ListBoxItem">
@@ -278,15 +286,59 @@
                         </StackPanel>
 
                         <!-- Chapters Divider -->
-                         <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,35,0,15" ColumnDefinitions="Auto, *, Auto">
+                         <Grid x:Name="ChaptersDivider" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,35,0,15" ColumnDefinitions="Auto, *, Auto">
                              <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                                  <TextBlock Text="Chapters" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
                                  <Border Background="#20FFFFFF" CornerRadius="12" Padding="8,2" VerticalAlignment="Center">
-                                     <TextBlock Text="{Binding ViewModel.Chapters.Count}" Foreground="{DynamicResource SecondaryText}" FontWeight="Bold" FontSize="12"/>
+                                     <TextBlock Text="{Binding ViewModel.VisibleChaptersCount}" Foreground="{DynamicResource SecondaryText}" FontWeight="Bold" FontSize="12"/>
                                  </Border>
                              </StackPanel>
                                         
-                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
+                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+
+
+                                 <!-- Filter Menu -->
+                                 <Button Background="#011E1E2E" BorderThickness="0" Padding="8,4">
+                                     <Button.Flyout>
+                                         <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                             <MenuItem Header="All Chapters" Command="{Binding ViewModel.SetChapterFilterCommand}" CommandParameter="All">
+                                                 <MenuItem.Icon>
+                                                     <TextBlock Text="&#xE8B9;" FontFamily="Segoe Fluent Icons" IsVisible="{Binding ViewModel.IsFilterAll}" />
+                                                 </MenuItem.Icon>
+                                             </MenuItem>
+                                             <MenuItem Header="Unread Only" Command="{Binding ViewModel.SetChapterFilterCommand}" CommandParameter="Unread">
+                                                 <MenuItem.Icon>
+                                                     <TextBlock Text="&#xE8B9;" FontFamily="Segoe Fluent Icons" IsVisible="{Binding ViewModel.IsFilterUnread}" />
+                                                 </MenuItem.Icon>
+                                             </MenuItem>
+                                             <MenuItem Header="Bookmarked Only" Command="{Binding ViewModel.SetChapterFilterCommand}" CommandParameter="Bookmarked">
+                                                 <MenuItem.Icon>
+                                                     <TextBlock Text="&#xE8B9;" FontFamily="Segoe Fluent Icons" IsVisible="{Binding ViewModel.IsFilterBookmarked}" />
+                                                 </MenuItem.Icon>
+                                             </MenuItem>
+                                         </MenuFlyout>
+                                     </Button.Flyout>
+                                     <Button.Styles>
+                                         <Style Selector="Button">
+                                             <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                                         </Style>
+                                         <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                             <Setter Property="Background" Value="Transparent"/>
+                                             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                                         </Style>
+                                          <Style Selector="Button:pointerover">
+                                              <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                                          </Style>
+                                         <Style Selector="Button:pressed /template/ ContentPresenter">
+                                             <Setter Property="Background" Value="Transparent"/>
+                                         </Style>
+                                     </Button.Styles>
+                                     <StackPanel Orientation="Horizontal" Spacing="6">
+                                         <TextBlock Text="&#xE71C;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                                     </StackPanel>
+                                 </Button>
+
+                                 <!-- Sort Button -->
                                  <Button Command="{Binding ViewModel.ToggleSortCommand}" 
                                          Background="#011E1E2E" BorderThickness="0"
                                          Padding="8,4">
@@ -377,10 +429,34 @@
                                 </Border>
                             </StackPanel>
 
-                            
+                            <!-- Bookmark Toggle Button -->
+                            <Panel Grid.Column="2" Margin="0,0,5,0" IsHitTestVisible="True" VerticalAlignment="Center">
+                                <Button Command="{Binding ToggleBookmarkCommand}" Background="Transparent" 
+                                        Padding="8" BorderThickness="0" CornerRadius="8" ToolTip.Tip="Toggle Bookmark">
+                                    <Button.Styles>
+                                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                        </Style>
+                                        <Style Selector="Button:pointerover">
+                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryAccent}"/>
+                                        </Style>
+                                    </Button.Styles>
+                                    <Panel>
+                                        <!-- Outline Icon if NOT bookmarked -->
+                                        <TextBlock Text="&#xE8A4;" FontFamily="Segoe Fluent Icons" FontSize="16"
+                                                   Foreground="{DynamicResource SecondaryText}"
+                                                   IsVisible="{Binding !Bookmark}"/>
+                                        <!-- Filled Icon if Bookmarked -->
+                                        <TextBlock Text="&#xE8A4;" FontFamily="Segoe Fluent Icons" FontSize="16"
+                                                   Foreground="{DynamicResource PrimaryAccent}"
+                                                   IsVisible="{Binding Bookmark}"/>
+                                    </Panel>
+                                </Button>
+                            </Panel>
+
                             <!-- Action Buttons Panel (Capture Clicks) -->
                             <!-- IsHitTestVisible="True" on Panel to capture clicks for buttons inside -->
-                            <Panel Grid.Column="2" Margin="15,0" IsHitTestVisible="True" VerticalAlignment="Center">
+                            <Panel Grid.Column="3" Margin="0,0,15,0" IsHitTestVisible="True" VerticalAlignment="Center">
                                 <!-- Download Button (Visible when NOT downloaded) -->
                                 <Button Command="{Binding DownloadCommand}" Background="Transparent" 
                                         IsVisible="{Binding !IsDownloaded}"
@@ -434,15 +510,127 @@
             </ListBox.DataTemplates>
         </ListBox>
         
-
-        
-        <!-- Loading Overlay -->
-        <Border Background="#80000000" IsVisible="{Binding IsLoadingChapters}">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
-                 <helpers:LoadingArcs Margin="0,0,0,10"/>
-                 <TextBlock Text="Loading Chapters..." Foreground="White" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
-            </StackPanel>
+        <!-- STICKY HEADER -->
+        <Border x:Name="StickyHeader" 
+                Background="{DynamicResource PrimaryBackground}" 
+                Height="65"
+                VerticalAlignment="Top"
+                IsVisible="False"
+                ZIndex="5">
+            <Grid Margin="40,15,40,15" ColumnDefinitions="Auto, *, Auto">
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <TextBlock Text="Chapters" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryText}"/>
+                    <Border Background="#20FFFFFF" CornerRadius="12" Padding="8,2" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Chapters.Count}" Foreground="{DynamicResource SecondaryText}" FontWeight="Bold" FontSize="12"/>
+                    </Border>
+                </StackPanel>
+                           
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <!-- Sort Button -->
+                    <Button Command="{Binding ToggleSortCommand}" 
+                            Background="#011E1E2E" BorderThickness="0"
+                            Padding="8,4">
+                        <Button.Styles>
+                            <Style Selector="Button">
+                                <Setter Property="Foreground" Value="{DynamicResource SecondaryText}"/>
+                            </Style>
+                            <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                            </Style>
+                             <Style Selector="Button:pointerover">
+                                 <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                             </Style>
+                            <Style Selector="Button:pressed /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                        </Button.Styles>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="&#xE8CB;" FontFamily="Segoe Fluent Icons"
+                                       Foreground="{Binding $parent[Button].Foreground}"/>
+                            <TextBlock Text="{Binding SortAscending, Converter={x:Static vm:StatusToColorConverter.SortToString}}" 
+                                       FontSize="12"
+                                       Foreground="{Binding $parent[Button].Foreground}"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
         </Border>
+        
+        <!-- Loading Overlay (Premium Skeleton Shimmer) -->
+        <Grid IsVisible="{Binding IsLoadingChapters}" Background="{DynamicResource PrimaryBackground}">
+            <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+                <Grid>
+                    <!-- FAKE HEADER -->
+                    <Grid Height="650" VerticalAlignment="Top">
+                         <helpers:SkeletonCard CornerRadius="0" Margin="-100"/>
+                         <Rectangle Fill="Black" Opacity="0.2"/>
+                         <Rectangle Fill="{DynamicResource MangaFadeGradient}"/>
+                    </Grid>
+                    
+                    <Grid RowDefinitions="*, Auto" ColumnDefinitions="Auto, *" Margin="40,100,40,20" VerticalAlignment="Top">
+                        <!-- Fake Cover -->
+                        <helpers:SkeletonCard Grid.Column="0" Width="230" Height="345" CornerRadius="12" Margin="0,0,40,0" VerticalAlignment="Top"/>
+                        
+                        <!-- Fake Info -->
+                        <StackPanel Grid.Column="1" Spacing="0">
+                            <helpers:SkeletonText Width="400" Height="40" Margin="0,0,0,10"/>
+                            
+                            <!-- Fake Author & Status -->
+                            <StackPanel Orientation="Vertical" Spacing="8" Margin="0,0,0,20">
+                                <helpers:SkeletonText Width="180" Height="20"/>
+                                <helpers:SkeletonText Width="120" Height="20"/>
+                                <helpers:SkeletonText Width="140" Height="20"/>
+                            </StackPanel>
+
+                            <!-- Fake Genres -->
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,25">
+                                <helpers:SkeletonCard Width="70" Height="28" CornerRadius="14"/>
+                                <helpers:SkeletonCard Width="90" Height="28" CornerRadius="14"/>
+                                <helpers:SkeletonCard Width="60" Height="28" CornerRadius="14"/>
+                            </StackPanel>
+
+                            <!-- Fake Synopsis -->
+                            <StackPanel Spacing="6" Margin="0,60,0,0">
+                                 <helpers:SkeletonText Width="120" Height="20" Margin="0,0,0,8"/>
+                                 <helpers:SkeletonText Height="16"/>
+                                 <helpers:SkeletonText Height="16"/>
+                                 <helpers:SkeletonText Height="16"/>
+                                 <helpers:SkeletonText Width="250" Height="16"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- FAKE CHAPTERS LIST -->
+                    <StackPanel Margin="40,550,40,20" Spacing="10">
+                        <Grid Margin="0,0,0,15">
+                            <helpers:SkeletonText Width="160" Height="24" HorizontalAlignment="Left"/>
+                        </Grid>
+                        <!-- Fake Chapter Items -->
+                        <helpers:SkeletonCard Height="64" CornerRadius="8" Margin="0,0,0,0"/>
+                        <helpers:SkeletonCard Height="64" CornerRadius="8" Margin="0,0,0,0"/>
+                        <helpers:SkeletonCard Height="64" CornerRadius="8" Margin="0,0,0,0"/>
+                        <helpers:SkeletonCard Height="64" CornerRadius="8" Margin="0,0,0,0"/>
+                        <helpers:SkeletonCard Height="64" CornerRadius="8" Margin="0,0,0,0"/>
+                        <helpers:SkeletonCard Height="64" CornerRadius="8" Margin="0,0,0,0"/>
+                        <helpers:SkeletonCard Height="64" CornerRadius="8" Margin="0,0,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+
+            <!-- Back Button to allow exiting while loading -->
+             <Button Click="OnBackClick" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="20,30,0,0"
+                    Width="40" Height="40" CornerRadius="20" Padding="0"
+                    Background="#30000000" BorderBrush="#20FFFFFF" BorderThickness="1"
+                    Foreground="{DynamicResource PrimaryText}">
+                 <Button.Styles>
+                     <Style Selector="Button:pointerover /template/ ContentPresenter">
+                         <Setter Property="Background" Value="#60000000"/>
+                     </Style>
+                 </Button.Styles>
+                 <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Button>
+        </Grid>
 
         <!-- CAPTCHA Bypass Loading Overlay (Match BrowseView) -->
         <Border Background="#90000000" IsVisible="{Binding IsBypassing}" ZIndex="100">

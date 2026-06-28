@@ -44,6 +44,9 @@
         <DataTemplate DataType="{x:Type vm:UpdatesViewModel}">
             <views:UpdatesView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:UpcomingViewModel}">
+            <views:UpcomingView/>
+        </DataTemplate>
     </Application.DataTemplates>
 
     <Application.Resources>
@@ -218,12 +221,33 @@
             <Setter Property="BorderBrush" Value="#2A8F47"/>
         </Style>
 
-        <Style Selector="Border.Skeleton">
-             <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
-             <Style.Animations>
-                <Animation Duration="0:0:1" IterationCount="Infinite">
-                    <KeyFrame KeyTime="0:0:1">
-                        <Setter Property="RotateTransform.Angle" Value="360"/>
+        <!-- Skeleton Loading Shimmer Animations -->
+        <Style Selector="Border.SkeletonCard">
+            <Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Style.Animations>
+                <Animation Duration="0:0:1.2" IterationCount="Infinite" PlaybackDirection="Alternate" Easing="SineEaseInOut">
+                    <KeyFrame KeyTime="0:0:0">
+                        <Setter Property="Opacity" Value="0.3"/>
+                    </KeyFrame>
+                    <KeyFrame KeyTime="0:0:1.2">
+                        <Setter Property="Opacity" Value="0.7"/>
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+
+        <Style Selector="Border.SkeletonText">
+            <Setter Property="Background" Value="{DynamicResource ControlBackground}"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Height" Value="14"/>
+            <Style.Animations>
+                <Animation Duration="0:0:1.2" IterationCount="Infinite" PlaybackDirection="Alternate" Easing="SineEaseInOut">
+                    <KeyFrame KeyTime="0:0:0">
+                        <Setter Property="Opacity" Value="0.25"/>
+                    </KeyFrame>
+                    <KeyFrame KeyTime="0:0:1.2">
+                        <Setter Property="Opacity" Value="0.6"/>
                     </KeyFrame>
                 </Animation>
             </Style.Animations>

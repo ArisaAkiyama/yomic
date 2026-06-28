@@ -37,6 +37,27 @@ namespace Yomic.ViewModels
         } // 1=Ongoing, 2=Completed, 5=Hiatus, 6=Cancelled
         public int ChapterCount { get; set; } // Total chapters count
         public System.Collections.Generic.List<string> Genres { get; set; } = new();
+        public System.Collections.Generic.List<long> CategoryIds { get; set; } = new();
+
+        private bool _hasDownloadedChapters;
+        public bool HasDownloadedChapters
+        {
+            get => _hasDownloadedChapters;
+            set => this.RaiseAndSetIfChanged(ref _hasDownloadedChapters, value);
+        }
+
+        private int _downloadedCount;
+        public int DownloadedCount
+        {
+            get => _downloadedCount;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _downloadedCount, value);
+                this.RaisePropertyChanged(nameof(IsDownloadedBadgeVisible));
+            }
+        }
+
+        public bool IsDownloadedBadgeVisible => DownloadedCount > 0;
 
         public bool HasUnreadContent => !string.IsNullOrEmpty(UnreadCount) && UnreadCount != "0";
 
@@ -117,14 +138,15 @@ namespace Yomic.ViewModels
     public class MainWindowViewModel : ViewModelBase
     {
         public NotificationViewModel NotificationVM { get; } = new NotificationViewModel();
-        public event Action<Core.Services.UpdateService.UpdateInfo?>? RequestUpdateDialog;
+        private Core.Services.UpdateService.UpdateInfo? _latestUpdateInfo;
+        public Core.Services.UpdateService.UpdateInfo? LatestUpdateInfo
+        {
+            get => _latestUpdateInfo;
+            set => this.RaiseAndSetIfChanged(ref _latestUpdateInfo, value);
+        }
+
         public Action? RequestFeedbackDialog;
         public Action<bool>? RequestThemeChange;
-
-        public void ShowUpdateDialog(Core.Services.UpdateService.UpdateInfo? info = null)
-        {
-            RequestUpdateDialog?.Invoke(info);
-        }
 
         private ViewModelBase? _currentPage;
         public ViewModelBase? CurrentPage
@@ -136,6 +158,7 @@ namespace Yomic.ViewModels
                 this.RaisePropertyChanged(nameof(IsReaderMode));
                 this.RaisePropertyChanged(nameof(IsLibraryActive));
                 this.RaisePropertyChanged(nameof(IsUpdatesActive));
+                this.RaisePropertyChanged(nameof(IsUpcomingActive));
                 this.RaisePropertyChanged(nameof(IsHistoryActive));
                 this.RaisePropertyChanged(nameof(IsDownloadsActive));
                 this.RaisePropertyChanged(nameof(IsBrowseActive));
@@ -149,6 +172,7 @@ namespace Yomic.ViewModels
 
         public bool IsLibraryActive => _currentPage == _libraryVM && _libraryVM != null;
         public bool IsUpdatesActive => _currentPage == _updatesVM && _updatesVM != null;
+        public bool IsUpcomingActive => _currentPage == _upcomingVM && _upcomingVM != null;
         public bool IsHistoryActive => _currentPage == _historyVM && _historyVM != null;
         public bool IsDownloadsActive => _currentPage == _downloadsVM && _downloadsVM != null;
         public bool IsBrowseActive => _currentPage == _browseVM && _browseVM != null;
@@ -369,13 +393,32 @@ namespace Yomic.ViewModels
             }
             
             // Auto Update from Web when Sidebar button is clicked
-            UpdatesVM.RefreshCommand.Execute().Subscribe();
+            // UpdatesVM.RefreshCommand.Execute().Subscribe();
+        }
+
+        private UpcomingViewModel? _upcomingVM;
+        public UpcomingViewModel UpcomingVM
+        {
+            get => _upcomingVM ??= new UpcomingViewModel(_libraryService, this);
+        }
+
+        public void GoToUpcoming()
+        {
+            if (CurrentPage != UpcomingVM)
+            {
+                var oldPage = CurrentPage;
+                ClearStack();
+                _upcomingVM = null;
+                CurrentPage = UpcomingVM;
+                DisposeDelayed(oldPage);
+                _ = UpcomingVM.LoadUpcomingAsync();
+            }
         }
 
         private HistoryViewModel? _historyVM;
         public HistoryViewModel HistoryVM
         {
-            get => _historyVM ??= new HistoryViewModel(_libraryService, _networkService, _sourceManager, this);
+            get => _historyVM ??= new HistoryViewModel(_libraryService, _networkService, _sourceManager, _settingsService, this);
         }
 
         public void GoToHistory()
@@ -454,7 +497,7 @@ namespace Yomic.ViewModels
             }
         } 
 
-        public async void CheckFirstRun()
+        public void CheckFirstRun()
         {
             if (IsFirstRun)
             {
@@ -463,38 +506,42 @@ namespace Yomic.ViewModels
             else
             {
                 CurrentPage = LibraryVM;
-                
-                     // App Update Check
-                     if (_settingsService.CheckAppUpdateOnStart)
-                     {
-                         var updateService = new Core.Services.UpdateService();
-                         try
-                         {
-                             var updateInfo = await updateService.CheckForUpdatesAsync();
-                             if (updateInfo.IsUpdateAvailable)
-                             {
-                                 RequestUpdateDialog?.Invoke(updateInfo);
-                             }
-                         }
-                         catch {}
-                     }
+            }
+        }
 
-                // Check if we need to update library on startup
-                if (_settingsService.UpdateOnStart)
+        public async Task RunStartupTasksAsync()
+        {
+            if (IsFirstRun) return;
+
+            // App Update Check
+            if (_settingsService.CheckAppUpdateOnStart)
+            {
+                var updateService = new Core.Services.UpdateService();
+                try
                 {
-                    ShowNotification("Updating library...");
-                    int count = await _libraryService.UpdateAllLibraryMangaAsync(_sourceManager);
-                    if (count > 0)
+                    var updateInfo = await updateService.CheckForUpdatesAsync();
+                    if (updateInfo.IsUpdateAvailable)
                     {
-                        ShowNotification($"Library updated: {count} manga refreshed.");
-                        // Refresh library view
-                        _ = LibraryVM.RefreshLibrary();
+                        LatestUpdateInfo = updateInfo;
+                        ShowNotification($"Update Available: {updateInfo.LatestVersion}", NotificationType.Success);
                     }
-                    else
-                    {
-                         // Optional: Show "No updates found" or just silent
-                         // ShowNotification("Library up to date.");
-                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Update] Startup check failed: {ex.Message}");
+                }
+            }
+
+            // Check if we need to update library on startup
+            if (_settingsService.UpdateOnStart)
+            {
+                ShowNotification("Updating library...");
+                int count = await _libraryService.UpdateAllLibraryMangaAsync(_sourceManager);
+                if (count > 0)
+                {
+                    ShowNotification($"Library updated: {count} manga refreshed.");
+                    // Refresh library view
+                    _ = LibraryVM.RefreshLibrary();
                 }
             }
         }

@@ -441,16 +441,12 @@ namespace Yomic.Core.Services
                             var customHeaders = new Dictionary<string, string>();
                             if (pageUrl.Contains("|"))
                             {
-                                var parts = pageUrl.Split('|', 2);
+                                var parts = pageUrl.Split(new[] { '|', '&' }, StringSplitOptions.RemoveEmptyEntries);
                                 requestUrl = parts[0];
-                                if (parts.Length > 1)
+                                for (int j = 1; j < parts.Length; j++)
                                 {
-                                    var headers = parts[1].Split('&');
-                                    foreach(var h in headers)
-                                    {
-                                         var pair = h.Split('=', 2);
-                                         if (pair.Length == 2) customHeaders[pair[0].Trim()] = pair[1].Trim();
-                                    }
+                                    var pair = parts[j].Split(new[] { '=' }, 2);
+                                    if (pair.Length == 2) customHeaders[pair[0].Trim()] = pair[1].Trim();
                                 }
                             }
 
@@ -482,6 +478,7 @@ namespace Yomic.Core.Services
                                             if (customHeaders.ContainsKey("Referer")) req.Headers.Referrer = new Uri(customHeaders["Referer"]);
 
                                             if (customHeaders.ContainsKey("User-Agent")) req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
+                                            else if (customHeaders.ContainsKey("UserAgent")) req.Headers.UserAgent.TryParseAdd(customHeaders["UserAgent"]);
                                             else req.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
 
                                             using var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, pageCts.Token);

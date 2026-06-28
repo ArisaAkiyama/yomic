@@ -30,7 +30,7 @@
 ### Unlimited Sources (Extensions)
 - **Plugin Architecture**: Support for varied sources via external DLL extensions.
 - **Supported Sources**:
-  - **Global / English**: MangaDex, Mangabats, Weebcentral, NHentai
+  - **Global / English**: Mangabats, Weebcentral, NHentai
   - **Indonesian**: Aarlas, AstralScans, ComicAzen, Kiryuu, KomikCast, KomikStation, Komiku, Kuromanga, Luvyaa, Maid, ManhwaIndo, WestManga
 - **Grouped Extensions View**: Clear categorization between **Installed** (currently active) and **Available** (remotely hosted, ready to download) extensions with dynamic badges and counts.
 
@@ -44,7 +44,7 @@
 ### Performance & Utilities (QoL)
 - **Auto-Clean Cache Limits**: Configurable max reader cache size (Disabled, 250MB, 500MB, 1GB, 2GB). Automatically clears the oldest cached pages using a Write-Time LRU-style cleanup upon exiting the reader or updating settings.
 - **Offline Mode**: Full offline mode support that switches UI cleanly to local-only files with dedicated offline indicator screens.
-- **VPN Bypass**: Integrated secure headers and sing-box proxy client support to bypass regional ISP blocks (e.g. for MangaDex in Indonesia).
+- **VPN Bypass**: Integrated secure headers and sing-box proxy client support to bypass regional ISP blocks.
 - **Auto-Update**: Built-in update checker checks for app releases on startup.
 
 ---

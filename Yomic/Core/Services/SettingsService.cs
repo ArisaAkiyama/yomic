@@ -29,6 +29,7 @@ namespace Yomic.Core.Services
 
         public bool SecureScreen { get; set; } = false;
         public bool UpdateOnStart { get; set; } = false;
+        public int AutoUpdateIntervalHours { get; set; } = 0; // 0 = Disabled
         public bool CheckAppUpdateOnStart { get; set; } = true;
         public bool IsFirstRun { get; set; } = true;
         public int LibrarySortMode { get; set; } = 0; // 0=TitleAsc, 1=TitleDesc, 2=DateModified
@@ -36,6 +37,11 @@ namespace Yomic.Core.Services
         public int DnsOverHttpsProvider { get; set; } = 2; // 0=None, 1=Cloudflare, 2=Google, 3=AdGuard
         public bool PreloadNextChapter { get; set; } = true;
         public int MaxCacheSizeMb { get; set; } = 500;
+        public bool ReaderPerformanceMode { get; set; } = false;
+        public bool UseSmartUpdate { get; set; } = true;
+        public bool LibraryIsListView { get; set; } = false;
+        public bool AutoDownloadNextChapter { get; set; } = false;
+        public bool SkipFilteredChapters { get; set; } = false;
 
         public SettingsService()
         {
@@ -72,6 +78,11 @@ namespace Yomic.Core.Services
                         DnsOverHttpsProvider = settings.DnsOverHttpsProvider;
                         PreloadNextChapter = settings.PreloadNextChapter;
                         MaxCacheSizeMb = settings.MaxCacheSizeMb;
+                        ReaderPerformanceMode = settings.ReaderPerformanceMode;
+                        UseSmartUpdate = settings.UseSmartUpdate;
+                        LibraryIsListView = settings.LibraryIsListView;
+                        AutoDownloadNextChapter = settings.AutoDownloadNextChapter;
+                        SkipFilteredChapters = settings.SkipFilteredChapters;
                     }
                 }
             }
@@ -97,7 +108,12 @@ namespace Yomic.Core.Services
                     ShowNsfwSources = ShowNsfwSources,
                     DnsOverHttpsProvider = DnsOverHttpsProvider,
                     PreloadNextChapter = PreloadNextChapter,
-                    MaxCacheSizeMb = MaxCacheSizeMb
+                    MaxCacheSizeMb = MaxCacheSizeMb,
+                    ReaderPerformanceMode = ReaderPerformanceMode,
+                    UseSmartUpdate = UseSmartUpdate,
+                    LibraryIsListView = LibraryIsListView,
+                    AutoDownloadNextChapter = AutoDownloadNextChapter,
+                    SkipFilteredChapters = SkipFilteredChapters
                 };
 
                 var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
@@ -130,6 +146,11 @@ namespace Yomic.Core.Services
                 DnsOverHttpsProvider = 2;
                 PreloadNextChapter = true;
                 MaxCacheSizeMb = 500;
+                ReaderPerformanceMode = false;
+                UseSmartUpdate = true;
+                LibraryIsListView = false;
+                AutoDownloadNextChapter = false;
+                SkipFilteredChapters = false;
             }
             catch (Exception ex)
             {
@@ -151,6 +172,11 @@ namespace Yomic.Core.Services
             public int DnsOverHttpsProvider { get; set; } = 2;
             public bool PreloadNextChapter { get; set; } = true;
             public int MaxCacheSizeMb { get; set; } = 500;
+            public bool ReaderPerformanceMode { get; set; } = false;
+            public bool UseSmartUpdate { get; set; } = true;
+            public bool LibraryIsListView { get; set; } = false;
+            public bool AutoDownloadNextChapter { get; set; } = false;
+            public bool SkipFilteredChapters { get; set; } = false;
         }
     }
 }

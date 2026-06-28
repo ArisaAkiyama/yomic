@@ -31,6 +31,19 @@ namespace Yomic.ViewModels
         public string Description { get; set; } = "";
         public string? FilePath { get; set; } // Path for uninstalled extensions
         public string? DownloadUrl { get; set; } // Raw URL from GitHub
+
+        private string _fileSizeText = "";
+        public string FileSizeText
+        {
+            get => _fileSizeText;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _fileSizeText, value);
+                this.RaisePropertyChanged(nameof(HasFileSize));
+            }
+        }
+
+        public bool HasFileSize => !string.IsNullOrEmpty(FileSizeText);
         
         // Multi-Language Support
         public ObservableCollection<Bitmap> LanguageFlags { get; } = new();
@@ -112,6 +125,20 @@ namespace Yomic.ViewModels
         private readonly SourceManager _sourceManager;
         private readonly MainWindowViewModel _mainVM;
         private static readonly HttpClient _httpClient = new HttpClient();
+
+        public static string FormatBytes(long bytes)
+        {
+            if (bytes <= 0) return "";
+            string[] suffixes = { "B", "KB", "MB", "GB" };
+            int counter = 0;
+            decimal number = bytes;
+            while (Math.Round(number / 1024) >= 1 && counter < suffixes.Length - 1)
+            {
+                number /= 1024;
+                counter++;
+            }
+            return string.Format("{0:0.#} {1}", number, suffixes[counter]);
+        }
         
         private static readonly HashSet<string> IndonesianExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -350,6 +377,12 @@ namespace Yomic.ViewModels
                 stableId = cleanName.GetHashCode();
             }
 
+            long size = 0;
+            if (file.TryGetProperty("size", out var sizeProp) && sizeProp.ValueKind == System.Text.Json.JsonValueKind.Number)
+            {
+                size = sizeProp.GetInt64();
+            }
+
             var extItem = new ExtensionItem
             {
                 Id = stableId,
@@ -359,7 +392,8 @@ namespace Yomic.ViewModels
                 DownloadUrl = downloadUrl,
                 IconText = cleanName.Substring(0, 1),
                 Version = "Latest",
-                Language = lang
+                Language = lang,
+                FileSizeText = size > 0 ? FormatBytes(size) : ""
             };
 
             LoadLanguageFlags(extItem);
@@ -426,10 +460,13 @@ namespace Yomic.ViewModels
                     
                     // IsInstalled = TRUE if in AppData/ProgramFiles, FALSE if just loaded from a temporary path
                     IsInstalled = _sourceManager.IsInstalledSource(source.Id),
+                    FilePath = _sourceManager.GetSourcePath(source.Id),
                     
                     SourceInstance = source,
                     CanVerify = canVerify
                 };
+
+
 
                 // If NOT installed, show path in description
                 if (!extItem.IsInstalled)

@@ -163,11 +163,6 @@ namespace Yomic.ViewModels
                      _mainViewModel.ShowNotification($"Downloaded: {e.Chapter.Name}");
                  }
                  
-                 if (e.Status == "Completed")
-                 {
-                     _mainViewModel.ShowNotification($"Downloaded: {e.Chapter.Name}");
-                 }
-                 
                  // Removed Manual IsDownloading calculation (Handled by Service Event)
              });
         }

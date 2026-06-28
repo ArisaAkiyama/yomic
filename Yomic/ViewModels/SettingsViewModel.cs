@@ -14,8 +14,72 @@ namespace Yomic.ViewModels
 
         private readonly MainWindowViewModel _mainViewModel;
 
-        // Event to request showing the update dialog
-        public event Action? RequestUpdateDialog;
+        public enum UpdateStatus
+        {
+            Idle,
+            Checking,
+            UpdateAvailable,
+            Downloading,
+            Installing,
+            Failed,
+            UpToDate
+        }
+
+        private UpdateStatus _updateState = UpdateStatus.Idle;
+        public UpdateStatus UpdateState
+        {
+            get => _updateState;
+            set 
+            {
+                this.RaiseAndSetIfChanged(ref _updateState, value);
+                this.RaisePropertyChanged(nameof(UpdateStatusText));
+                this.RaisePropertyChanged(nameof(IsUpdateActionEnabled));
+                this.RaisePropertyChanged(nameof(IsDownloadingUpdate));
+                this.RaisePropertyChanged(nameof(IsUpdateAvailableStyle));
+            }
+        }
+
+        public bool IsDownloadingUpdate => UpdateState == UpdateStatus.Downloading;
+        public bool IsUpdateAvailableStyle => UpdateState == UpdateStatus.UpdateAvailable || UpdateState == UpdateStatus.Failed;
+
+        private double _downloadProgress;
+        public double DownloadProgress
+        {
+            get => _downloadProgress;
+            set 
+            {
+                this.RaiseAndSetIfChanged(ref _downloadProgress, value);
+                this.RaisePropertyChanged(nameof(UpdateStatusText));
+            }
+        }
+
+        private string _latestVersion = "";
+        public string LatestVersion
+        {
+            get => _latestVersion;
+            set => this.RaiseAndSetIfChanged(ref _latestVersion, value);
+        }
+
+        private string _downloadUrl = "";
+
+        public string UpdateStatusText
+        {
+            get
+            {
+                return UpdateState switch
+                {
+                    UpdateStatus.Checking => "Checking...",
+                    UpdateStatus.UpdateAvailable => "Update Available",
+                    UpdateStatus.Downloading => $"Downloading Update ({Math.Round(DownloadProgress)}%)",
+                    UpdateStatus.Installing => "Installing...",
+                    UpdateStatus.Failed => "Update Failed (Retry)",
+                    UpdateStatus.UpToDate => "You are up to date!",
+                    _ => "Check for Updates"
+                };
+            }
+        }
+
+        public bool IsUpdateActionEnabled => UpdateState != UpdateStatus.Checking && UpdateState != UpdateStatus.Downloading && UpdateState != UpdateStatus.Installing;
 
         // Events for Backup/Restore File Dialogs
         public event Action? RequestBackupDialog;
@@ -75,6 +139,41 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _preloadNextChapter, value);
         }
 
+        public bool AutoDownloadNextChapter
+        {
+            get => _settingsService.AutoDownloadNextChapter;
+            set
+            {
+                if (_settingsService.AutoDownloadNextChapter != value)
+                {
+                    _settingsService.AutoDownloadNextChapter = value;
+                    _settingsService.Save();
+                    this.RaisePropertyChanged();
+                }
+            }
+        }
+
+        public bool SkipFilteredChapters
+        {
+            get => _settingsService.SkipFilteredChapters;
+            set
+            {
+                if (_settingsService.SkipFilteredChapters != value)
+                {
+                    _settingsService.SkipFilteredChapters = value;
+                    _settingsService.Save();
+                    this.RaisePropertyChanged();
+                }
+            }
+        }
+
+        private bool _readerPerformanceMode;
+        public bool ReaderPerformanceMode
+        {
+            get => _readerPerformanceMode;
+            set => this.RaiseAndSetIfChanged(ref _readerPerformanceMode, value);
+        }
+
         private int _maxCacheSizeIndex;
         public int MaxCacheSizeIndex
         {
@@ -90,43 +189,21 @@ namespace Yomic.ViewModels
             set => this.RaiseAndSetIfChanged(ref _updateOnStart, value);
         }
 
-        // VPN Bypass
-        private bool _isVpnEnabled;
-        public bool IsVpnEnabled
+        private int _autoUpdateIntervalIndex;
+        public int AutoUpdateIntervalIndex
         {
-            get => _isVpnEnabled;
-            set => this.RaiseAndSetIfChanged(ref _isVpnEnabled, value);
+            get => _autoUpdateIntervalIndex;
+            set => this.RaiseAndSetIfChanged(ref _autoUpdateIntervalIndex, value);
         }
 
-        private bool _isVpnConnected;
-        public bool IsVpnConnected
+        private bool _useSmartUpdate;
+        public bool UseSmartUpdate
         {
-            get => _isVpnConnected;
-            set => this.RaiseAndSetIfChanged(ref _isVpnConnected, value);
+            get => _useSmartUpdate;
+            set => this.RaiseAndSetIfChanged(ref _useSmartUpdate, value);
         }
 
-        private string _vpnStatus = "Disconnected";
-        public string VpnStatus
-        {
-            get => _vpnStatus;
-            set => this.RaiseAndSetIfChanged(ref _vpnStatus, value);
-        }
 
-        private double _vpnDownloadProgress;
-        public double VpnDownloadProgress
-        {
-            get => _vpnDownloadProgress;
-            set => this.RaiseAndSetIfChanged(ref _vpnDownloadProgress, value);
-        }
-
-        private bool _isVpnDownloading;
-        public bool IsVpnDownloading
-        {
-            get => _isVpnDownloading;
-            set => this.RaiseAndSetIfChanged(ref _isVpnDownloading, value);
-        }
-
-        public string VpnButtonText => IsVpnConnected ? "Disconnect" : "Connect";
 
         private readonly Core.Services.LibraryService _libraryService;
         private readonly Core.Services.SettingsService _settingsService;
@@ -146,33 +223,146 @@ namespace Yomic.ViewModels
         public ReactiveCommand<Unit, Unit> OpenFacebookCommand { get; }
         public ReactiveCommand<Unit, Unit> OpenInstagramCommand { get; }
         public ReactiveCommand<Unit, Unit> OpenTikTokCommand { get; }
-        public ReactiveCommand<Unit, Unit> ToggleVpnCommand { get; }
         public ReactiveCommand<Unit, Unit> SyncLibraryCommand { get; }
+        public ReactiveCommand<Unit, Unit> RefreshLibraryCoversCommand { get; }
 
         private readonly Core.Services.UpdateService _updateService;
 
         private async void CheckForUpdates()
         {
-             _mainViewModel.ShowNotification("Checking for updates...", NotificationType.Info);
-             try
-             {
-                 var updateInfo = await _updateService.CheckForUpdatesAsync();
-                 if (updateInfo.IsUpdateAvailable)
-                 {
-                     _mainViewModel.ShowNotification($"Update Available: {updateInfo.LatestVersion}", NotificationType.Success);
-                     
-                     // Trigger Dialog
-                     Avalonia.Threading.Dispatcher.UIThread.Post(() => RequestUpdateDialog?.Invoke());
-                 }
-                 else
-                 {
-                     _mainViewModel.ShowNotification("You are using the latest version.", NotificationType.Success);
-                 }
-             }
-             catch (Exception ex)
-             {
-                 _mainViewModel.ShowNotification($"Update check failed: {ex.Message}", NotificationType.Error);
-             }
+            if (UpdateState == UpdateStatus.UpdateAvailable || UpdateState == UpdateStatus.Failed)
+            {
+                await DownloadAndInstallUpdateAsync();
+                return;
+            }
+
+            UpdateState = UpdateStatus.Checking;
+            _mainViewModel.ShowNotification("Checking for updates...", NotificationType.Info);
+            try
+            {
+                var updateInfo = await _updateService.CheckForUpdatesAsync();
+                if (updateInfo.IsUpdateAvailable)
+                {
+                    _mainViewModel.LatestUpdateInfo = updateInfo;
+                    LatestVersion = updateInfo.LatestVersion;
+                    _downloadUrl = updateInfo.DownloadUrl;
+                    UpdateState = UpdateStatus.UpdateAvailable;
+                    _mainViewModel.ShowNotification($"Update Available: {updateInfo.LatestVersion}", NotificationType.Success);
+                }
+                else
+                {
+                    UpdateState = UpdateStatus.UpToDate;
+                    _mainViewModel.ShowNotification("You are using the latest version.", NotificationType.Success);
+                    await Task.Delay(3000);
+                    if (UpdateState == UpdateStatus.UpToDate)
+                    {
+                        UpdateState = UpdateStatus.Idle;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                UpdateState = UpdateStatus.Failed;
+                _mainViewModel.ShowNotification($"Update check failed: {ex.Message}", NotificationType.Error);
+            }
+        }
+
+        private async Task DownloadAndInstallUpdateAsync()
+        {
+            if (string.IsNullOrEmpty(_downloadUrl) || UpdateState == UpdateStatus.Downloading) return;
+
+            if (!_downloadUrl.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                 try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = _downloadUrl, UseShellExecute = true }); } catch { }
+                 UpdateState = UpdateStatus.Idle;
+                 return;
+            }
+
+            UpdateState = UpdateStatus.Downloading;
+            DownloadProgress = 0;
+
+            try
+            {
+                var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Yomic_Update.exe");
+                
+                if (System.IO.File.Exists(tempPath))
+                {
+                    try { System.IO.File.Delete(tempPath); } catch { }
+                }
+                
+                using (var client = new System.Net.Http.HttpClient())
+                {
+                    using (var response = await client.GetAsync(_downloadUrl, System.Net.Http.HttpCompletionOption.ResponseHeadersRead))
+                    {
+                        response.EnsureSuccessStatusCode();
+                        var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+                        var canValidProgress = totalBytes != -1L;
+
+                        using (var contentStream = await response.Content.ReadAsStreamAsync())
+                        {
+                            using (var fileStream = new System.IO.FileStream(tempPath, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None, 8192, true))
+                            {
+                                var totalRead = 0L;
+                                var buffer = new byte[8192];
+                                var isMoreToRead = true;
+
+                                do
+                                {
+                                    var read = await contentStream.ReadAsync(buffer, 0, buffer.Length);
+                                    if (read == 0)
+                                    {
+                                        isMoreToRead = false;
+                                    }
+                                    else
+                                    {
+                                        await fileStream.WriteAsync(buffer, 0, read);
+                                        totalRead += read;
+                                        if (canValidProgress)
+                                        {
+                                            DownloadProgress = (double)totalRead / totalBytes * 100;
+                                        }
+                                    }
+                                }
+                                while (isMoreToRead);
+                            }
+                        }
+                    }
+                }
+
+                UpdateState = UpdateStatus.Installing;
+                await Task.Delay(1000);
+
+                var startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = tempPath,
+                    UseShellExecute = true,
+                    Arguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART"
+                };
+
+                var process = System.Diagnostics.Process.Start(startInfo);
+                
+                if (process != null)
+                {
+                    if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+                    {
+                        desktop.Shutdown();
+                    }
+                }
+                else
+                {
+                     UpdateState = UpdateStatus.Failed;
+                     _mainViewModel.ShowNotification("Installation failed to start.", NotificationType.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                UpdateState = UpdateStatus.Failed;
+                _mainViewModel.ShowNotification($"Download failed: {ex.Message}", NotificationType.Error);
+                try 
+                { 
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = _downloadUrl, UseShellExecute = true }); 
+                } catch { }
+            }
         }
 
         private void VisitWebsite()
@@ -181,7 +371,7 @@ namespace Yomic.ViewModels
             {
                 var psi = new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "https://github.com/ArisaAkiyama/yomic",
+                    FileName = "https://yomic.vercel.app/",
                     UseShellExecute = true
                 };
                 System.Diagnostics.Process.Start(psi);
@@ -267,10 +457,19 @@ namespace Yomic.ViewModels
             _isOfflineMode = _settingsService.IsOfflineMode;
             _secureScreen = _settingsService.SecureScreen;
             _updateOnStart = _settingsService.UpdateOnStart;
+            _useSmartUpdate = _settingsService.UseSmartUpdate;
+            _autoUpdateIntervalIndex = _settingsService.AutoUpdateIntervalHours switch
+            {
+                6 => 1,
+                12 => 2,
+                24 => 3,
+                _ => 0
+            };
             _checkAppUpdateOnStart = _settingsService.CheckAppUpdateOnStart;
             _showNsfwSources = _settingsService.ShowNsfwSources;
             _dnsOverHttpsProvider = _settingsService.DnsOverHttpsProvider;
             _preloadNextChapter = _settingsService.PreloadNextChapter;
+            _readerPerformanceMode = _settingsService.ReaderPerformanceMode;
             _maxCacheSizeIndex = _settingsService.MaxCacheSizeMb switch
             {
                 250 => 1,
@@ -293,6 +492,15 @@ namespace Yomic.ViewModels
             OpenInstagramCommand = ReactiveCommand.Create(OpenInstagram);
             OpenTikTokCommand = ReactiveCommand.Create(OpenTikTok);
             SyncLibraryCommand = ReactiveCommand.CreateFromTask(SyncLibraryAsync);
+            RefreshLibraryCoversCommand = ReactiveCommand.CreateFromTask(RefreshLibraryCoversAsync);
+
+            // Load shared startup update info if available
+            if (_mainViewModel.LatestUpdateInfo != null && _mainViewModel.LatestUpdateInfo.IsUpdateAvailable)
+            {
+                _latestVersion = _mainViewModel.LatestUpdateInfo.LatestVersion;
+                _downloadUrl = _mainViewModel.LatestUpdateInfo.DownloadUrl;
+                _updateState = UpdateStatus.UpdateAvailable;
+            }
             
             this.WhenAnyValue(x => x.IsDarkMode)
                 .Subscribe(x => { 
@@ -329,8 +537,29 @@ namespace Yomic.ViewModels
                 .Subscribe(x => { _settingsService.SecureScreen = x; _settingsService.Save(); });
             this.WhenAnyValue(x => x.UpdateOnStart)
                 .Subscribe(x => { _settingsService.UpdateOnStart = x; _settingsService.Save(); });
+            this.WhenAnyValue(x => x.UseSmartUpdate)
+                .Subscribe(x => { _settingsService.UseSmartUpdate = x; _settingsService.Save(); });
+                
+            this.WhenAnyValue(x => x.AutoUpdateIntervalIndex)
+                .Subscribe(index => 
+                {
+                    int hours = index switch
+                    {
+                        1 => 6,
+                        2 => 12,
+                        3 => 24,
+                        _ => 0
+                    };
+                    _settingsService.AutoUpdateIntervalHours = hours;
+                    _settingsService.Save();
+                    Core.Services.AutoUpdateTaskService.RegisterOrUpdateTask(hours);
+                });
             this.WhenAnyValue(x => x.PreloadNextChapter)
                 .Subscribe(x => { _settingsService.PreloadNextChapter = x; _settingsService.Save(); });
+            this.WhenAnyValue(x => x.AutoDownloadNextChapter)
+                .Subscribe(x => { _settingsService.AutoDownloadNextChapter = x; _settingsService.Save(); });
+            this.WhenAnyValue(x => x.ReaderPerformanceMode)
+                .Subscribe(x => { _settingsService.ReaderPerformanceMode = x; _settingsService.Save(); });
             this.WhenAnyValue(x => x.MaxCacheSizeIndex)
                 .Subscribe(x => {
                     int mbValue = x switch
@@ -345,63 +574,8 @@ namespace Yomic.ViewModels
                     _settingsService.Save();
                     System.Threading.Tasks.Task.Run(() => CleanupReaderCache(mbValue));
                 });
-            
-            // VPN Toggle Command
-            ToggleVpnCommand = ReactiveCommand.CreateFromTask(ToggleVpnAsync);
-            
-            // Subscribe to SingboxService status changes
-            Core.Services.SingboxService.Instance.StatusChanged += (isConnected) =>
-            {
-                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                {
-                    IsVpnConnected = isConnected;
-                    VpnStatus = isConnected ? "Connected" : "Disconnected";
-                });
-            };
-            
-            // Load initial VPN state
-            IsVpnConnected = Core.Services.SingboxService.Instance.IsRunning;
-            VpnStatus = IsVpnConnected ? "Connected" : "Disconnected";
         }
 
-        private async System.Threading.Tasks.Task ToggleVpnAsync()
-        {
-            var singbox = Core.Services.SingboxService.Instance;
-            
-            if (singbox.IsRunning)
-            {
-                VpnStatus = "Disconnecting...";
-                singbox.Stop();
-                IsVpnEnabled = false;
-                _mainViewModel.ShowNotification("VPN Bypass Disabled", NotificationType.Info);
-            }
-            else
-            {
-                VpnStatus = "Connecting...";
-                IsVpnDownloading = true;
-                
-                var progress = new Progress<double>(p =>
-                {
-                    VpnDownloadProgress = p;
-                    VpnStatus = $"Downloading... {(int)(p * 100)}%";
-                });
-                
-                var success = await singbox.StartAsync();
-                IsVpnDownloading = false;
-                VpnDownloadProgress = 0;
-                
-                if (success)
-                {
-                    IsVpnEnabled = true;
-                    _mainViewModel.ShowNotification("VPN Bypass Enabled! Restart sources to apply.", NotificationType.Success);
-                }
-                else
-                {
-                    VpnStatus = "Connection Failed";
-                    _mainViewModel.ShowNotification("Failed to start VPN. Check logs.", NotificationType.Error);
-                }
-            }
-        }
 
         private void RequestBackup()
         {
@@ -509,11 +683,15 @@ namespace Yomic.ViewModels
             {
                 // Clear all chapter read status from database
                 await _libraryService.ClearAllReadHistoryAsync();
-                _mainViewModel.ShowNotification("Read history cleared successfully!", NotificationType.Success);
+                
+                // Clear cache and cookies
+                await ClearCacheCookiesAsync();
+                
+                _mainViewModel.ShowNotification("Read history & cache cleared successfully!", NotificationType.Success);
             }
             catch (System.Exception ex)
             {
-                _mainViewModel.ShowNotification($"Error clearing read history: {ex.Message}");
+                _mainViewModel.ShowNotification($"Error clearing read history & cache: {ex.Message}");
             }
         }
         private bool _isSyncingLibrary;
@@ -595,6 +773,23 @@ namespace Yomic.ViewModels
             {
                 System.Diagnostics.Debug.WriteLine($"[CacheCleanup] Error cleaning cache: {ex.Message}");
             }
+        }
+
+        private async Task RefreshLibraryCoversAsync()
+        {
+            _mainViewModel.ShowNotification("Refreshing library covers...", NotificationType.Info);
+            
+            // 1. Clear cover cache in memory and on disk
+            _mainViewModel.ImageCacheService.Clear();
+            _mainViewModel.SecureImageService.ClearDiskCache();
+            
+            // 2. Force reload covers on Library UI
+            await _mainViewModel.LibraryVM.RefreshLibraryCoversForceAsync();
+            
+            // 3. Collect garbage
+            GC.Collect();
+            
+            _mainViewModel.ShowNotification("Library covers refreshed successfully!", NotificationType.Success);
         }
     }
 }

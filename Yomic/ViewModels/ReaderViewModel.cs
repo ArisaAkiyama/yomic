@@ -127,8 +127,8 @@ namespace Yomic.ViewModels
                     try
                     {
                         using var stream = System.IO.File.OpenRead(cacheFilePath);
-                        // Downscale to max 1200px width to save RAM (Mihon-style downscaling)
-                        var bitmap = Avalonia.Media.Imaging.Bitmap.DecodeToWidth(stream, 1200);
+                        // Load original image quality as requested, size will be restricted by UI
+                        var bitmap = new Avalonia.Media.Imaging.Bitmap(stream);
                         
                         Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                         {
@@ -176,21 +176,17 @@ namespace Yomic.ViewModels
                     string requestUrl = Url;
                     var customHeaders = new Dictionary<string, string>();
                 
-                // Parse Custom Headers: url|Key=Value&Key2=Value2
+                // Parse Custom Headers: url|Key=Value|Key2=Value2 or url|Key=Value&Key2=Value2
                 if (Url.Contains("|"))
                 {
-                    var parts = Url.Split('|', 2); // Split only on first pipe
+                    var parts = Url.Split(new[] { '|', '&' }, StringSplitOptions.RemoveEmptyEntries);
                     requestUrl = parts[0];
-                    if (parts.Length > 1)
+                    for (int j = 1; j < parts.Length; j++)
                     {
-                        var headers = parts[1].Split('&');
-                        foreach (var header in headers)
+                        var pair = parts[j].Split(new[] { '=' }, 2);
+                        if (pair.Length == 2)
                         {
-                            var pair = header.Split('=', 2);
-                            if (pair.Length == 2)
-                            {
-                                customHeaders[pair[0].Trim()] = pair[1].Trim();
-                            }
+                            customHeaders[pair[0].Trim()] = pair[1].Trim();
                         }
                     }
                 }
@@ -211,7 +207,11 @@ namespace Yomic.ViewModels
                 }
                 else
                 {
-                    req.Headers.Referrer = new Uri("https://komiku.org");
+                    try 
+                    {
+                        req.Headers.Referrer = new Uri(new Uri(requestUrl).GetLeftPart(UriPartial.Authority));
+                    }
+                    catch { /* Ignore if invalid */ }
                 }
                 
                 // Add Origin header (critical for some CDNs)
@@ -223,6 +223,10 @@ namespace Yomic.ViewModels
                 if (customHeaders.ContainsKey("User-Agent"))
                 {
                     req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
+                }
+                else if (customHeaders.ContainsKey("UserAgent"))
+                {
+                    req.Headers.UserAgent.TryParseAdd(customHeaders["UserAgent"]);
                 }
                 
                 // Inject Cloudflare bypass cookies if this is an nHentai image
@@ -276,8 +280,8 @@ namespace Yomic.ViewModels
                 
                 using var remoteStream = new System.IO.MemoryStream(data);
                 
-                // Downscale to max 1200px width to save RAM
-                var remoteBitmap = Avalonia.Media.Imaging.Bitmap.DecodeToWidth(remoteStream, 1200);
+                // Load original image quality as requested, size will be restricted by UI
+                var remoteBitmap = new Avalonia.Media.Imaging.Bitmap(remoteStream);
                 
                 // Save to Disk Cache in background so we don't block the UI thread
                 _ = System.Threading.Tasks.Task.Run(() => 
@@ -561,10 +565,33 @@ namespace Yomic.ViewModels
                 if (_currentChapter != null)
                     ChapterTitle = _currentChapter.Title;
 
-                foreach (var p in Pages) p.Dispose();
-                Pages.Clear();
-                GC.Collect();
-                System.Threading.Tasks.Task.Run(() => LoadPages(false));
+                {
+                    foreach (var p in Pages) p.Dispose();
+                    Pages.Clear();
+                    System.Threading.Tasks.Task.Run(() => LoadPages(false));
+                }
+            });
+
+            ToggleBookmarkCommand = ReactiveCommand.CreateFromTask(async () =>
+            {
+                if (_currentChapter != null && _libraryService != null)
+                {
+                    _currentChapter.Bookmark = !_currentChapter.Bookmark;
+                    
+                    await _libraryService.SetChapterBookmarkStatusAsync(
+                        _currentChapter.Url,
+                        _currentChapter.Bookmark,
+                        _sourceId,
+                        _mangaUrl,
+                        _currentChapter.Title,
+                        -1
+                    );
+                }
+            });
+
+            RotateCommand = ReactiveCommand.Create(() =>
+            {
+                RotationAngle = (RotationAngle + 90) % 360;
             });
 
             // Scroll Logic
@@ -601,6 +628,8 @@ namespace Yomic.ViewModels
         public ReactiveCommand<Unit, Unit> PrevChapterCommand { get; }
         public ReactiveCommand<Unit, Unit> ToggleFullscreenCommand { get; }
         public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
+        public ReactiveCommand<Unit, Unit> ToggleBookmarkCommand { get; }
+        public ReactiveCommand<Unit, Unit> RotateCommand { get; }
         
         public ReactiveCommand<Unit, Unit> ScrollUpCommand { get; }
         public ReactiveCommand<Unit, Unit> ScrollDownCommand { get; }
@@ -612,6 +641,13 @@ namespace Yomic.ViewModels
         {
             get => _mainViewModel.IsFullscreen;
             set => _mainViewModel.IsFullscreen = value;
+        }
+
+        private int _rotationAngle = 0;
+        public int RotationAngle
+        {
+            get => _rotationAngle;
+            set => this.RaiseAndSetIfChanged(ref _rotationAngle, value);
         }
 
         private bool _isHeaderVisible = true;
@@ -907,7 +943,6 @@ namespace Yomic.ViewModels
             // Dispose previous pages to free up RAM *before* loading new ones
             foreach(var p in Pages) p.Dispose();
             Pages.Clear();
-            GC.Collect(); // Optional, but helps keep RAM low during binge reading
 
             // Update UI
             ChapterTitle = newChapter.Title;
@@ -928,12 +963,33 @@ namespace Yomic.ViewModels
             if (_isNextChapterPreloaded) return;
             _isNextChapterPreloaded = true;
 
-            if (_settingsService == null || !_settingsService.PreloadNextChapter) return;
+            if (_settingsService == null) return;
             if (!HasNextChapter) return;
             if (_allChapters == null || _sourceManager == null) return;
 
             var nextChapter = _allChapters[NextChapterIndex];
             var nextChapterUrl = nextChapter.Url;
+
+            // Trigger Auto Download if enabled
+            if (_settingsService.AutoDownloadNextChapter && _mainViewModel?.DownloadService != null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ReaderVM] Auto downloading next chapter: {nextChapter.Title}");
+                var manga = new Core.Models.Manga
+                {
+                    Title = _mangaTitle,
+                    Url = _mangaUrl,
+                    Source = _sourceId
+                };
+                var nextChapterModel = new Core.Models.Chapter
+                {
+                    Name = nextChapter.Title,
+                    Url = nextChapter.Url,
+                    ChapterNumber = nextChapter.ChapterNumber
+                };
+                _mainViewModel.DownloadService.QueueDownload(manga, nextChapterModel);
+            }
+
+            if (!_settingsService.PreloadNextChapter) return;
 
             System.Diagnostics.Debug.WriteLine($"[Preload] Starting background preload for next chapter: {nextChapter.Title}");
 
@@ -1003,7 +1059,11 @@ namespace Yomic.ViewModels
                         }
                         else
                         {
-                            req.Headers.Referrer = new Uri("https://komiku.org");
+                            try 
+                            {
+                                req.Headers.Referrer = new Uri(new Uri(requestUrl).GetLeftPart(UriPartial.Authority));
+                            }
+                            catch { /* Ignore if invalid */ }
                         }
                         
                         if (customHeaders.ContainsKey("Origin"))

@@ -16,6 +16,49 @@ namespace Yomic.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.2");
 
+            modelBuilder.Entity("MangaCategory", b =>
+                {
+                    b.Property<long>("MangaId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("MangaId", "CategoryId");
+
+                    b.HasIndex("CategoryId");
+
+                    b.ToTable("MangaCategory");
+                });
+
+            modelBuilder.Entity("Yomic.Core.Models.Category", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("UpdateExcluded")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Categories");
+                });
+
             modelBuilder.Entity("Yomic.Core.Models.Chapter", b =>
                 {
                     b.Property<long>("Id")
@@ -159,6 +202,21 @@ namespace Yomic.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Mangas");
+                });
+
+            modelBuilder.Entity("MangaCategory", b =>
+                {
+                    b.HasOne("Yomic.Core.Models.Category", null)
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Yomic.Core.Models.Manga", null)
+                        .WithMany()
+                        .HasForeignKey("MangaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Yomic.Core.Models.Chapter", b =>

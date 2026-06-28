@@ -1,0 +1,230 @@
+using System;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Reactive;
+using System.Threading.Tasks;
+using Yomic.Core.Services;
+using Yomic.Core.Models;
+using ReactiveUI;
+using Avalonia.Threading;
+using System.Collections.Generic;
+
+namespace Yomic.ViewModels
+{
+    public class UpcomingGroup
+    {
+        public string Header { get; set; } = string.Empty;
+        public ObservableCollection<UpcomingItem> Items { get; set; } = new();
+    }
+
+    public class UpcomingItem : ViewModelBase
+    {
+        public Manga MangaRef { get; set; } = null!;
+        public string Title => MangaRef.Title;
+        public string? CoverUrl => MangaRef.ThumbnailUrl;
+        
+        public string EstimatedRelease { get; set; } = string.Empty;
+        public long NextUpdateEpoch { get; set; }
+
+        public string ReleaseFrequency { get; set; } = string.Empty;
+        public string WaitingForChapter { get; set; } = string.Empty;
+        public bool IsOverdue { get; set; }
+        
+        // Command parameters
+        public ReactiveCommand<UpcomingItem, Unit>? OpenMangaCommand { get; set; }
+    }
+
+    public class UpcomingViewModel : ViewModelBase
+    {
+        private readonly LibraryService _libraryService;
+        private readonly MainWindowViewModel _mainVM;
+
+        private ObservableCollection<UpcomingGroup> _groupedUpcoming = new();
+        public ObservableCollection<UpcomingGroup> GroupedUpcoming
+        {
+            get => _groupedUpcoming;
+            set 
+            {
+                this.RaiseAndSetIfChanged(ref _groupedUpcoming, value);
+                this.RaisePropertyChanged(nameof(HasItems));
+                this.RaisePropertyChanged(nameof(UpcomingCount));
+            }
+        }
+
+        public bool HasItems => GroupedUpcoming.Count > 0;
+        public int UpcomingCount => GroupedUpcoming.Sum(g => g.Items.Count);
+
+        private bool _isEmpty;
+        public bool IsEmpty
+        {
+            get => _isEmpty;
+            set => this.RaiseAndSetIfChanged(ref _isEmpty, value);
+        }
+
+        public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
+        public ReactiveCommand<UpcomingItem, Unit> OpenMangaCommand { get; }
+
+        public UpcomingViewModel(LibraryService libraryService, MainWindowViewModel mainVM)
+        {
+            _libraryService = libraryService;
+            _mainVM = mainVM;
+
+            RefreshCommand = ReactiveCommand.CreateFromTask(LoadUpcomingAsync);
+            OpenMangaCommand = ReactiveCommand.CreateFromTask<UpcomingItem>(OpenMangaAsync);
+
+            _ = LoadUpcomingAsync();
+        }
+
+        public async Task LoadUpcomingAsync()
+        {
+            try
+            {
+                var libraryManga = await _libraryService.GetLibraryMangaAsync();
+                var now = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+
+                // Filter out manga that have NextUpdate and are not completed/cancelled
+                var upcomingManga = libraryManga
+                    .Where(m => m.NextUpdate > 0 && m.Status != Manga.COMPLETED && m.Status != Manga.CANCELLED)
+                    .OrderBy(m => m.NextUpdate)
+                    .ToList();
+
+                var grouped = new Dictionary<string, List<UpcomingItem>>();
+                
+                var todayEnd = new DateTimeOffset(DateTimeOffset.Now.Date.AddDays(1)).ToUnixTimeMilliseconds();
+                var tomorrowEnd = new DateTimeOffset(DateTimeOffset.Now.Date.AddDays(2)).ToUnixTimeMilliseconds();
+                var nextWeekEnd = new DateTimeOffset(DateTimeOffset.Now.Date.AddDays(7)).ToUnixTimeMilliseconds();
+
+                foreach (var m in upcomingManga)
+                {
+                    // Calculate Frequency & Waiting For
+                    string frequency = "Unknown";
+                    string waitingFor = "New Chapter";
+                    
+                    if (m.Chapters.Count > 0)
+                    {
+                        var recentChapters = m.Chapters.Where(c => c.DateUpload > 0).OrderByDescending(c => c.ChapterNumber).Take(10).ToList();
+                        if (recentChapters.Count > 0)
+                        {
+                            float maxChap = m.Chapters.Max(c => c.ChapterNumber);
+                            waitingFor = $"Waiting for Chapter {maxChap + 1}";
+                        }
+
+                        if (recentChapters.Count >= 3)
+                        {
+                            var diffs = new List<long>();
+                            for (int i = 0; i < recentChapters.Count - 1; i++)
+                            {
+                                long diff = recentChapters[i].DateUpload - recentChapters[i + 1].DateUpload;
+                                if (diff > 0 && diff < 31536000000) diffs.Add(diff);
+                            }
+                            if (diffs.Count > 0)
+                            {
+                                diffs.Sort();
+                                long medianDiff = diffs[diffs.Count / 2];
+                                if (diffs.Count % 2 == 0) medianDiff = (diffs[(diffs.Count / 2) - 1] + diffs[diffs.Count / 2]) / 2;
+                                
+                                double days = TimeSpan.FromMilliseconds(medianDiff).TotalDays;
+                                if (days <= 2.5) frequency = "Daily";
+                                else if (days <= 9.5) frequency = "Weekly";
+                                else if (days <= 16.5) frequency = "Bi-Weekly";
+                                else if (days <= 35) frequency = "Monthly";
+                                else frequency = "Irregular";
+                            }
+                        }
+                    }
+
+                    var item = new UpcomingItem
+                    {
+                        MangaRef = m,
+                        NextUpdateEpoch = m.NextUpdate,
+                        ReleaseFrequency = frequency,
+                        WaitingForChapter = waitingFor,
+                        IsOverdue = m.NextUpdate < now,
+                        OpenMangaCommand = OpenMangaCommand
+                    };
+
+                    string groupName;
+                    var date = DateTimeOffset.FromUnixTimeMilliseconds(m.NextUpdate).ToLocalTime();
+                    
+                    if (m.NextUpdate < now)
+                    {
+                        groupName = "Overdue / Pending";
+                        item.EstimatedRelease = "Should have updated " + date.ToString("MMM dd, yyyy");
+                    }
+                    else if (m.NextUpdate < todayEnd)
+                    {
+                        groupName = "Today";
+                        item.EstimatedRelease = date.ToString("hh:mm tt");
+                    }
+                    else if (m.NextUpdate < tomorrowEnd)
+                    {
+                        groupName = "Tomorrow";
+                        item.EstimatedRelease = date.ToString("hh:mm tt");
+                    }
+                    else if (m.NextUpdate < nextWeekEnd)
+                    {
+                        groupName = "Next 7 Days";
+                        item.EstimatedRelease = date.ToString("dddd, MMM dd");
+                    }
+                    else
+                    {
+                        groupName = "Later";
+                        item.EstimatedRelease = date.ToString("MMM dd, yyyy");
+                    }
+
+                    if (!grouped.ContainsKey(groupName))
+                    {
+                        grouped[groupName] = new List<UpcomingItem>();
+                    }
+                    grouped[groupName].Add(item);
+                }
+
+                // Sorting the groups logically
+                var groupOrder = new[] { "Overdue / Pending", "Today", "Tomorrow", "Next 7 Days", "Later" };
+                
+                Dispatcher.UIThread.Post(() =>
+                {
+                    GroupedUpcoming.Clear();
+                    foreach (var groupName in groupOrder)
+                    {
+                        if (grouped.ContainsKey(groupName))
+                        {
+                            GroupedUpcoming.Add(new UpcomingGroup
+                            {
+                                Header = groupName,
+                                Items = new ObservableCollection<UpcomingItem>(grouped[groupName])
+                            });
+                        }
+                    }
+
+                    IsEmpty = !GroupedUpcoming.Any();
+                    this.RaisePropertyChanged(nameof(HasItems));
+                    this.RaisePropertyChanged(nameof(UpcomingCount));
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UpcomingVM] Error loading upcoming manga: {ex}");
+            }
+        }
+
+        private async Task OpenMangaAsync(UpcomingItem item)
+        {
+            if (item?.MangaRef == null) return;
+            
+            // Map Manga to MainWindow MangaItem
+            var mangaItem = new MangaItem
+            {
+                Title = item.MangaRef.Title,
+                CoverUrl = item.MangaRef.ThumbnailUrl,
+                Status = item.MangaRef.Status,
+                ChapterCount = item.MangaRef.Chapters.Count,
+                MangaUrl = item.MangaRef.Url,
+                SourceId = item.MangaRef.Source
+            };
+
+            _mainVM.GoToDetail(mangaItem);
+            await Task.CompletedTask;
+        }
+    }
+}

@@ -19,6 +19,15 @@ namespace Yomic.Views
         {
             InitializeComponent();
             DataContextChanged += OnDataContextChanged;
+            Opened += OnOpened;
+        }
+
+        private async void OnOpened(object? sender, EventArgs e)
+        {
+            if (DataContext is MainWindowViewModel vm)
+            {
+                await vm.RunStartupTasksAsync();
+            }
         }
 
         private void OnDataContextChanged(object? sender, EventArgs e)
@@ -32,9 +41,6 @@ namespace Yomic.Views
                       SetFullscreen(vm, isFullscreen);
                   });
 
-                // Subscribe to Update Dialog Request
-                vm.RequestUpdateDialog -= ShowUpdateDialog;
-                vm.RequestUpdateDialog += ShowUpdateDialog;
 
                 // Subscribe to Feedback Dialog Request
                 vm.RequestFeedbackDialog -= ShowFeedbackDialog;
@@ -106,20 +112,6 @@ namespace Yomic.Views
             }
         }
 
-        private async void ShowUpdateDialog(Core.Services.UpdateService.UpdateInfo? info)
-        {
-            var dialog = new UpdateDialog
-            {
-                DataContext = new Yomic.ViewModels.UpdateDialogViewModel(null, info)
-            };
-
-            if (DataContext is MainWindowViewModel mainVM)
-            {
-                mainVM.IsDialogOverlayVisible = true;
-                await dialog.ShowDialog(this);
-                mainVM.IsDialogOverlayVisible = false;
-            }
-        }
 
         private async void ShowFeedbackDialog()
         {
@@ -339,6 +331,21 @@ namespace Yomic.Views
                 if (DataContext is MainWindowViewModel vm)
                 {
                     vm.GoToUpdates();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Navigation Error: {ex}");
+            }
+        }
+
+        private void OnUpcomingClick(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (DataContext is MainWindowViewModel vm)
+                {
+                    vm.GoToUpcoming();
                 }
             }
             catch (Exception ex)

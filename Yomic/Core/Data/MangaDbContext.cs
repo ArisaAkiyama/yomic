@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Yomic.Core.Models;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace Yomic.Core.Data
 {
@@ -9,6 +10,7 @@ namespace Yomic.Core.Data
         public DbSet<Manga> Mangas { get; set; } = null!;
         public DbSet<Chapter> Chapters { get; set; } = null!;
         public DbSet<History> History { get; set; } = null!;
+        public DbSet<Category> Categories { get; set; } = null!;
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -47,6 +49,26 @@ namespace Yomic.Core.Data
                 .HasConversion(
                     v => v == null ? string.Empty : string.Join(",", v),
                     v => string.IsNullOrEmpty(v) ? new System.Collections.Generic.List<string>() : v.Split(',', System.StringSplitOptions.RemoveEmptyEntries).ToList());
+
+            // Category Mapping
+            modelBuilder.Entity<Category>(entity =>
+            {
+                entity.HasKey(c => c.Id);
+                entity.Property(c => c.Name).IsRequired();
+            });
+
+            // Many-to-Many: Manga <-> Category
+            modelBuilder.Entity<Manga>()
+                .HasMany(m => m.Categories)
+                .WithMany(c => c.Mangas)
+                .UsingEntity<Dictionary<string, object>>(
+                    "MangaCategory",
+                    r => r.HasOne<Category>().WithMany().HasForeignKey("CategoryId").OnDelete(DeleteBehavior.Cascade),
+                    l => l.HasOne<Manga>().WithMany().HasForeignKey("MangaId").OnDelete(DeleteBehavior.Cascade),
+                    je =>
+                    {
+                        je.HasKey("MangaId", "CategoryId");
+                    });
                 
             base.OnModelCreating(modelBuilder);
         }

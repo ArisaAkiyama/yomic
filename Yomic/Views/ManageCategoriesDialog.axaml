@@ -1,0 +1,139 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="using:Yomic.Views"
+        x:Class="Yomic.Views.ManageCategoriesDialog"
+        Width="500" Height="550"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        CanResize="False"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+
+    <Border Background="{DynamicResource PrimaryBackground}" CornerRadius="16" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="1" Padding="24">
+        <Grid RowDefinitions="Auto, *, Auto, Auto">
+            <!-- Header -->
+            <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,16">
+                <TextBlock Grid.Column="0" Text="Manage Categories" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="✕" Click="OnCloseClick" 
+                        Background="Transparent" Foreground="{DynamicResource SecondaryText}" Padding="8,4" FontSize="16" Cursor="Hand" BorderThickness="0">
+                    <Button.Styles>
+                        <Style Selector="Button:pointerover /template/ ContentPresenter">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                        </Style>
+                    </Button.Styles>
+                </Button>
+            </Grid>
+            
+            <!-- Category List -->
+            <Grid Grid.Row="1" Margin="0,0,0,16">
+                <ScrollViewer Background="{DynamicResource SidebarBackground}" CornerRadius="12" Padding="8">
+                    <ItemsControl x:Name="CategoriesControl">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="views:CategoryItemViewModel">
+                                <Border BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,0,1" Padding="8,6" Margin="0,2">
+                                    <Grid ColumnDefinitions="Auto, Auto, Auto, *, Auto, Auto, Auto, Auto">
+                                        <!-- Reorder Buttons -->
+                                        <Button Grid.Column="0" Click="OnUpClick" Width="28" Height="28" Background="Transparent" Margin="0,0,2,0" Cursor="Hand" BorderThickness="0" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                                            <TextBlock Text="&#xE70E;" FontFamily="Segoe Fluent Icons" FontSize="11" Foreground="{DynamicResource SecondaryText}"/>
+                                        </Button>
+                                        <Button Grid.Column="1" Click="OnDownClick" Width="28" Height="28" Background="Transparent" Margin="0,0,8,0" Cursor="Hand" BorderThickness="0" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                                            <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons" FontSize="11" Foreground="{DynamicResource SecondaryText}"/>
+                                        </Button>
+                                        
+                                        <!-- Color Indicator -->
+                                        <Ellipse Grid.Column="2" Width="10" Height="10" Fill="{Binding ColorBrush}" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                        
+                                        <!-- Name -->
+                                        <TextBlock Grid.Column="3" Text="{Binding Name}" Foreground="{DynamicResource PrimaryText}" FontSize="14" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        
+                                        <!-- Default Toggle Button -->
+                                        <Button Grid.Column="4" Click="OnDefaultClick" Background="Transparent" Width="32" Height="32" Cursor="Hand" BorderThickness="0" Margin="0,0,4,0" ToolTip.Tip="Set as Default" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                                            <TextBlock Text="{Binding StarIcon}" FontFamily="Segoe Fluent Icons" FontSize="16" Foreground="{Binding StarColor}"/>
+                                        </Button>
+
+                                        <!-- Exclude from Update Toggle Button -->
+                                        <Button Grid.Column="5" Click="OnExcludeClick" Background="Transparent" Width="32" Height="32" Cursor="Hand" BorderThickness="0" Margin="0,0,8,0" ToolTip.Tip="{Binding ExcludeToolTip}" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                                            <TextBlock Text="{Binding ExcludeIcon}" FontFamily="Segoe Fluent Icons" FontSize="16" Foreground="{Binding ExcludeColor}"/>
+                                        </Button>
+                                        
+                                        <!-- Edit Button -->
+                                        <Button Grid.Column="6" Click="OnEditRowClick" Background="Transparent" Width="32" Height="32" Cursor="Hand" BorderThickness="0" Margin="0,0,4,0" ToolTip.Tip="Edit" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                                            <TextBlock Text="&#xE70F;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="{DynamicResource SecondaryText}"/>
+                                        </Button>
+                                        
+                                        <!-- Delete Button -->
+                                        <Button Grid.Column="7" Click="OnDeleteRowClick" Background="Transparent" Width="32" Height="32" Cursor="Hand" BorderThickness="0" ToolTip.Tip="Delete" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                                            <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="{DynamicResource SecondaryText}"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                
+                <!-- Empty State -->
+                <TextBlock x:Name="EmptyStateText" Text="No custom categories yet. Create your first category below!" 
+                           Foreground="{DynamicResource SecondaryText}" FontSize="13" FontStyle="Italic"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="False"/>
+            </Grid>
+            
+            <Separator Grid.Row="2" Background="{DynamicResource SeparatorBrush}" Margin="0,0,0,16"/>
+            
+            <!-- Add / Edit Pane -->
+            <StackPanel Grid.Row="3" Spacing="12">
+                <TextBlock x:Name="PaneTitle" Text="Create Category" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryText}"/>
+                
+                <Grid ColumnDefinitions="*, Auto" Height="36">
+                    <TextBox x:Name="CategoryNameInput" Watermark="Category name..." CornerRadius="8" Margin="0,0,8,0"
+                             Background="{DynamicResource PrimaryBackground}" Foreground="{DynamicResource PrimaryText}" 
+                             BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1" MaxLength="30"
+                             VerticalAlignment="Stretch" VerticalContentAlignment="Center"
+                             PropertyChanged="OnNameInputPropertyChanged" KeyDown="OnNameInputKeyDown"/>
+                    <Button Grid.Column="1" x:Name="ActionButton" Content="Add" Click="OnActionClick"
+                            Background="{DynamicResource PrimaryAccent}" Foreground="White" FontWeight="SemiBold"
+                            CornerRadius="8" Width="85" VerticalAlignment="Stretch"
+                            VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                            Cursor="Hand" BorderThickness="0">
+                        <Button.Styles>
+                            <Style Selector="Button:disabled">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Style>
+                            <Style Selector="Button:disabled /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{DynamicResource PrimaryAccent}"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                </Grid>
+
+                <!-- Warning Text -->
+                <TextBlock x:Name="WarningTextBlock" Text="A category with this name already exists." 
+                           Foreground="{DynamicResource ErrorColor}" FontSize="12" Margin="4,-6,0,0" IsVisible="False"/>
+                
+                <!-- Palette -->
+                <Grid ColumnDefinitions="Auto, *, Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Color:" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryText}" FontSize="13"/>
+                        <WrapPanel x:Name="ColorsPalette" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,0,0">
+                            <!-- Predefined colors populated dynamically -->
+                        </WrapPanel>
+                    </StackPanel>
+                    
+                    <!-- Cancel Edit Button (Hidden in normal mode) -->
+                    <Button Grid.Column="2" x:Name="CancelEditButton" Content="Cancel Edit" Click="OnCancelEditClick" IsVisible="False"
+                            Background="Transparent" Foreground="{DynamicResource ErrorColor}" FontSize="13" FontWeight="SemiBold" Cursor="Hand" BorderThickness="0">
+                        <Button.Styles>
+                            <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="#FF3333"/>
+                            </Style>
+                        </Button.Styles>
+                    </Button>
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
