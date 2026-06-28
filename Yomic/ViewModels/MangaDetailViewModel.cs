@@ -154,8 +154,78 @@ namespace Yomic.ViewModels
         public string Status { get => _status; set => this.RaiseAndSetIfChanged(ref _status, value); }
         
         private string _description = "Loading details...";
-        public string Description { get => _description; set => this.RaiseAndSetIfChanged(ref _description, value); }
+        public string Description 
+        { 
+            get => _description; 
+            set 
+            { 
+                this.RaiseAndSetIfChanged(ref _description, value); 
+                ParseRatingFromDescription();
+            } 
+        }
+
+        private double? _rating;
+        public double? Rating
+        {
+            get => _rating;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _rating, value);
+                this.RaisePropertyChanged(nameof(HasRating));
+                this.RaisePropertyChanged(nameof(Star1Char));
+                this.RaisePropertyChanged(nameof(Star2Char));
+                this.RaisePropertyChanged(nameof(Star3Char));
+                this.RaisePropertyChanged(nameof(Star4Char));
+                this.RaisePropertyChanged(nameof(Star5Char));
+                this.RaisePropertyChanged(nameof(RatingText));
+            }
+        }
+
+        public bool HasRating => Rating.HasValue && Rating.Value > 0;
         
+        public string RatingText => Rating.HasValue ? Rating.Value.ToString("0.0") : "";
+
+        public string Star1Char => GetStarChar(0);
+        public string Star2Char => GetStarChar(1);
+        public string Star3Char => GetStarChar(2);
+        public string Star4Char => GetStarChar(3);
+        public string Star5Char => GetStarChar(4);
+
+        private string GetStarChar(int index)
+        {
+            if (!Rating.HasValue) return "\uE734"; // Outline star
+            double score = Rating.Value / 2.0; // scale 10 to 5
+            double diff = score - index;
+
+            if (diff >= 0.75) return "\uE735"; // Filled star
+            if (diff >= 0.25) return "\uE7C6"; // Half star
+            return "\uE734"; // Outline star
+        }
+
+        private void ParseRatingFromDescription()
+        {
+            if (string.IsNullOrEmpty(_description))
+            {
+                Rating = null;
+                return;
+            }
+
+            var match = System.Text.RegularExpressions.Regex.Match(_description, @"Rating:\s*([0-9.]+)(/10)?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                if (double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double val))
+                {
+                    Rating = val;
+                    var cleaned = _description.Replace(match.Value, "").Trim();
+                    cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\r?\n\r?\n+", "\n\n");
+                    _description = cleaned;
+                    this.RaisePropertyChanged(nameof(Description));
+                    return;
+                }
+            }
+            Rating = null;
+        }
+
         private bool _inLibrary;
         public bool InLibrary { get => _inLibrary; set => this.RaiseAndSetIfChanged(ref _inLibrary, value); }
         
