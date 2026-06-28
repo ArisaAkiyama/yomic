@@ -171,7 +171,7 @@
                             <StackPanel Spacing="4">
                                 <Button Classes="SidebarBtn" Classes.active="{Binding IsLibraryActive}" Click="OnLibraryClick" ToolTip.Tip="Library">
                                     <StackPanel Orientation="Horizontal" Spacing="16">
-                                        <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" FontSize="18" Width="20" TextAlignment="Center" VerticalAlignment="Center"/>
                                         <TextBlock Text="Library" Classes="NavLabel" VerticalAlignment="Center" FontWeight="Medium"/>
                                     </StackPanel>
                                 </Button>
