@@ -156,46 +156,18 @@ namespace Yomic.ViewModels
         {
             if (IsOffline || string.IsNullOrEmpty(item.BaseUrl)) return;
 
-            IsBypassing = true;
-            BypassMessage = "Preparing...";
-
             try
             {
-                Console.WriteLine($"[BrowseVM] Opening WebView for {item.Name} ({item.BaseUrl})...");
-                var (ua, cookies) = await Core.Services.CloudflareBypassService.Instance.SolveInteractiveAsync(item.BaseUrl);
-
-                if (!string.IsNullOrEmpty(ua) && cookies.Count > 0)
+                Console.WriteLine($"[BrowseVM] Opening external browser for {item.Name} ({item.BaseUrl})...");
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    // Inject cookies into the source's HttpClient
-                    var source = _sourceManager.GetSource(item.Id);
-                    if (source is Core.Sources.HttpSource httpSource)
-                    {
-                        var targetHost = new Uri(item.BaseUrl).Host;
-                        foreach (var kv in cookies)
-                        {
-                            httpSource.CookieContainer.Add(new Cookie(kv.Key, kv.Value, "/", targetHost));
-                        }
-                        Console.WriteLine($"[BrowseVM] Injected {cookies.Count} cookies into {item.Name}");
-                        
-                        // Reload favicon if it hasn't loaded yet (still showing text fallback)
-                        if (item.IconBitmap == null && !string.IsNullOrEmpty(source.IconUrl))
-                        {
-                            BypassMessage = "Updating Favicon...";
-                            Console.WriteLine($"[BrowseVM] Re-loading favicon for {item.Name}...");
-                            await LoadIconWithCookiesAsync(item, source.IconUrl, cookies, targetHost);
-                        }
-                    }
-                }
+                    FileName = item.BaseUrl,
+                    UseShellExecute = true
+                });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[BrowseVM] WebView Error: {ex.Message}");
-            }
-            finally
-            {
-                // Delay slightly before hiding overlay to let user see "Success" message if it reached that far
-                await Task.Delay(1000);
-                IsBypassing = false;
+                Console.WriteLine($"[BrowseVM] Error opening external browser: {ex.Message}");
             }
         }
 

@@ -476,40 +476,18 @@ namespace Yomic.ViewModels
 
                 if (string.IsNullOrEmpty(url)) return;
 
-                IsBypassing = true;
-                BypassMessage = "Preparing...";
-
                 try
                 {
-                    Console.WriteLine($"[MangaDetailVM] Opening WebView for {Title} ({url})...");
-                    var (ua, cookies) = await CloudflareBypassService.Instance.SolveInteractiveAsync(url);
-
-                    if (!string.IsNullOrEmpty(ua) && cookies.Count > 0)
+                    Console.WriteLine($"[MangaDetailVM] Opening external browser for {Title} ({url})...");
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                     {
-                        // Inject cookies into the source's HttpClient
-                        var source = _sourceManager.GetSource(SourceId);
-                        if (source is Core.Sources.HttpSource httpSource)
-                        {
-                            var targetHost = new Uri(url).Host;
-                            foreach (var kv in cookies)
-                            {
-                                httpSource.CookieContainer.Add(new System.Net.Cookie(kv.Key, kv.Value, "/", targetHost));
-                            }
-                            Console.WriteLine($"[MangaDetailVM] Injected {cookies.Count} cookies into {SourceName}");
-                            
-                            // Trigger refresh to load content that was blocked
-                            _ = RefreshAsync();
-                        }
-                    }
+                        FileName = url,
+                        UseShellExecute = true
+                    });
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[MangaDetailVM] WebView Error: {ex.Message}");
-                }
-                finally
-                {
-                    await System.Threading.Tasks.Task.Delay(1000);
-                    IsBypassing = false;
+                    Console.WriteLine($"[MangaDetailVM] Error opening external browser: {ex.Message}");
                 }
             });
             SetChapterFilterCommand = ReactiveCommand.Create<string>(SetChapterFilter);

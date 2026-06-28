@@ -206,11 +206,11 @@
                                         </StackPanel>
                                     </Button>
 
-                                    <!-- WebView -->
+                                    <!-- Open in Browser -->
                                     <Button Command="{Binding ViewModel.OpenWebViewCommand}">
-                                        <StackPanel Spacing="6" HorizontalAlignment="Center">
-                                            <TextBlock Text="&#xf6fa;" FontFamily="Segoe Fluent Icons" FontSize="22" HorizontalAlignment="Center"/>
-                                            <TextBlock Text="WebView" FontSize="11" HorizontalAlignment="Center"/>
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="&#xE12B;" FontFamily="Segoe Fluent Icons" FontSize="18" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="Browser" FontSize="11" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
 
