@@ -64,6 +64,7 @@ namespace Yomic.Views
             if (DataContext is LibraryViewModel vm)
             {
                 vm.ConfirmDeleteFromDiskAsync = ShowDeleteFromDiskWarningAsync;
+                vm.ConfirmDeleteDownloadsAsync = ShowDeleteDownloadsWarningAsync;
                 vm.RequestManageCategoriesAsync = ShowManageCategoriesDialogAsync;
                 vm.RequestEditMangaCategoriesAsync = ShowCategorySelectionDialogAsync;
             }
@@ -75,6 +76,16 @@ namespace Yomic.Views
             var dialog = new ConfirmDialog(
                 "Delete from Disk",
                 $"This will remove \"{item.Title}\" from your library and permanently delete its downloaded chapters from disk. This action cannot be undone.");
+
+            return owner != null && await dialog.ShowDialog<bool>(owner);
+        }
+
+        private async Task<bool> ShowDeleteDownloadsWarningAsync(MangaItem item)
+        {
+            var owner = TopLevel.GetTopLevel(this) as Window;
+            var dialog = new ConfirmDialog(
+                "Delete All Downloads",
+                $"This will permanently delete all downloaded chapters of \"{item.Title}\" from disk. The manga will remain in your library. This action cannot be undone.");
 
             return owner != null && await dialog.ShowDialog<bool>(owner);
         }

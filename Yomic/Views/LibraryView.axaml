@@ -451,6 +451,10 @@
                                                       x:CompileBindings="False"
                                                       Command="{Binding #root.DataContext.RemoveMangaCommand}"
                                                       CommandParameter="{Binding}"/>
+                                            <MenuItem Header="Delete All Downloads" Foreground="#FF5555"
+                                                      x:CompileBindings="False"
+                                                      Command="{Binding #root.DataContext.DeleteMangaDownloadsCommand}"
+                                                      CommandParameter="{Binding}"/>
                                             <MenuItem Header="Delete from Disk" Foreground="#FF5555"
                                                       x:CompileBindings="False"
                                                       Command="{Binding #root.DataContext.DeleteMangaCommand}"
@@ -579,10 +583,14 @@
                                                   x:CompileBindings="False"
                                                   Command="{Binding #root.DataContext.RemoveMangaCommand}"
                                                   CommandParameter="{Binding}"/>
-                                        <MenuItem Header="Delete from Disk" Foreground="#FF5555"
-                                                  x:CompileBindings="False"
-                                                  Command="{Binding #root.DataContext.DeleteMangaCommand}"
-                                                  CommandParameter="{Binding}"/>
+                                         <MenuItem Header="Delete All Downloads" Foreground="#FF5555"
+                                                   x:CompileBindings="False"
+                                                   Command="{Binding #root.DataContext.DeleteMangaDownloadsCommand}"
+                                                   CommandParameter="{Binding}"/>
+                                         <MenuItem Header="Delete from Disk" Foreground="#FF5555"
+                                                   x:CompileBindings="False"
+                                                   Command="{Binding #root.DataContext.DeleteMangaCommand}"
+                                                   CommandParameter="{Binding}"/>
                                     </ContextMenu>
                                 </Border.ContextMenu>
 

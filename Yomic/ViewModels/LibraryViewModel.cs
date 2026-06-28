@@ -243,6 +243,7 @@ namespace Yomic.ViewModels
         public ReactiveCommand<MangaItem, Unit> MarkAsUnreadCommand { get; }
         public ReactiveCommand<MangaItem, Unit> RemoveMangaCommand { get; }
         public ReactiveCommand<MangaItem, Unit> DeleteMangaCommand { get; }
+        public ReactiveCommand<MangaItem, Unit> DeleteMangaDownloadsCommand { get; }
         public ReactiveCommand<Unit, Unit> ToggleViewModeCommand { get; }
 
         private bool _isFilterVisible;
@@ -278,6 +279,7 @@ namespace Yomic.ViewModels
         public ReactiveCommand<LibraryFilterMode, Unit> SetFilterModeCommand { get; }
         public ReactiveCommand<string, Unit> SetSourceFilterCommand { get; }
         public Func<MangaItem, Task<bool>>? ConfirmDeleteFromDiskAsync { get; set; }
+        public Func<MangaItem, Task<bool>>? ConfirmDeleteDownloadsAsync { get; set; }
 
         public ReactiveCommand<Unit, Unit> ManageCategoriesCommand { get; }
         public ReactiveCommand<MangaItem, Unit> EditMangaCategoriesCommand { get; }
@@ -431,6 +433,18 @@ namespace Yomic.ViewModels
                     IsEmpty = LibraryItems.Count == 0;
                     this.RaisePropertyChanged(nameof(HasItems));
                 });
+            });
+
+            DeleteMangaDownloadsCommand = ReactiveCommand.CreateFromTask<MangaItem>(async item => 
+            {
+                var confirmed = ConfirmDeleteDownloadsAsync == null || await ConfirmDeleteDownloadsAsync(item);
+                if (!confirmed)
+                {
+                    return;
+                }
+
+                var manga = new Core.Models.Manga { Url = item.MangaUrl, Source = item.SourceId };
+                await _libraryService.DeleteMangaDownloadsAsync(manga);
             });
 
             // Manual Refresh Button - Force reload covers from network

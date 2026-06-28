@@ -275,6 +275,70 @@ namespace Yomic.Core.Services
              }
         }
 
+        public async Task DeleteMangaDownloadsAsync(Manga manga)
+        {
+             using var context = new MangaDbContext();
+             Manga? existing = null;
+             if (manga.Id > 0)
+             {
+                 existing = await context.Mangas.FindAsync(manga.Id);
+             }
+             if (existing == null)
+             {
+                 existing = await context.Mangas.FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
+             }
+
+             if (existing != null)
+             {
+                 try 
+                 {
+                    var mangaDir = DownloadPathService.GetMangaDirectory(existing);
+
+                    if (System.IO.Directory.Exists(mangaDir))
+                    {
+                        System.IO.Directory.Delete(mangaDir, true);
+                        LogService.Success("Library", $"Deleted downloaded files for: {existing.Title}");
+                    }
+
+                    // Mark all chapters as not downloaded in the DB
+                    var dbChapters = await context.Chapters.Where(c => c.MangaId == existing.Id && c.IsDownloaded).ToListAsync();
+
+                    // Fallback for "Unknown" title bug
+                    var fallbackDir = System.IO.Path.Combine(DownloadPathService.GetSourceDirectory(existing.Source), "Unknown");
+                    if (System.IO.Directory.Exists(fallbackDir))
+                    {
+                        foreach (var c in dbChapters)
+                        {
+                            var safeChap = DownloadPathService.SanitizePathSegment(c.Name);
+                            var hashedChap = DownloadPathService.GetChapterDirectoryName(c.Name, c.Url);
+                            foreach (var chapDir in new[]
+                            {
+                                System.IO.Path.Combine(fallbackDir, hashedChap),
+                                System.IO.Path.Combine(fallbackDir, hashedChap + DownloadPathService.TempSuffix),
+                                System.IO.Path.Combine(fallbackDir, safeChap),
+                                System.IO.Path.Combine(fallbackDir, safeChap + DownloadPathService.TempSuffix)
+                            })
+                            {
+                                if (System.IO.Directory.Exists(chapDir)) System.IO.Directory.Delete(chapDir, true);
+                            }
+                        }
+                        try { if (!System.IO.Directory.EnumerateFileSystemEntries(fallbackDir).Any()) System.IO.Directory.Delete(fallbackDir, false); } catch { }
+                    }
+
+                    foreach (var c in dbChapters)
+                    {
+                        c.IsDownloaded = false;
+                    }
+                    context.Chapters.UpdateRange(dbChapters);
+                    await context.SaveChangesAsync();
+                 }
+                 catch (Exception ex)
+                 {
+                     LogService.Warning("Library", $"Error deleting files: {ex.Message}");
+                 }
+             }
+        }
+
         public async Task DeleteChapterDownloadAsync(Manga manga, Chapter chapter)
         {
             try
