@@ -120,7 +120,12 @@ namespace Yomic.ViewModels
         public bool IsListView
         {
             get => _isListView;
-            set => this.RaiseAndSetIfChanged(ref _isListView, value);
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _isListView, value);
+                this.RaisePropertyChanged(nameof(ShowGridView));
+                this.RaisePropertyChanged(nameof(ShowListView));
+            }
         }
 
         private bool _hasMoreItems;
@@ -231,8 +236,16 @@ namespace Yomic.ViewModels
         public bool IsRefreshing
         {
              get => _isRefreshing;
-             set => this.RaiseAndSetIfChanged(ref _isRefreshing, value);
+             set
+             {
+                 this.RaiseAndSetIfChanged(ref _isRefreshing, value);
+                 this.RaisePropertyChanged(nameof(ShowGridView));
+                 this.RaisePropertyChanged(nameof(ShowListView));
+             }
         }
+
+        public bool ShowGridView => !IsListView && !IsRefreshing;
+        public bool ShowListView => IsListView && !IsRefreshing;
 
         // Commands
         public ReactiveCommand<MangaItem, Unit> OpenMangaCommand { get; }
