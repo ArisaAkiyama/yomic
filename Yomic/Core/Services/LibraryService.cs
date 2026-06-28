@@ -804,9 +804,14 @@ namespace Yomic.Core.Services
              }
         }
 
-        public async Task<int> UpdateAllLibraryMangaAsync(SourceManager sourceManager, IProgress<(int current, int total)>? progress = null, bool force = false)
+        public Task<int> UpdateAllLibraryMangaAsync(SourceManager sourceManager, IProgress<(int current, int total)>? progress = null)
         {
-            System.Diagnostics.Debug.WriteLine("[LibraryService] Starting parallel library update...");
+            return UpdateAllLibraryMangaAsync(sourceManager, false, progress);
+        }
+
+        public async Task<int> UpdateAllLibraryMangaAsync(SourceManager sourceManager, bool forceRefresh, IProgress<(int current, int total)>? progress = null)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LibraryService] Starting parallel library update (force={forceRefresh})...");
             int updatedCount = 0;
             try
             {
@@ -817,7 +822,7 @@ namespace Yomic.Core.Services
 
                 // Smart Update Logic
                 var settings = new SettingsService();
-                if (settings.UseSmartUpdate && !force)
+                if (settings.UseSmartUpdate && !forceRefresh)
                 {
                     long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
@@ -894,6 +899,56 @@ namespace Yomic.Core.Services
                         {
                             // Stagger requests with a random delay (0.5s - 2s) to prevent Cloudflare bans
                             await Task.Delay(Random.Shared.Next(500, 2000));
+
+                            if (forceRefresh)
+                            {
+                                try
+                                {
+                                    var freshManga = await source.GetMangaDetailsAsync(manga.Url);
+                                    if (freshManga != null)
+                                    {
+                                        await _dbLock.WaitAsync();
+                                        try
+                                        {
+                                            using var context = new MangaDbContext();
+                                            var dbManga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
+                                            if (dbManga != null)
+                                            {
+                                                dbManga.Title = freshManga.Title;
+                                                dbManga.Author = freshManga.Author;
+                                                dbManga.Description = freshManga.Description;
+                                                dbManga.Genre = freshManga.Genre;
+                                                dbManga.Status = freshManga.Status;
+                                                if (!string.IsNullOrEmpty(freshManga.ThumbnailUrl))
+                                                {
+                                                    dbManga.ThumbnailUrl = freshManga.ThumbnailUrl;
+                                                }
+                                                await context.SaveChangesAsync();
+
+                                                // Sync local copy properties
+                                                manga.Title = freshManga.Title;
+                                                manga.Author = freshManga.Author;
+                                                manga.Description = freshManga.Description;
+                                                manga.Genre = freshManga.Genre;
+                                                manga.Status = freshManga.Status;
+                                                if (!string.IsNullOrEmpty(freshManga.ThumbnailUrl))
+                                                {
+                                                    manga.ThumbnailUrl = freshManga.ThumbnailUrl;
+                                                }
+                                            }
+                                        }
+                                        finally
+                                        {
+                                            _dbLock.Release();
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Error updating metadata for {manga.Title}: {ex.Message}");
+                                }
+                            }
+
                             var chapters = await source.GetChapterListAsync(manga.Url);
                             int newCount = await UpdateChaptersAsync(manga, chapters);
                             

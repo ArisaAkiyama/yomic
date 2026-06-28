@@ -234,13 +234,6 @@ namespace Yomic.ViewModels
              set => this.RaiseAndSetIfChanged(ref _isRefreshing, value);
         }
 
-        private string _syncProgressText = "Checking for updates...";
-        public string SyncProgressText
-        {
-             get => _syncProgressText;
-             set => this.RaiseAndSetIfChanged(ref _syncProgressText, value);
-        }
-
         // Commands
         public ReactiveCommand<MangaItem, Unit> OpenMangaCommand { get; }
         public ReactiveCommand<Unit, Unit> GoToBrowseCommand { get; }
@@ -544,21 +537,15 @@ namespace Yomic.ViewModels
 
         public async Task ForceRefreshLibrary()
         {
-            SyncProgressText = "Checking for updates...";
             IsRefreshing = true;
             try
             {
                 if (IsOnline)
                 {
                     System.Diagnostics.Debug.WriteLine("[LibraryVM] Checking for latest updates from sources...");
-                    var progress = new System.Progress<(int current, int total)>(p =>
-                    {
-                        SyncProgressText = $"Checking for updates ({p.current}/{p.total})...";
-                    });
-                    await _libraryService.UpdateAllLibraryMangaAsync(_mainVM.SourceManager, progress, force: true);
+                    await _libraryService.UpdateAllLibraryMangaAsync(_mainVM.SourceManager, forceRefresh: true);
                 }
 
-                SyncProgressText = "Updating library items...";
                 System.Diagnostics.Debug.WriteLine("[LibraryVM] Hard refresh (redownload covers)...");
                 var mangas = await _libraryService.GetLibraryMangaAsync();
                 
