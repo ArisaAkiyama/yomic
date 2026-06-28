@@ -779,10 +779,11 @@ namespace Yomic.ViewModels
                      {
                          foreach (var g in item.Genres)
                          {
-                             if (!string.IsNullOrWhiteSpace(g) && !FormatList.Contains(g))
+                             var cleanG = g?.Trim();
+                             if (!string.IsNullOrWhiteSpace(cleanG) && !FormatList.Contains(cleanG))
                              {
                                  // Capitalize nicely for display (e.g. slice of life -> Slice of Life)
-                                 genreSet.Add(System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(g.ToLower()));
+                                 genreSet.Add(System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(cleanG.ToLower()));
                              }
                          }
                      }
@@ -875,13 +876,13 @@ namespace Yomic.ViewModels
                  // 2d. Apply Genre Filter
                  if (!string.IsNullOrEmpty(SelectedGenreFilter) && SelectedGenreFilter != "All")
                  {
-                     query = query.Where(x => x.Genres != null && x.Genres.Any(g => string.Equals(g, SelectedGenreFilter, StringComparison.OrdinalIgnoreCase)));
+                     query = query.Where(x => x.Genres != null && x.Genres.Any(g => string.Equals(g.Trim(), SelectedGenreFilter, StringComparison.OrdinalIgnoreCase)));
                  }
 
                  // 2e. Apply Format Filter
                  if (!string.IsNullOrEmpty(SelectedFormatFilter) && SelectedFormatFilter != "All")
                  {
-                     query = query.Where(x => x.Genres != null && x.Genres.Any(g => string.Equals(g, SelectedFormatFilter, StringComparison.OrdinalIgnoreCase)));
+                     query = query.Where(x => x.Genres != null && x.Genres.Any(g => string.Equals(g.Trim(), SelectedFormatFilter, StringComparison.OrdinalIgnoreCase)));
                  }
 
                  // 3. Apply Sort
