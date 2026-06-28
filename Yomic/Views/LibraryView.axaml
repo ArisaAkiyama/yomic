@@ -227,7 +227,7 @@
                                         </MenuItem.Icon>
                                         <MenuItem.Styles>
                                             <Style Selector="MenuItem > MenuItem" x:DataType="vm:LibraryViewModel+LibrarySourceFilterItem">
-                                                <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:LibraryViewModel)DataContext).SetSourceFilterCommand}"/>
+                                                <Setter Property="Command" Value="{Binding ((vm:LibraryViewModel)DataContext).SetSourceFilterCommand, ElementName=root}"/>
                                                 <Setter Property="CommandParameter" Value="{Binding Name}"/>
                                             </Style>
                                         </MenuItem.Styles>
@@ -262,7 +262,7 @@
                                          </MenuItem.Icon>
                                          <MenuItem.Styles>
                                              <Style Selector="MenuItem > MenuItem" x:DataType="x:String">
-                                                 <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:LibraryViewModel)DataContext).SetFormatFilterCommand}"/>
+                                                 <Setter Property="Command" Value="{Binding ((vm:LibraryViewModel)DataContext).SetFormatFilterCommand, ElementName=root}"/>
                                                  <Setter Property="CommandParameter" Value="{Binding}"/>
                                              </Style>
                                          </MenuItem.Styles>
@@ -290,7 +290,7 @@
                                          </MenuItem.Icon>
                                          <MenuItem.Styles>
                                              <Style Selector="MenuItem > MenuItem" x:DataType="x:String">
-                                                 <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:LibraryViewModel)DataContext).SetGenreFilterCommand}"/>
+                                                 <Setter Property="Command" Value="{Binding ((vm:LibraryViewModel)DataContext).SetGenreFilterCommand, ElementName=root}"/>
                                                  <Setter Property="CommandParameter" Value="{Binding}"/>
                                              </Style>
                                          </MenuItem.Styles>
