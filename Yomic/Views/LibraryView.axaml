@@ -255,6 +255,62 @@
                                         </MenuItem.ItemTemplate>
                                     </MenuItem>
 
+                                     <!-- Filter by Format -->
+                                     <MenuItem Header="Filter by Format" ItemsSource="{Binding AvailableFormats}">
+                                         <MenuItem.Icon>
+                                             <TextBlock Text="&#xE9F9;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                                         </MenuItem.Icon>
+                                         <MenuItem.Styles>
+                                             <Style Selector="MenuItem > MenuItem" x:DataType="x:String">
+                                                 <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:LibraryViewModel)DataContext).SetFormatFilterCommand}"/>
+                                                 <Setter Property="CommandParameter" Value="{Binding}"/>
+                                             </Style>
+                                         </MenuItem.Styles>
+                                         <MenuItem.ItemTemplate>
+                                             <DataTemplate DataType="x:String">
+                                                 <Grid ColumnDefinitions="24, *">
+                                                     <TextBlock Grid.Column="0" Text="&#xE73E;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center">
+                                                         <TextBlock.IsVisible>
+                                                             <MultiBinding Converter="{x:Static vm:StatusToColorConverter.StringEqualityConverter}">
+                                                                 <Binding Path="$parent[UserControl].DataContext.SelectedFormatFilter" />
+                                                                 <Binding />
+                                                             </MultiBinding>
+                                                         </TextBlock.IsVisible>
+                                                     </TextBlock>
+                                                     <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center"/>
+                                                 </Grid>
+                                             </DataTemplate>
+                                         </MenuItem.ItemTemplate>
+                                     </MenuItem>
+
+                                     <!-- Filter by Genre -->
+                                     <MenuItem Header="Filter by Genre" ItemsSource="{Binding AvailableGenres}">
+                                         <MenuItem.Icon>
+                                             <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="16" VerticalAlignment="Center"/>
+                                         </MenuItem.Icon>
+                                         <MenuItem.Styles>
+                                             <Style Selector="MenuItem > MenuItem" x:DataType="x:String">
+                                                 <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:LibraryViewModel)DataContext).SetGenreFilterCommand}"/>
+                                                 <Setter Property="CommandParameter" Value="{Binding}"/>
+                                             </Style>
+                                         </MenuItem.Styles>
+                                         <MenuItem.ItemTemplate>
+                                             <DataTemplate DataType="x:String">
+                                                 <Grid ColumnDefinitions="24, *">
+                                                     <TextBlock Grid.Column="0" Text="&#xE73E;" FontFamily="Segoe Fluent Icons" VerticalAlignment="Center">
+                                                         <TextBlock.IsVisible>
+                                                             <MultiBinding Converter="{x:Static vm:StatusToColorConverter.StringEqualityConverter}">
+                                                                 <Binding Path="$parent[UserControl].DataContext.SelectedGenreFilter" />
+                                                                 <Binding />
+                                                             </MultiBinding>
+                                                         </TextBlock.IsVisible>
+                                                     </TextBlock>
+                                                     <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center"/>
+                                                 </Grid>
+                                             </DataTemplate>
+                                         </MenuItem.ItemTemplate>
+                                     </MenuItem>
+
                                     <!-- Sort Section -->
                                     <MenuItem Header="Sort by">
                                         <MenuItem.Icon>

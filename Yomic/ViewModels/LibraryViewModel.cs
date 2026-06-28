@@ -288,9 +288,45 @@ namespace Yomic.ViewModels
             }
         }
 
+        private string _selectedGenreFilter = "All";
+        public string SelectedGenreFilter
+        {
+            get => _selectedGenreFilter;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _selectedGenreFilter, value);
+                FilterLibrary();
+            }
+        }
+
+        private string _selectedFormatFilter = "All";
+        public string SelectedFormatFilter
+        {
+            get => _selectedFormatFilter;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _selectedFormatFilter, value);
+                FilterLibrary();
+            }
+        }
+
+        public ObservableCollection<string> AvailableGenres { get; } = new ObservableCollection<string>();
+
+        public ObservableCollection<string> AvailableFormats { get; } = new ObservableCollection<string>
+        {
+            "All", "Manga", "Manhwa", "Manhua", "Mangatoon", "Webtoon"
+        };
+
+        private static readonly HashSet<string> FormatList = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Manga", "Manhwa", "Manhua", "Mangatoon", "Webtoon", "Webtoons"
+        };
+
         public ReactiveCommand<LibrarySortMode, Unit> SetSortModeCommand { get; }
         public ReactiveCommand<LibraryFilterMode, Unit> SetFilterModeCommand { get; }
         public ReactiveCommand<string, Unit> SetSourceFilterCommand { get; }
+        public ReactiveCommand<string, Unit> SetGenreFilterCommand { get; }
+        public ReactiveCommand<string, Unit> SetFormatFilterCommand { get; }
         public Func<MangaItem, Task<bool>>? ConfirmDeleteFromDiskAsync { get; set; }
         public Func<MangaItem, Task<bool>>? ConfirmDeleteDownloadsAsync { get; set; }
 
@@ -512,6 +548,18 @@ namespace Yomic.ViewModels
             {
                 SelectedSourceFilter = source;
             });
+
+            // Genre Filter Command
+            SetGenreFilterCommand = ReactiveCommand.Create<string>(genre =>
+            {
+                SelectedGenreFilter = genre;
+            });
+
+            // Format Filter Command
+            SetFormatFilterCommand = ReactiveCommand.Create<string>(format =>
+            {
+                SelectedFormatFilter = format;
+            });
             
             // Initial load
             _ = RefreshLibrary();
@@ -723,14 +771,63 @@ namespace Yomic.ViewModels
                      }
                  }
 
+                 // Update AvailableGenres based on current _allItems
+                 var genreSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                 foreach (var item in _allItems)
+                 {
+                     if (item.Genres != null)
+                     {
+                         foreach (var g in item.Genres)
+                         {
+                             if (!string.IsNullOrWhiteSpace(g) && !FormatList.Contains(g))
+                             {
+                                 // Capitalize nicely for display (e.g. slice of life -> Slice of Life)
+                                 genreSet.Add(System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(g.ToLower()));
+                             }
+                         }
+                     }
+                 }
+                 
+                 var sortedGenres = genreSet.OrderBy(x => x).ToList();
+                 sortedGenres.Insert(0, "All");
+                 
+                 // Sync AvailableGenres
+                 var toRemoveGenre = AvailableGenres.Where(g => !sortedGenres.Contains(g)).ToList();
+                 foreach (var g in toRemoveGenre) AvailableGenres.Remove(g);
+                 
+                 foreach (var g in sortedGenres)
+                 {
+                     if (!AvailableGenres.Contains(g)) AvailableGenres.Add(g);
+                 }
+                 
+                 // Fix Order
+                 for (int i = 0; i < sortedGenres.Count; i++)
+                 {
+                     if (AvailableGenres[i] != sortedGenres[i])
+                     {
+                         var oldItem = AvailableGenres.FirstOrDefault(x => x == sortedGenres[i]);
+                         if (oldItem != null)
+                         {
+                             var oldIndex = AvailableGenres.IndexOf(oldItem);
+                             AvailableGenres.Move(oldIndex, i);
+                         }
+                     }
+                 }
+
                  if (!AvailableSources.Any(x => x.Name == SelectedSourceFilter))
                  {
                      SelectedSourceFilter = "All";
                  }
-                 else
+                 if (!AvailableGenres.Contains(SelectedGenreFilter))
                  {
-                      FilterLibrary();
+                     SelectedGenreFilter = "All";
                  }
+                 if (!AvailableFormats.Contains(SelectedFormatFilter))
+                 {
+                     SelectedFormatFilter = "All";
+                 }
+
+                 FilterLibrary();
              });
         }
 
@@ -774,6 +871,18 @@ namespace Yomic.ViewModels
                      LibraryFilterMode.DownloadedOnly => query.Where(x => x.HasDownloadedChapters),
                      _ => query
                  };
+
+                 // 2d. Apply Genre Filter
+                 if (!string.IsNullOrEmpty(SelectedGenreFilter) && SelectedGenreFilter != "All")
+                 {
+                     query = query.Where(x => x.Genres != null && x.Genres.Any(g => string.Equals(g, SelectedGenreFilter, StringComparison.OrdinalIgnoreCase)));
+                 }
+
+                 // 2e. Apply Format Filter
+                 if (!string.IsNullOrEmpty(SelectedFormatFilter) && SelectedFormatFilter != "All")
+                 {
+                     query = query.Where(x => x.Genres != null && x.Genres.Any(g => string.Equals(g, SelectedFormatFilter, StringComparison.OrdinalIgnoreCase)));
+                 }
 
                  // 3. Apply Sort
                  IEnumerable<MangaItem> sorted = SelectedSortMode switch
