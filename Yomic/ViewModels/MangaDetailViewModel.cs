@@ -866,7 +866,7 @@ namespace Yomic.ViewModels
                          Name = c.Name,
                          Url = c.Url,
                          DateUpload = c.DateUpload,
-                         ChapterNumber = -1 
+                         ChapterNumber = c.ChapterNumber 
                     }).ToList();
                     
                     await _libraryService.UpdateChaptersAsync(_model, dbChapters);
@@ -904,6 +904,30 @@ namespace Yomic.ViewModels
                         // Create minimal chapter for download request
                         var chapterModel = new Core.Models.Chapter { Name = ch.Name, Url = ch.Url };
                         
+                        // Smart IsNewRelease detection
+                        bool isNewRelease = false;
+                        if (existing != null)
+                        {
+                            if (dbChapter != null)
+                            {
+                                isNewRelease = dbChapter.IsNew;
+                            }
+                            else
+                            {
+                                float maxExistingNum = (existing.Chapters != null && existing.Chapters.Any()) ? existing.Chapters.Max(c => c.ChapterNumber) : 0;
+                                long maxExistingDate = (existing.Chapters != null && existing.Chapters.Any()) ? existing.Chapters.Max(c => c.DateUpload) : 0;
+
+                                bool isHigherNumber = ch.ChapterNumber > maxExistingNum;
+                                bool isNewerDate = ch.DateUpload > 0 && maxExistingDate > 0 && ch.DateUpload > maxExistingDate;
+                                
+                                isNewRelease = isHigherNumber || isNewerDate;
+                            }
+                        }
+                        else
+                        {
+                            isNewRelease = ch.DateUpload > 0 && (DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeMilliseconds(ch.DateUpload)).TotalDays <= 3;
+                        }
+
                         ChapterItem? newOnlineItem = null;
                         newOnlineItem = new ChapterItem(
                              () => QueueDownload(chapterModel), 
@@ -919,7 +943,7 @@ namespace Yomic.ViewModels
                             Date = DateTimeOffset.FromUnixTimeMilliseconds(ch.DateUpload).ToString("dd MMM yyyy"),
                             DateUpload = ch.DateUpload,
                             IsRead = dbRead,
-                            IsNewRelease = (DateTimeOffset.Now - DateTimeOffset.FromUnixTimeMilliseconds(ch.DateUpload)).TotalDays <= 3,
+                            IsNewRelease = isNewRelease,
                             IsDownloaded = isDownloaded
                         };
                         vmChapters.Add(newOnlineItem);

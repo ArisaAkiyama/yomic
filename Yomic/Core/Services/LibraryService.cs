@@ -421,24 +421,25 @@ namespace Yomic.Core.Services
                             // 2. Library is not empty (has history)
                             if (!isInitialLoad && !isEmptyLibrary)
                             {
-                                // Find max from existing DB chapters (cached dict has the latest state)
-                                float maxExisting = 0;
+                                // Find max from existing DB chapters
+                                float maxExistingNum = 0;
+                                long maxExistingDate = 0;
                                 if (dbManga.Chapters.Any())
                                 {
-                                    maxExisting = dbManga.Chapters.Max(c => c.ChapterNumber);
+                                    maxExistingNum = dbManga.Chapters.Max(c => c.ChapterNumber);
+                                    maxExistingDate = dbManga.Chapters.Max(c => c.DateUpload);
                                 }
                                 
-                                // FIX: Some sources don't provide reliable ChapterNumbers (e.g. they return 0, or index-based numbers).
-                                // We should flag it as new if:
-                                // a) It has a higher ChapterNumber OR
-                                // b) It's a completely new URL that we haven't seen before, AND our maxExisting is > 0 (meaning we have an established baseline)
-                                if (ch.ChapterNumber > maxExisting || (maxExisting > 0 && !dbChaptersDict.ContainsKey(ch.Url)))
+                                bool isHigherNumber = ch.ChapterNumber > maxExistingNum;
+                                bool isNewerDate = ch.DateUpload > 0 && maxExistingDate > 0 && ch.DateUpload > maxExistingDate;
+                                bool isNewPart = !dbChaptersDict.ContainsKey(ch.Url) && (maxExistingNum > 0 || maxExistingDate > 0);
+
+                                if (isHigherNumber || isNewerDate || isNewPart)
                                 {
                                     ch.IsNew = true;
                                     // Mark Manga as having new chapters (Persistent Flag)
                                     dbManga.HasNewChapters = true;
                                 }
-                                // Ensure strict false if not (just in case default is true)
                                 else 
                                 {
                                     ch.IsNew = false;
