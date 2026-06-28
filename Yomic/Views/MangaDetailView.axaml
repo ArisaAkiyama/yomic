@@ -137,16 +137,41 @@
                                                VerticalAlignment="Center"/>
                                 </StackPanel>
 
-                                <!-- Rating Stars -->
-                                <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0"
-                                            IsVisible="{Binding ViewModel.HasRating}">
-                                    <TextBlock Text="{Binding ViewModel.Star1Char}" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding ViewModel.Star2Char}" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding ViewModel.Star3Char}" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding ViewModel.Star4Char}" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding ViewModel.Star5Char}" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding ViewModel.RatingText}" Foreground="{DynamicResource SecondaryText}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                                </StackPanel>
+                                 <!-- Rating Stars -->
+                                 <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0"
+                                             IsVisible="{Binding ViewModel.HasRating}">
+                                     <!-- Star 1 -->
+                                     <Panel Width="15" Height="15">
+                                         <TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                         <TextBlock Text="&#xE7C6;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ViewModel.Star1ShowHalf}"/>
+                                         <TextBlock Text="&#xE735;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ViewModel.Star1ShowFull}"/>
+                                     </Panel>
+                                     <!-- Star 2 -->
+                                     <Panel Width="15" Height="15">
+                                         <TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                         <TextBlock Text="&#xE7C6;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ViewModel.Star2ShowHalf}"/>
+                                         <TextBlock Text="&#xE735;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ViewModel.Star2ShowFull}"/>
+                                     </Panel>
+                                     <!-- Star 3 -->
+                                     <Panel Width="15" Height="15">
+                                         <TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                         <TextBlock Text="&#xE7C6;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ViewModel.Star3ShowHalf}"/>
+                                         <TextBlock Text="&#xE735;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ViewModel.Star3ShowFull}"/>
+                                     </Panel>
+                                     <!-- Star 4 -->
+                                     <Panel Width="15" Height="15">
+                                         <TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                         <TextBlock Text="&#xE7C6;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ViewModel.Star4ShowHalf}"/>
+                                         <TextBlock Text="&#xE735;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ViewModel.Star4ShowFull}"/>
+                                     </Panel>
+                                     <!-- Star 5 -->
+                                     <Panel Width="15" Height="15">
+                                         <TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource SecondaryText}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                         <TextBlock Text="&#xE7C6;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ViewModel.Star5ShowHalf}"/>
+                                         <TextBlock Text="&#xE735;" FontFamily="Segoe Fluent Icons" Foreground="{DynamicResource PrimaryAccent}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ViewModel.Star5ShowFull}"/>
+                                     </Panel>
+                                     <TextBlock Text="{Binding ViewModel.RatingText}" Foreground="{DynamicResource SecondaryText}" FontSize="14" FontWeight="SemiBold" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                 </StackPanel>
                             </StackPanel>
 
                                 

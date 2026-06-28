@@ -172,12 +172,17 @@ namespace Yomic.ViewModels
             {
                 this.RaiseAndSetIfChanged(ref _rating, value);
                 this.RaisePropertyChanged(nameof(HasRating));
-                this.RaisePropertyChanged(nameof(Star1Char));
-                this.RaisePropertyChanged(nameof(Star2Char));
-                this.RaisePropertyChanged(nameof(Star3Char));
-                this.RaisePropertyChanged(nameof(Star4Char));
-                this.RaisePropertyChanged(nameof(Star5Char));
                 this.RaisePropertyChanged(nameof(RatingText));
+                this.RaisePropertyChanged(nameof(Star1ShowFull));
+                this.RaisePropertyChanged(nameof(Star1ShowHalf));
+                this.RaisePropertyChanged(nameof(Star2ShowFull));
+                this.RaisePropertyChanged(nameof(Star2ShowHalf));
+                this.RaisePropertyChanged(nameof(Star3ShowFull));
+                this.RaisePropertyChanged(nameof(Star3ShowHalf));
+                this.RaisePropertyChanged(nameof(Star4ShowFull));
+                this.RaisePropertyChanged(nameof(Star4ShowHalf));
+                this.RaisePropertyChanged(nameof(Star5ShowFull));
+                this.RaisePropertyChanged(nameof(Star5ShowHalf));
             }
         }
 
@@ -185,21 +190,34 @@ namespace Yomic.ViewModels
         
         public string RatingText => Rating.HasValue ? Rating.Value.ToString("0.0") : "";
 
-        public string Star1Char => GetStarChar(0);
-        public string Star2Char => GetStarChar(1);
-        public string Star3Char => GetStarChar(2);
-        public string Star4Char => GetStarChar(3);
-        public string Star5Char => GetStarChar(4);
+        public bool Star1ShowFull => GetStarShowFull(0);
+        public bool Star1ShowHalf => GetStarShowHalf(0);
 
-        private string GetStarChar(int index)
+        public bool Star2ShowFull => GetStarShowFull(1);
+        public bool Star2ShowHalf => GetStarShowHalf(1);
+
+        public bool Star3ShowFull => GetStarShowFull(2);
+        public bool Star3ShowHalf => GetStarShowHalf(2);
+
+        public bool Star4ShowFull => GetStarShowFull(3);
+        public bool Star4ShowHalf => GetStarShowHalf(3);
+
+        public bool Star5ShowFull => GetStarShowFull(4);
+        public bool Star5ShowHalf => GetStarShowHalf(4);
+
+        private bool GetStarShowFull(int index)
         {
-            if (!Rating.HasValue) return "\uE734"; // Outline star
-            double score = Rating.Value / 2.0; // scale 10 to 5
-            double diff = score - index;
+            if (!Rating.HasValue) return false;
+            double score = Rating.Value / 2.0;
+            return (score - index) >= 0.75;
+        }
 
-            if (diff >= 0.75) return "\uE735"; // Filled star
-            if (diff >= 0.25) return "\uE7C6"; // Half star
-            return "\uE734"; // Outline star
+        private bool GetStarShowHalf(int index)
+        {
+            if (!Rating.HasValue) return false;
+            double score = Rating.Value / 2.0;
+            double diff = score - index;
+            return diff >= 0.25 && diff < 0.75;
         }
 
         private void ParseRatingFromDescription()
