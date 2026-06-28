@@ -804,7 +804,7 @@ namespace Yomic.Core.Services
              }
         }
 
-        public async Task<int> UpdateAllLibraryMangaAsync(SourceManager sourceManager, IProgress<(int current, int total)>? progress = null)
+        public async Task<int> UpdateAllLibraryMangaAsync(SourceManager sourceManager, IProgress<(int current, int total)>? progress = null, bool force = false)
         {
             System.Diagnostics.Debug.WriteLine("[LibraryService] Starting parallel library update...");
             int updatedCount = 0;
@@ -817,7 +817,7 @@ namespace Yomic.Core.Services
 
                 // Smart Update Logic
                 var settings = new SettingsService();
-                if (settings.UseSmartUpdate)
+                if (settings.UseSmartUpdate && !force)
                 {
                     long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 

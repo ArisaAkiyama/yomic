@@ -722,7 +722,7 @@
         <Border Background="#80000000" IsVisible="{Binding IsRefreshing}">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
                  <helpers:LoadingArcs Margin="0,0,0,10"/>
-                 <TextBlock Text="Checking for updates..." Foreground="White" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
+                 <TextBlock Text="{Binding SyncProgressText}" Foreground="White" HorizontalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
             </StackPanel>
         </Border>
     </Panel>
