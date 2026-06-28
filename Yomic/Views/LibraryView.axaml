@@ -168,7 +168,7 @@
                 <Grid ColumnDefinitions="*, Auto">
                     <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                         <!-- Header Icon -->
-                        <TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" FontSize="24" 
+                        <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="24" 
                                    Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"
                                    RenderOptions.TextRenderingMode="Antialias"/>
                                    

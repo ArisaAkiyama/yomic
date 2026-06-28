@@ -520,7 +520,7 @@
                                     </Border>
                                 </Flyout>
                             </Button.Flyout>
-                            <TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" FontSize="18"/>
+                            <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="18"/>
                         </Button>
 
                         <!-- Zoom Controls -->

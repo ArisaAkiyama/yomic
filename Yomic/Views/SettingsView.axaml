@@ -112,7 +112,7 @@
             </StackPanel>
             <StackPanel Spacing="15">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                     <TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" FontSize="20" Foreground="{DynamicResource SecondaryText}"/>
+                     <TextBlock Text="&#xE8F1;" FontFamily="Segoe Fluent Icons" FontSize="20" Foreground="{DynamicResource SecondaryText}"/>
                      <TextBlock Text="Library" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}"/>
                 </StackPanel>
                 

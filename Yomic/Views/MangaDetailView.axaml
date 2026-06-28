@@ -443,11 +443,11 @@
                                     </Button.Styles>
                                     <Panel>
                                         <!-- Outline Icon if NOT bookmarked -->
-                                        <TextBlock Text="&#xE8A4;" FontFamily="Segoe Fluent Icons" FontSize="16"
+                                        <TextBlock Text="&#xE734;" FontFamily="Segoe Fluent Icons" FontSize="16"
                                                    Foreground="{DynamicResource SecondaryText}"
                                                    IsVisible="{Binding !Bookmark}"/>
                                         <!-- Filled Icon if Bookmarked -->
-                                        <TextBlock Text="&#xE8A4;" FontFamily="Segoe Fluent Icons" FontSize="16"
+                                        <TextBlock Text="&#xE735;" FontFamily="Segoe Fluent Icons" FontSize="16"
                                                    Foreground="{DynamicResource PrimaryAccent}"
                                                    IsVisible="{Binding Bookmark}"/>
                                     </Panel>
