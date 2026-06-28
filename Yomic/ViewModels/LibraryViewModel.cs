@@ -445,6 +445,13 @@ namespace Yomic.ViewModels
 
                 var manga = new Core.Models.Manga { Url = item.MangaUrl, Source = item.SourceId };
                 await _libraryService.DeleteMangaDownloadsAsync(manga);
+
+                // UI Update: Clear download count and hide badge in real-time
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+                {
+                    item.DownloadedCount = 0;
+                    item.HasDownloadedChapters = false;
+                });
             });
 
             // Manual Refresh Button - Force reload covers from network
