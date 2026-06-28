@@ -615,12 +615,8 @@ namespace Yomic.ViewModels
                  {
                       // Update existing
                       if (existingItem.Title != m.Title) existingItem.Title = m.Title;
-                      if (existingItem.UnreadCount != unreadString) 
-                      {
-                          existingItem.UnreadCount = unreadString;
-                          if (existingItem.HasNewChapters != m.HasNewChapters)
-                              existingItem.HasNewChapters = m.HasNewChapters;
-                      }
+                      if (existingItem.UnreadCount != unreadString) existingItem.UnreadCount = unreadString;
+                      if (existingItem.HasNewChapters != m.HasNewChapters) existingItem.HasNewChapters = m.HasNewChapters;
                        
                       if (existingItem.CoverUrl != m.ThumbnailUrl)
                       {

@@ -65,7 +65,11 @@ namespace Yomic.ViewModels
         public bool IsNewBadgeVisible
         {
             get => _isNewBadgeVisible;
-            set => this.RaiseAndSetIfChanged(ref _isNewBadgeVisible, value);
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _isNewBadgeVisible, value);
+                this.RaisePropertyChanged(nameof(HasNewChapters));
+            }
         }
         
         public string StatusString 
@@ -110,7 +114,11 @@ namespace Yomic.ViewModels
         public bool HasNewChapters 
         {
             get => _isNewBadgeVisible;
-            set => this.RaiseAndSetIfChanged(ref _isNewBadgeVisible, value);
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _isNewBadgeVisible, value);
+                this.RaisePropertyChanged(nameof(IsNewBadgeVisible));
+            }
         }
 
         public string Description { get; set; } = string.Empty;
