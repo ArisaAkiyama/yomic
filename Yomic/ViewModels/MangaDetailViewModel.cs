@@ -193,13 +193,13 @@ namespace Yomic.ViewModels
 
         private string GetStarChar(int index)
         {
-            if (!Rating.HasValue) return "\uE734"; // Outline star
+            if (!Rating.HasValue) return ""; // Empty overlay
             double score = Rating.Value / 2.0; // scale 10 to 5
             double diff = score - index;
 
-            if (diff >= 0.75) return "\uE735"; // Filled star
-            if (diff >= 0.25) return "\uE7C6"; // Half star
-            return "\uE734"; // Outline star
+            if (diff >= 0.75) return "\uE735"; // Filled star overlay
+            if (diff >= 0.25) return "\uE7C6"; // Half star overlay
+            return ""; // Empty overlay
         }
 
         private void ParseRatingFromDescription()
