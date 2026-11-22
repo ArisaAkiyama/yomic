@@ -4505,10 +4505,19 @@ namespace YomicDesktop.IPC
                 return new { ok = false, error = L("URL unduhan pembaruan tidak ditemukan.", "Update download URL not found.") };
             }
 
-            bool ok = await UpdateService.DownloadAndInstallUpdateAsync(downloadUrl, progress =>
-            {
-                PushEvent("event:app-update-progress", new { progress = Math.Round(progress, 1) });
-            });
+            bool ok = await UpdateService.DownloadAndInstallUpdateAsync(
+                downloadUrl,
+                onProgress: null,
+                onDetailedProgress: (progress, downloadedBytes, totalBytes, stage) =>
+                {
+                    PushEvent("event:app-update-progress", new
+                    {
+                        progress = Math.Round(progress, 1),
+                        downloadedBytes,
+                        totalBytes,
+                        stage
+                    });
+                });
 
             return new { ok };
         }

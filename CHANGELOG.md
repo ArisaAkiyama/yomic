@@ -2,6 +2,14 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [2.2.1] - 2026-11-22
+
+Update Details：
+◆ Add full-screen native-themed App Updater Overlay (#appUpdateOverlay in index.html, main.css, and settings.ts) featuring Yomic branding, real-time progress bar, live MB downloaded/total counter, formatted GitHub release notes card, one-click Update Now button, and Escape/close dismissal.
+◆ Add detailed update download progress reporting (onDetailedProgress callback in UpdateService.DownloadAndInstallUpdateAsync) streaming throttled (120ms) percentage, downloadedBytes, totalBytes, and lifecycle stage (downloading, installing, error).
+◆ Add live IPC update progress bridge (event:app-update-progress in BackendIpcController and backend-sync.ts) wired directly to updateAppUpdateOverlayProgress in settings.ts with an extended 300-second installer download timeout.
+◆ Improve Check for Updates flow in Settings About view to open the full-screen Updater Overlay immediately across checking, available, up-to-date, downloading, installing, and error states with bilingual (ID/EN) status labels.
+
 ## [2.2.0] - 2026-11-22
 
 Update Details：

@@ -5,7 +5,7 @@
 
 #define MyAppName "Yomic"
 #define MyAppPublisher "ArisaAkiyama"
-#define MyAppVersion "2.2.0"
+#define MyAppVersion "2.2.1"
 #ifndef MySourceDir
   #define MySourceDir "..\dist\Yomic_v2"
 #endif

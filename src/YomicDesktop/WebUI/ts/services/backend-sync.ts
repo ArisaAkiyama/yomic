@@ -7,6 +7,7 @@ import { applyStaticDomTranslations } from '../i18n.js';
 import { AppBootstrapPayload, CategoryItem, DownloadQueueItem, MangaItem } from '../types.js';
 import { updateDownloadsProgressInPlace } from '../views/downloads.js';
 import { updateDetailChapterDownloadsInPlace } from '../views/manga-detail.js';
+import { updateAppUpdateOverlayProgress } from '../views/settings.js';
 import { updateSourceStatusInPlace } from '../views/browse.js';
 
 export function bindBackendEvents(this: YomicApp): void {
@@ -55,6 +56,13 @@ export function bindBackendEvents(this: YomicApp): void {
       }
     }
   });
+  this.bridge.on<{ progress?: number; downloadedBytes?: number; totalBytes?: number; stage?: string }>(
+    'event:app-update-progress',
+    (prog) => {
+      if (!prog) return;
+      updateAppUpdateOverlayProgress(prog, document.documentElement.lang === 'en');
+    }
+  );
   this.bridge.on<{ active: boolean; current: number; total: number }>('event:library-sync-progress', (prog) => {
     if (!prog) return;
     const wasActive = this.syncProgress.active;

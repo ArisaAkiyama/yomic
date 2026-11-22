@@ -11497,3 +11497,496 @@ body.dark-mode .v1-filter-modal-check::after {
   transform: scale(1);
   opacity: 1;
 }
+
+
+/* =========================================================================
+ * FULL-SCREEN APP UPDATER OVERLAY (CARBON DARK REFERENCE LAYOUT)
+ * ========================================================================= */
+.app-update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #09090B;
+  color: #F4F4F5;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  user-select: none;
+}
+
+.app-update-overlay.open {
+  display: flex;
+  animation: tabViewEnter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-update-corner-glow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.22;
+}
+
+.app-update-corner-glow.top-left {
+  width: 340px;
+  height: 340px;
+  top: -150px;
+  left: -130px;
+  background: #3B82F6;
+}
+
+.app-update-corner-glow.bottom-right {
+  width: 420px;
+  height: 420px;
+  bottom: -190px;
+  right: -150px;
+  background: #06B6D4;
+}
+
+.app-update-center {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 540px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.app-update-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.app-update-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  object-fit: contain;
+}
+
+.app-update-brand-name {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #FFFFFF;
+}
+
+.app-update-brand-badge {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #2563EB;
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.app-update-status {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: #F4F4F5;
+  margin-bottom: 14px;
+  letter-spacing: -0.01em;
+}
+
+.app-update-progress-track {
+  width: 100%;
+  max-width: 420px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.app-update-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3B82F6, #38BDF8);
+  transition: width 0.16s ease-out;
+}
+
+.app-update-bytes {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #A1A1AA;
+  margin-bottom: 28px;
+}
+
+.app-update-notes-card {
+  width: 100%;
+  max-width: 500px;
+  background: #121215;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  padding: 18px 20px;
+  text-align: left;
+  margin-bottom: 20px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.app-update-notes-body {
+  max-height: 230px;
+  overflow-y: auto;
+  padding-right: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #D4D4D8;
+  user-select: text;
+}
+
+.app-update-notes-heading {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #FFFFFF;
+  margin: 10px 0 6px 0;
+}
+
+.app-update-notes-heading:first-child {
+  margin-top: 0;
+}
+
+.app-update-notes-list {
+  margin: 0 0 8px 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.app-update-notes-list li {
+  color: #D4D4D8;
+}
+
+.app-update-notes-para {
+  margin: 0 0 8px 0;
+  color: #D4D4D8;
+}
+
+.app-update-version {
+  font-size: 12px;
+  font-weight: 500;
+  color: #71717A;
+}
+
+.app-update-close-btn {
+  margin-top: 16px;
+  height: 38px;
+  padding: 0 22px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #1E1E24;
+  color: #F4F4F5;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.14s ease;
+}
+
+.app-update-close-btn:hover {
+  background: #27272F;
+}
+
+
+.app-update-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.app-update-actions .app-update-close-btn {
+  margin-top: 0;
+}
+
+.app-update-primary-btn {
+  height: 38px;
+  padding: 0 22px;
+  border-radius: 10px;
+  border: none;
+  background: #2563EB;
+  color: #FFFFFF;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.14s ease;
+}
+
+.app-update-primary-btn:hover {
+  background: #1D4ED8;
+}
+
+.app-update-progress-fill.indeterminate {
+  width: 38% !important;
+  animation: appUpdateIndeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes appUpdateIndeterminate {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(280%);
+  }
+}
+
+
+/* =========================================================================
+ * APP UPDATER V2 — 1:1 IMAGE 2 GEOMETRY WITH YOMIC BRAND PALETTE
+ * ========================================================================= */
+.app-update-overlay {
+  background: #000000 !important;
+}
+
+.app-update-art-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 240px;
+  height: 240px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.app-update-art-wave {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 200px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.app-update-top-close {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  z-index: 5;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #71717A;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.app-update-top-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+}
+
+.app-update-center {
+  max-width: 640px !important;
+  padding: 28px 24px !important;
+}
+
+.app-update-brand {
+  gap: 10px !important;
+  margin-bottom: 30px !important;
+}
+
+.app-update-logo {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.app-update-brand-name {
+  font-size: 28px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em !important;
+}
+
+.app-update-brand-badge {
+  padding: 2px 9px !important;
+  border-radius: 3px !important;
+  background: #2563EB !important;
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  line-height: 1.35 !important;
+}
+
+.app-update-status {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  margin-bottom: 18px !important;
+}
+
+.app-update-progress-track {
+  max-width: 440px !important;
+  height: 6px !important;
+  background: #262626 !important;
+  margin-bottom: 12px !important;
+}
+
+.app-update-bytes {
+  font-size: 13px !important;
+  color: #A1A1AA !important;
+  margin-bottom: 34px !important;
+}
+
+.app-update-notes-card {
+  max-width: 600px !important;
+  background: #121212 !important;
+  border: 1px solid #2A2A2A !important;
+  border-radius: 8px !important;
+  padding: 20px 24px !important;
+  margin-bottom: 22px !important;
+  box-shadow: none !important;
+}
+
+.app-update-notes-body {
+  max-height: 235px !important;
+  padding-right: 12px !important;
+  font-size: 12.5px !important;
+  line-height: 1.65 !important;
+  color: #D4D4D8 !important;
+}
+
+.app-update-notes-body::-webkit-scrollbar {
+  width: 5px;
+}
+
+.app-update-notes-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-update-notes-body::-webkit-scrollbar-thumb {
+  background: #3F3F46;
+  border-radius: 999px;
+}
+
+.app-update-notes-heading {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: #FFFFFF !important;
+  margin: 14px 0 8px 0 !important;
+}
+
+.app-update-notes-heading:first-child {
+  margin-top: 0 !important;
+}
+
+.app-update-notes-list {
+  margin: 0 0 8px 0 !important;
+  padding-left: 16px !important;
+  gap: 8px !important;
+  list-style-type: disc !important;
+}
+
+.app-update-notes-list li {
+  color: #D4D4D8 !important;
+  padding-left: 2px;
+}
+
+.app-update-notes-list li::marker {
+  color: #D4D4D8;
+}
+
+.app-update-version {
+  font-size: 12px !important;
+  color: #8E8E93 !important;
+}
+
+
+/* Deslopped flat solid white progress bar matching Yomic Downloads & Reader */
+.app-update-progress-track {
+  height: 4px !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.app-update-progress-fill {
+  background: #FFFFFF !important;
+}
+
+
+/* =========================================================================
+ * APP UPDATER — 100% NATIVE YOMIC THEME TOKENS (CARBON DARK & LIGHT MODE)
+ * ========================================================================= */
+.app-update-overlay {
+  background: var(--bg-canvas) !important;
+  color: var(--ink-primary) !important;
+}
+
+.app-update-top-close {
+  color: var(--ink-muted) !important;
+}
+
+.app-update-top-close:hover {
+  background: rgba(128, 128, 128, 0.14) !important;
+  color: var(--ink-primary) !important;
+}
+
+.app-update-brand-name {
+  color: var(--ink-primary) !important;
+}
+
+.app-update-status {
+  color: var(--ink-primary) !important;
+}
+
+.app-update-progress-track {
+  background: var(--border-subtle) !important;
+}
+
+.app-update-progress-fill {
+  background: var(--ink-primary) !important;
+}
+
+.app-update-bytes {
+  color: var(--ink-secondary) !important;
+}
+
+.app-update-notes-card {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 12px !important;
+}
+
+.app-update-notes-body,
+.app-update-notes-list li,
+.app-update-notes-para {
+  color: var(--ink-secondary) !important;
+}
+
+.app-update-notes-list li::marker {
+  color: var(--ink-muted) !important;
+}
+
+.app-update-notes-heading {
+  color: var(--ink-primary) !important;
+}
+
+.app-update-notes-body::-webkit-scrollbar-thumb {
+  background: var(--border-strong, rgba(128, 128, 128, 0.35)) !important;
+}
+
+.app-update-version {
+  color: var(--ink-muted) !important;
+}
+
+.app-update-primary-btn {
+  background: var(--ink-primary) !important;
+  color: var(--bg-canvas) !important;
+}
+
+.app-update-primary-btn:hover {
+  opacity: 0.9;
+}

@@ -18,7 +18,7 @@ namespace Yomic.Core.Services
             {
                 var ver = Assembly.GetExecutingAssembly().GetName().Version;
                 if (ver == null || (ver.Major == 1 && ver.Minor == 0 && ver.Build == 0))
-                    return "2.2.0";
+                    return "2.2.1";
                 return ver.ToString(3);
             }
         }
@@ -153,7 +153,10 @@ namespace Yomic.Core.Services
             }
         }
 
-        public async Task<bool> DownloadAndInstallUpdateAsync(string downloadUrl, Action<double>? onProgress = null)
+        public async Task<bool> DownloadAndInstallUpdateAsync(
+            string downloadUrl,
+            Action<double>? onProgress = null,
+            Action<double, long, long, string>? onDetailedProgress = null)
         {
             if (string.IsNullOrWhiteSpace(downloadUrl))
                 return false;
@@ -179,30 +182,42 @@ namespace Yomic.Core.Services
                     try { File.Delete(tempPath); } catch { }
                 }
 
+                long finalTotalBytes = 0;
+                long finalTotalRead = 0;
                 using (var client = new HttpClient())
                 {
                     client.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
                     using var response = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
                     response.EnsureSuccessStatusCode();
                     var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+                    finalTotalBytes = totalBytes > 0 ? totalBytes : 0;
                     var canValidProgress = totalBytes > 0;
+                    onDetailedProgress?.Invoke(0.0, 0L, finalTotalBytes, "downloading");
 
                     using var contentStream = await response.Content.ReadAsStreamAsync();
                     using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
                     var totalRead = 0L;
                     var buffer = new byte[8192];
                     int read;
+                    var lastReportTicks = Environment.TickCount64;
                     while ((read = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                     {
                         await fileStream.WriteAsync(buffer, 0, read);
                         totalRead += read;
-                        if (canValidProgress)
+                        finalTotalRead = totalRead;
+                        var nowTicks = Environment.TickCount64;
+                        if (nowTicks - lastReportTicks >= 120 || (canValidProgress && totalRead >= totalBytes))
                         {
-                            onProgress?.Invoke((double)totalRead / totalBytes * 100.0);
+                            lastReportTicks = nowTicks;
+                            double pct = canValidProgress ? (double)totalRead / totalBytes * 100.0 : 0.0;
+                            if (canValidProgress) onProgress?.Invoke(pct);
+                            onDetailedProgress?.Invoke(pct, totalRead, finalTotalBytes, "downloading");
                         }
                     }
                 }
 
+                onProgress?.Invoke(100.0);
+                onDetailedProgress?.Invoke(100.0, finalTotalRead, finalTotalBytes > 0 ? finalTotalBytes : finalTotalRead, "installing");
                 await Task.Delay(500);
 
                 var startInfo = new ProcessStartInfo
@@ -218,11 +233,13 @@ namespace Yomic.Core.Services
                     Application.Current?.Dispatcher.Invoke(() => Application.Current.Shutdown());
                     return true;
                 }
+                onDetailedProgress?.Invoke(0.0, 0L, 0L, "error");
                 return false;
             }
             catch (Exception ex)
             {
                 LogService.Error("UpdateService", $"Download and install update failed: {ex.Message}", ex);
+                onDetailedProgress?.Invoke(0.0, 0L, 0L, "error");
                 try
                 {
                     Process.Start(new ProcessStartInfo { FileName = downloadUrl, UseShellExecute = true });

@@ -490,6 +490,33 @@
       </div>
     </div>
 
+    <!-- Full-Screen App Updater Overlay (Native Yomic Theme) -->
+    <div id="appUpdateOverlay" class="app-update-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+      <!-- Minimal Top-Right Close Button -->
+      <button id="btnCloseAppUpdateOverlay" type="button" class="app-update-top-close" title="Tutup (Esc)" aria-label="Tutup" style="display: none;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6L6 18M6 6L18 18"/></svg>
+      </button>
+
+      <div class="app-update-center">
+        <div class="app-update-brand">
+          <img src="assets/app-logo.png" class="app-update-logo" alt="Yomic Logo" onerror="this.src='app-logo.png'" />
+          <span class="app-update-brand-name">Yomic</span>
+        </div>
+        <div id="appUpdateStatusText" class="app-update-status">Mengunduh Pembaruan Yomic...</div>
+        <div class="app-update-progress-track">
+          <div id="appUpdateBarFill" class="app-update-progress-fill" style="width: 0%;"></div>
+        </div>
+        <div id="appUpdateBytesText" class="app-update-bytes tabular-nums">0.00 MB / 0.00 MB</div>
+        <div class="app-update-notes-card">
+          <div id="appUpdateNotesBody" class="app-update-notes-body"></div>
+        </div>
+        <div id="appUpdateVersionText" class="app-update-version">Version: 2.2.1</div>
+        <div class="app-update-actions">
+          <button id="btnStartAppUpdateNow" type="button" class="app-update-primary-btn" style="display: none;">Update Now</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast Notifications -->
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
   </div>

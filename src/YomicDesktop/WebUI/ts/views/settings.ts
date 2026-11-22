@@ -738,7 +738,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Versi', 'Version')}</span>
               </div>
-              <span class="v1-setting-desc">Stable 2.2.0 (Windows Desktop)</span>
+              <span class="v1-setting-desc">Stable 2.2.1 (Windows Desktop)</span>
             </div>
           </div>
 
@@ -756,31 +756,20 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Catatan rilis', 'Release notes')}</span>
               </div>
-              <span class="v1-setting-desc">v2.2.0</span>
+              <span class="v1-setting-desc">v2.2.1</span>
             </div>
             <span id="aboutReleaseNotesChevron" class="v1-about-release-chevron">
               ${getIconSvg('alt-arrow-down-linear', { size: 18 })}
             </span>
           </button>
           <div id="aboutReleaseNotesPanel" class="v1-about-release-notes" style="display:none;">
-            <div class="v1-about-release-head">[2.2.0] - Update</div>
+            <div class="v1-about-release-head">[2.2.1] - Update</div>
             <div class="v1-about-release-subhead">Update Details:</div>
             <ul class="v1-about-release-list">
-              <li>Add thread-safe 48 MB in-memory LRU image cache and zero-copy fast path (&lt;= 1.5 MB JPEG/WebP) in WebResourceImageProxy for instant 0ms scroll-back and chapter reopening, alongside increased 6x concurrent page download throttling.</li>
-              <li>Add smart Reader lookahead page prefetching (5 pages ahead + 1 behind with fetchpriority="high" and async decode) and O(log N) binary search active-page tracking (findActiveWebtoonPageBinarySearch) in reader.ts to eliminate forced synchronous layouts during 60–120 FPS Webtoon scrolling.</li>
-              <li>Add redesigned mobile-style Reader Top HUD and Bottom Dock (index.html &amp; reader.ts) featuring left-aligned title &amp; chapter picker, in-reader chapter bookmark toggle (btnReaderBookmarkChapter), floating chapter sheet dock, and dual-page spread alignment with dynamic zoom scaling.</li>
-              <li>Add offline CBZ comic archive download support (SaveDownloadsAsCbz with automatic cached extraction) and automatic downloaded chapter deletion after reading (AutoDeleteAfterRead) in DownloadPathService, DownloadService, SettingsService, and BackendIpcController.</li>
-              <li>Add real-time inline chapter download progress spinners and status badges in Manga Detail view (updateDetailChapterDownloadsInPlace in manga-detail.ts) with instant cancel/delete actions without re-rendering the view.</li>
-              <li>Add ultra-minimalist Settings Hub architecture (settings.ts) with dedicated category sub-pages (Appearance, Library, Reader, Downloads, Tracking, Network &amp; Sources, Data &amp; Storage, Keyboard Shortcuts, About) and header back navigation.</li>
-              <li>Add Source Pinning in Browse view (browse.ts) with dedicated Pinned vs. All Sources sections and per-source pin/unpin toggle buttons persisted locally.</li>
-              <li>Add dedicated filter flyout modals for Browse language, Extensions language, Source Catalog filters, and Chapter filters with unified Escape-key dismissal and smooth workspace view transitions.</li>
-              <li>Add enriched MyAnimeList (MAL) search metadata (InUserList, UserStatus, UserChaptersRead, UserScore, TotalChapters) in MyAnimeListService and one-click autoBind tracker linking in BackendIpcController.</li>
-              <li>Add rich Announcements modal renderer (modals.ts &amp; Announcement.cs) with persistent read tracking, localized date formatting, color-coded tone badges (Pembaruan, Peringatan, Penting), and formatted bullet/blockquote parsing.</li>
-              <li>Improve Downloads queue progress formatting (downloads.ts) and byte-accurate chapter size display (BackendIpcController) eliminating duplicate percentage prefixes.</li>
-              <li>Improve first-launch onboarding tutorial (tutorial.ts &amp; index.html) with immediate flash-free overlay trigger (data-onboarding-pending) before initial workspace paint.</li>
-              <li>Improve clean initial extension setup by removing automatic default plugin seeding in ExtensionRepositoryService so new users choose and install preferred sources directly from Extensions.</li>
-              <li>Improve toast notification stacking in app.ts (capped at 3 concurrent pills with smooth scale-out transitions and alert-aware icons).</li>
-              <li>Improve WebUI styling and visual polish across Library, Manga Detail, Reader, Browse, Extensions, Downloads, Updates, History, and Settings in main.css and tokens.css.</li>
+              <li>Add full-screen native-themed App Updater Overlay (#appUpdateOverlay in index.html, main.css, and settings.ts) featuring Yomic branding, real-time progress bar, live MB downloaded/total counter, formatted GitHub release notes card, one-click Update Now button, and Escape/close dismissal.</li>
+              <li>Add detailed update download progress reporting (onDetailedProgress callback in UpdateService.DownloadAndInstallUpdateAsync) streaming throttled (120ms) percentage, downloadedBytes, totalBytes, and lifecycle stage (downloading, installing, error).</li>
+              <li>Add live IPC update progress bridge (event:app-update-progress in BackendIpcController and backend-sync.ts) wired directly to updateAppUpdateOverlayProgress in settings.ts with an extended 300-second installer download timeout.</li>
+              <li>Improve Check for Updates flow in Settings About view to open the full-screen Updater Overlay immediately across checking, available, up-to-date, downloading, installing, and error states with bilingual (ID/EN) status labels.</li>
             </ul>
           </div>
         </div>
@@ -1716,71 +1705,83 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
   });
   document.getElementById('btnAboutCheckUpdate')?.addEventListener('click', () => {
     const btn = document.getElementById('btnAboutCheckUpdate') as HTMLButtonElement | null;
-    const titleEl = document.getElementById('aboutCheckUpdateTitle');
-    const descEl = document.getElementById('aboutCheckUpdateDesc');
-    if (this.bridge.isWebViewHost) {
-      if (btn && btn.dataset.updateUrl) {
-        const dlUrl = btn.dataset.updateUrl;
-        btn.disabled = true;
-        if (descEl) descEl.textContent = this.l('Mengunduh dan memasang pembaruan...', 'Downloading and installing update...');
-        this.showToast(this.l('Mengunduh dan memasang pembaruan aplikasi Yomic...', 'Downloading and installing Yomic update...'));
-        void this.bridge.invoke<{ ok?: boolean }>('app:install-update', { downloadUrl: dlUrl }, 120000).then((res) => {
-          if (!res?.ok && btn) {
-            btn.disabled = false;
-            if (titleEl) titleEl.textContent = this.l('Pasang Pembaruan', 'Install Update');
-            if (descEl) descEl.textContent = this.l('Klik untuk mencoba memasang ulang pembaruan', 'Click to retry installing the update');
+    const isEn = document.documentElement.lang === 'en';
+
+    const startInstall = (dlUrl: string, targetVer: string, releaseNotes: string) => {
+      openAppUpdateOverlay({
+        version: targetVer,
+        releaseNotes,
+        isEn,
+        mode: 'downloading'
+      });
+      if (this.bridge.isWebViewHost) {
+        void this.bridge.invoke<{ ok?: boolean }>('app:install-update', { downloadUrl: dlUrl }, 300000).then((res) => {
+          if (!res?.ok) {
+            updateAppUpdateOverlayProgress({ progress: 0, downloadedBytes: 0, totalBytes: 0, stage: 'error' }, isEn);
           }
         });
-        return;
       }
-      if (btn) {
-        btn.disabled = true;
-      }
-      if (descEl) {
-        descEl.textContent = this.l('Memeriksa versi rilis terbaru dari server...', 'Checking latest release version from server...');
-      }
-      void this.bridge
-        .invoke<{
-          isUpdateAvailable?: boolean;
-          currentVersion?: string;
-          latestVersion?: string;
-          downloadUrl?: string;
-        }>('app:check-update', undefined, 15000)
-        .then((info) => {
-          if (info?.isUpdateAvailable) {
-            this.showToast(this.l(`Pembaruan tersedia: ${info.latestVersion}! Klik baris ini lagi untuk memasang.`, `Update available: ${info.latestVersion}! Click this row again to install.`));
-            if (btn) {
-              btn.disabled = false;
-              btn.dataset.updateUrl = info.downloadUrl || '';
-            }
-            if (titleEl) {
-              titleEl.textContent = this.l(`Perbarui ke ${info.latestVersion}`, `Update to ${info.latestVersion}`);
-            }
-            if (descEl) {
-              descEl.textContent = this.l('Versi baru tersedia! Klik di sini untuk mengunduh & memasang', 'New version available! Click here to download & install');
-            }
-          } else {
-            if (btn) {
-              btn.disabled = false;
-            }
-            if (descEl) {
-              descEl.textContent = this.l('Periksa versi rilis terbaru dari server', 'Check latest release version from server');
-            }
-            this.showToast(this.l(`Anda sudah menggunakan Yomic versi terbaru (v${info?.currentVersion || '2.2.0'}).`, `You are already using the latest version of Yomic (v${info?.currentVersion || '2.2.0'}).`));
-          }
-        })
-        .catch(() => {
-          if (btn) {
-            btn.disabled = false;
-          }
-          if (descEl) {
-            descEl.textContent = this.l('Periksa versi rilis terbaru dari server', 'Check latest release version from server');
-          }
-          this.showToast(this.l('Anda sudah menggunakan Yomic versi terbaru (v2.2.0).', 'You are already using the latest version of Yomic (v2.2.0).'));
+    };
+
+    // Immediately open the full-screen Updater UI when Check for Updates is clicked
+    openAppUpdateOverlay({
+      version: '2.2.1',
+      releaseNotes: '',
+      isEn,
+      mode: 'checking'
+    });
+
+    if (!this.bridge.isWebViewHost) {
+      window.setTimeout(() => {
+        openAppUpdateOverlay({
+          version: '2.2.1',
+          releaseNotes: '',
+          isEn,
+          mode: 'uptodate'
         });
+      }, 450);
       return;
     }
-    this.showToast(this.l('Anda sudah menggunakan Yomic versi terbaru (v2.2.0).', 'You are already using the latest version of Yomic (v2.2.0).'));
+
+    if (btn) btn.disabled = true;
+    void this.bridge
+      .invoke<{
+        isUpdateAvailable?: boolean;
+        currentVersion?: string;
+        latestVersion?: string;
+        downloadUrl?: string;
+        releaseNotes?: string;
+      }>('app:check-update', undefined, 15000)
+      .then((info) => {
+        if (btn) btn.disabled = false;
+        const ver = info?.latestVersion || info?.currentVersion || '2.2.1';
+        const notes = info?.releaseNotes || '';
+        if (info?.isUpdateAvailable && info.downloadUrl) {
+          openAppUpdateOverlay({
+            version: ver,
+            releaseNotes: notes,
+            isEn,
+            mode: 'available',
+            onStartInstall: () => startInstall(info.downloadUrl || '', ver, notes)
+          });
+        } else {
+          openAppUpdateOverlay({
+            version: ver,
+            releaseNotes: notes,
+            isEn,
+            mode: 'uptodate'
+          });
+        }
+      })
+      .catch(() => {
+        if (btn) btn.disabled = false;
+        openAppUpdateOverlay({
+          version: '2.2.1',
+          releaseNotes: '',
+          isEn,
+          mode: 'error'
+        });
+      });
   });
   document.getElementById('btnAboutTrakteer')?.addEventListener('click', () => {
     this.bridge.openExternalUrl('https://trakteer.id/Arisa-Akiyama');
@@ -1798,5 +1799,235 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
   if (isReRender) {
     if (savedContainerScroll > 0) container.scrollTop = savedContainerScroll;
     if (savedParentScroll > 0 && container.parentElement) container.parentElement.scrollTop = savedParentScroll;
+  }
+}
+
+
+let appUpdateEscHandler: ((ev: KeyboardEvent) => void) | null = null;
+let appUpdateActiveMode: 'checking' | 'available' | 'downloading' | 'uptodate' | 'error' = 'checking';
+
+function formatUpdateReleaseNotesHtml(rawNotes: string, isEn: boolean): string {
+  const cleaned = (rawNotes || '').trim();
+  if (!cleaned) {
+    return `
+      <div class="app-update-notes-section">
+        <div class="app-update-notes-heading">${isEn ? "What's new" : 'Yang Baru'}</div>
+        <ul class="app-update-notes-list">
+          <li>${isEn ? 'Performance optimizations, bug fixes, and smoother reading experience.' : 'Peningkatan performa, perbaikan bug, dan pengalaman membaca yang lebih mulus.'}</li>
+        </ul>
+      </div>
+    `;
+  }
+
+  const lines = cleaned.split(/\r?\n/);
+  const parts: string[] = [];
+  let inList = false;
+  let hasAnyHeading = false;
+
+  const closeList = () => {
+    if (inList) {
+      parts.push('</ul>');
+      inList = false;
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    // Skip redundant version banner line like "[2.2.0] - Update" since version is already shown in footer
+    if (/^\[?\d+\.\d+(?:\.\d+)?\]?\s*[-–—]\s*update\b/i.test(line)) {
+      continue;
+    }
+    const headingMatch = line.match(/^#{1,4}\s+(.+)$/);
+    if (headingMatch) {
+      closeList();
+      hasAnyHeading = true;
+      parts.push(`<div class="app-update-notes-heading">${escapeXml(headingMatch[1].replace(/\*\*/g, '').replace(/:$/, ''))}</div>`);
+      continue;
+    }
+    // Treat section labels ending with ":" (e.g., "Update Details:", "Improvements:") as clean headings
+    if (/^[A-Za-z][A-Za-z0-9\s'&/-]{2,36}:$/.test(line)) {
+      closeList();
+      hasAnyHeading = true;
+      const label = line.replace(/:$/, '');
+      const normalized = /^update details$/i.test(label) ? (isEn ? "What's new" : 'Yang Baru') : label;
+      parts.push(`<div class="app-update-notes-heading">${escapeXml(normalized)}</div>`);
+      continue;
+    }
+    const bulletMatch = line.match(/^(?:[-*•◆▪▸►]|\d+\.)\s+(.+)$/u);
+    if (bulletMatch) {
+      if (!hasAnyHeading) {
+        hasAnyHeading = true;
+        parts.push(`<div class="app-update-notes-heading">${isEn ? "What's new" : 'Yang Baru'}</div>`);
+      }
+      if (!inList) {
+        parts.push('<ul class="app-update-notes-list">');
+        inList = true;
+      }
+      const itemText = escapeXml(bulletMatch[1]).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      parts.push(`<li>${itemText}</li>`);
+      continue;
+    }
+    closeList();
+    const paraText = escapeXml(line).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    parts.push(`<p class="app-update-notes-para">${paraText}</p>`);
+  }
+  closeList();
+  return parts.join('');
+}
+
+export function openAppUpdateOverlay(opts: {
+  version: string;
+  releaseNotes?: string;
+  isEn?: boolean;
+  mode?: 'checking' | 'available' | 'downloading' | 'uptodate' | 'error';
+  onStartInstall?: () => void;
+}): void {
+  const overlay = document.getElementById('appUpdateOverlay');
+  if (!overlay) return;
+  const isEn = Boolean(opts.isEn);
+  const mode = opts.mode || 'downloading';
+  appUpdateActiveMode = mode;
+  const statusEl = document.getElementById('appUpdateStatusText');
+  const barFill = document.getElementById('appUpdateBarFill');
+  const bytesEl = document.getElementById('appUpdateBytesText');
+  const notesBody = document.getElementById('appUpdateNotesBody');
+  const verEl = document.getElementById('appUpdateVersionText');
+  const startBtn = document.getElementById('btnStartAppUpdateNow') as HTMLButtonElement | null;
+  const closeBtn = document.getElementById('btnCloseAppUpdateOverlay') as HTMLButtonElement | null;
+  const cleanVer = (opts.version || '2.2.1').replace(/^v/i, '');
+
+  if (barFill) {
+    barFill.classList.toggle('indeterminate', mode === 'checking');
+  }
+
+  if (mode === 'checking') {
+    if (statusEl) statusEl.textContent = isEn ? 'Checking for Yomic updates...' : 'Memeriksa pembaruan Yomic...';
+    if (barFill) barFill.style.width = '35%';
+    if (bytesEl) {
+      bytesEl.textContent = '';
+      bytesEl.style.display = 'none';
+    }
+  } else if (mode === 'available') {
+    if (statusEl) statusEl.textContent = isEn ? `Update available: v${cleanVer}` : `Pembaruan tersedia: v${cleanVer}`;
+    if (barFill) barFill.style.width = '0%';
+    if (bytesEl) {
+      bytesEl.style.display = '';
+      bytesEl.textContent = isEn ? 'Ready to download & install' : 'Siap diunduh & dipasang';
+    }
+  } else if (mode === 'uptodate') {
+    if (statusEl) statusEl.textContent = isEn ? 'Yomic is up to date!' : 'Yomic sudah versi terbaru!';
+    if (barFill) barFill.style.width = '100%';
+    if (bytesEl) {
+      bytesEl.style.display = '';
+      bytesEl.textContent = isEn ? 'You are running the latest version' : 'Anda sudah menggunakan versi terbaru';
+    }
+  } else if (mode === 'error') {
+    if (statusEl) statusEl.textContent = isEn ? 'Failed to check for updates.' : 'Gagal memeriksa pembaruan.';
+    if (barFill) barFill.style.width = '0%';
+    if (bytesEl) {
+      bytesEl.style.display = '';
+      bytesEl.textContent = isEn ? 'Please check your internet connection' : 'Periksa koneksi internet Anda';
+    }
+  } else {
+    if (statusEl) statusEl.textContent = isEn ? 'Downloading Yomic...' : 'Mengunduh Yomic...';
+    if (barFill) barFill.style.width = '0%';
+    if (bytesEl) {
+      bytesEl.style.display = '';
+      bytesEl.textContent = '0.00 MB / 0.00 MB';
+    }
+  }
+
+  const notesCard = overlay.querySelector<HTMLElement>('.app-update-notes-card');
+  const shouldShowNotes = mode !== 'checking' && mode !== 'error';
+  if (notesCard) {
+    notesCard.style.display = shouldShowNotes ? '' : 'none';
+  }
+  if (notesBody) {
+    notesBody.innerHTML = shouldShowNotes ? formatUpdateReleaseNotesHtml(opts.releaseNotes || '', isEn) : '';
+  }
+  if (verEl) {
+    verEl.textContent = isEn ? `Version: ${cleanVer}` : `Versi: ${cleanVer}`;
+  }
+  if (startBtn) {
+    if (mode === 'available' && opts.onStartInstall) {
+      startBtn.style.display = 'inline-flex';
+      startBtn.textContent = isEn ? 'Update Now' : 'Perbarui Sekarang';
+      startBtn.onclick = opts.onStartInstall;
+    } else {
+      startBtn.style.display = 'none';
+      startBtn.onclick = null;
+    }
+  }
+  if (closeBtn) {
+    closeBtn.style.display = mode === 'downloading' ? 'none' : 'inline-flex';
+    closeBtn.title = isEn ? 'Close (Esc)' : 'Tutup (Esc)';
+    closeBtn.setAttribute('aria-label', isEn ? 'Close' : 'Tutup');
+    closeBtn.onclick = () => closeAppUpdateOverlay();
+  }
+
+  if (appUpdateEscHandler) {
+    document.removeEventListener('keydown', appUpdateEscHandler);
+  }
+  appUpdateEscHandler = (ev: KeyboardEvent) => {
+    if (ev.key === 'Escape' && appUpdateActiveMode !== 'downloading') {
+      ev.preventDefault();
+      closeAppUpdateOverlay();
+    }
+  };
+  document.addEventListener('keydown', appUpdateEscHandler);
+
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+export function updateAppUpdateOverlayProgress(
+  payload: { progress?: number; downloadedBytes?: number; totalBytes?: number; stage?: string },
+  isEn = false
+): void {
+  const overlay = document.getElementById('appUpdateOverlay');
+  if (!overlay || !overlay.classList.contains('open')) return;
+
+  const statusEl = document.getElementById('appUpdateStatusText');
+  const barFill = document.getElementById('appUpdateBarFill');
+  const bytesEl = document.getElementById('appUpdateBytesText');
+  const closeBtn = document.getElementById('btnCloseAppUpdateOverlay') as HTMLButtonElement | null;
+
+  const pct = Math.max(0, Math.min(100, Number(payload.progress) || 0));
+  const dlMb = ((Number(payload.downloadedBytes) || 0) / (1024 * 1024)).toFixed(2);
+  const totMb = ((Number(payload.totalBytes) || 0) / (1024 * 1024)).toFixed(2);
+
+  if (barFill) {
+    barFill.classList.remove('indeterminate');
+    barFill.style.width = `${pct}%`;
+  }
+  if (bytesEl && (Number(payload.totalBytes) || 0) > 0) {
+    bytesEl.textContent = `${dlMb} MB / ${totMb} MB`;
+  } else if (bytesEl && (Number(payload.downloadedBytes) || 0) > 0) {
+    bytesEl.textContent = `${dlMb} MB`;
+  }
+
+  if (payload.stage === 'installing') {
+    appUpdateActiveMode = 'downloading';
+    if (statusEl) statusEl.textContent = isEn ? 'Installing Yomic...' : 'Memasang Yomic...';
+    if (barFill) barFill.style.width = '100%';
+  } else if (payload.stage === 'error') {
+    appUpdateActiveMode = 'error';
+    if (statusEl) statusEl.textContent = isEn ? 'Failed to download update.' : 'Gagal mengunduh pembaruan.';
+    if (closeBtn) closeBtn.style.display = 'inline-flex';
+  } else {
+    appUpdateActiveMode = 'downloading';
+    if (statusEl) statusEl.textContent = isEn ? 'Downloading Yomic...' : 'Mengunduh Yomic...';
+  }
+}
+
+export function closeAppUpdateOverlay(): void {
+  const overlay = document.getElementById('appUpdateOverlay');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  overlay.setAttribute('aria-hidden', 'true');
+  if (appUpdateEscHandler) {
+    document.removeEventListener('keydown', appUpdateEscHandler);
+    appUpdateEscHandler = null;
   }
 }
