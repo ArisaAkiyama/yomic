@@ -6,10 +6,20 @@ All notable changes to **Yomic** will be documented in this file.
 
 Update Details：
 ◆ Add thread-safe 48 MB in-memory LRU image cache and zero-copy fast path (<= 1.5 MB JPEG/WebP) in WebResourceImageProxy for instant 0ms scroll-back and chapter reopening, alongside increased 6x concurrent page download throttling.
-◆ Add offline CBZ comic archive download support (SaveDownloadsAsCbz) and automatic downloaded chapter deletion after reading (AutoDeleteAfterRead) in DownloadPathService, DownloadService, SettingsService, and BackendIpcController.
+◆ Add smart Reader lookahead page prefetching (5 pages ahead + 1 behind with fetchpriority="high" and async decode) and O(log N) binary search active-page tracking (findActiveWebtoonPageBinarySearch) in reader.ts to eliminate forced synchronous layouts during 60-120 FPS Webtoon scrolling.
+◆ Add redesigned mobile-style Reader Top HUD and Bottom Dock (index.html & reader.ts) featuring left-aligned title & chapter picker, in-reader chapter bookmark toggle (btnReaderBookmarkChapter), floating chapter sheet dock, and dual-page spread alignment with dynamic zoom scaling.
+◆ Add offline CBZ comic archive download support (SaveDownloadsAsCbz with automatic cached extraction) and automatic downloaded chapter deletion after reading (AutoDeleteAfterRead) in DownloadPathService, DownloadService, SettingsService, and BackendIpcController.
+◆ Add real-time inline chapter download progress spinners and status badges in Manga Detail view (updateDetailChapterDownloadsInPlace in manga-detail.ts) with instant cancel/delete actions without re-rendering the view.
+◆ Add ultra-minimalist Settings Hub architecture (settings.ts) with dedicated category sub-pages (Appearance, Library, Reader, Downloads, Tracking, Network & Sources, Data & Storage, Keyboard Shortcuts, About) and header back navigation.
+◆ Add Source Pinning in Browse view (browse.ts) with dedicated Pinned vs. All Sources sections and per-source pin/unpin toggle buttons persisted locally.
+◆ Add dedicated filter flyout modals for Browse language, Extensions language, Source Catalog filters, and Chapter filters with unified Escape-key dismissal and smooth workspace view transitions.
 ◆ Add enriched MyAnimeList (MAL) search metadata (InUserList, UserStatus, UserChaptersRead, UserScore, TotalChapters) in MyAnimeListService and one-click autoBind tracker linking in BackendIpcController.
-◆ Add localized announcement type badges and color styles (Pembaruan, Peringatan, Penting) in Announcement model.
-◆ Improve WebUI layout, reader controls, manga detail chapter view, browse source catalog, extensions manager, downloads queue, and settings hub across main.css and TypeScript views.
+◆ Add rich Announcements modal renderer (modals.ts & Announcement.cs) with persistent read tracking, localized date formatting, color-coded tone badges (Pembaruan, Peringatan, Penting), and formatted bullet/blockquote parsing.
+◆ Improve Downloads queue progress formatting (downloads.ts) and byte-accurate chapter size display (BackendIpcController) eliminating duplicate percentage prefixes.
+◆ Improve first-launch onboarding tutorial (tutorial.ts & index.html) with immediate flash-free overlay trigger (data-onboarding-pending) before initial workspace paint.
+◆ Improve clean initial extension setup by removing automatic default plugin seeding in ExtensionRepositoryService so new users choose and install preferred sources directly from Extensions.
+◆ Improve toast notification stacking in app.ts (capped at 3 concurrent pills with smooth scale-out transitions and alert-aware icons).
+◆ Improve WebUI styling and visual polish across Library, Manga Detail, Reader, Browse, Extensions, Downloads, Updates, History, and Settings in main.css and tokens.css.
 
 ## [2.1.0] - 2026-11-19
 
