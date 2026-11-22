@@ -9738,3 +9738,1762 @@ body.dark-mode .v1-setting-select-option.selected {
   color: var(--ink-secondary);
   font-size: 11px;
 }
+
+
+/* ============================================================================
+   PINNED SOURCES SECTIONS IN BROWSE SOURCES (ALA MOBILE)
+   ============================================================================ */
+
+.v1-source-sections {
+  display: flex;
+  flex-direction: column;
+}
+
+.v1-source-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.v1-source-section.has-top-divider {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 14px;
+  margin-top: 10px;
+}
+
+.v1-source-section-head {
+  padding: 2px 12px 8px 12px;
+}
+
+.v1-source-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+:root[data-theme="dark"] .v1-source-section-title,
+body.dark-mode .v1-source-section-title {
+  color: #D4D4D8;
+}
+
+.v1-source-pin-btn {
+  color: var(--ink-muted);
+}
+
+.v1-source-pin-btn.is-pinned {
+  color: var(--ink-primary);
+}
+
+.v1-source-pin-btn:hover {
+  background: var(--bg-surface-alt);
+  color: var(--ink-primary);
+}
+
+:root[data-theme="dark"] .v1-source-pin-btn:hover,
+body.dark-mode .v1-source-pin-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #F4F4F5;
+}
+
+
+/* ============================================================================
+   UNIFIED MOBILE-STYLE FILTER & SORT MODALS (GAMBAR 1 — UNDERLINE TABS)
+   ============================================================================ */
+
+.v1-unified-filter-dialog {
+  width: 380px;
+  max-width: 92vw;
+  padding: 20px 14px 16px 14px;
+  gap: 12px;
+}
+
+.v1-unified-filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 2px 10px;
+}
+
+.v1-unified-filter-head .v1-setting-select-title {
+  padding: 0;
+  font-size: 16.5px;
+  font-weight: 700;
+}
+
+.v1-unified-filter-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.v1-unified-filter-close:hover {
+  background: var(--bg-surface-alt);
+  color: var(--ink-primary);
+}
+
+:root[data-theme="dark"] .v1-unified-filter-close:hover,
+body.dark-mode .v1-unified-filter-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #F4F4F5;
+}
+
+/* Tabbed Filter & Sort Modal (Library & Source Catalog) */
+.v1-mal-dialog.v1-filter-modal-dialog {
+  width: 440px;
+  max-width: 92vw;
+  border-radius: 20px !important;
+  border: none !important;
+  padding: 22px 18px 18px 18px;
+  gap: 14px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.42);
+}
+
+:root[data-theme="dark"] .v1-mal-dialog.v1-filter-modal-dialog,
+body.dark-mode .v1-mal-dialog.v1-filter-modal-dialog {
+  background: #18181B;
+  color: #F4F4F5;
+}
+
+.v1-filter-modal-dialog .v1-mal-header {
+  padding: 0 4px;
+  margin-bottom: 0;
+}
+
+.v1-filter-modal-dialog .v1-mal-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.v1-filter-modal-dialog .v1-mal-close-btn {
+  border-radius: 50% !important;
+  width: 32px;
+  height: 32px;
+}
+
+/* Mobile-Style Underline Tabs */
+.v1-filter-modal-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  margin: 0 -18px;
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+}
+
+.v1-filter-modal-tabs.is-cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.v1-filter-modal-tab-btn {
+  position: relative;
+  height: 40px;
+  border-radius: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: color 0.14s ease;
+  padding: 0 8px;
+}
+
+.v1-filter-modal-tab-btn:hover {
+  color: var(--ink-primary);
+  background: transparent !important;
+}
+
+.v1-filter-modal-tab-btn.active {
+  background: transparent !important;
+  color: var(--ink-primary) !important;
+  font-weight: 700;
+  box-shadow: none !important;
+}
+
+.v1-filter-modal-tab-btn.active::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2.5px;
+  border-radius: 2px 2px 0 0;
+  background: var(--ink-primary);
+}
+
+:root[data-theme="dark"] .v1-filter-modal-tab-btn.active::after,
+body.dark-mode .v1-filter-modal-tab-btn.active::after {
+  background: #F4F4F5;
+}
+
+/* Filter List Items Matching Mobile Gambar 1 */
+.v1-filter-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 2px 2px 2px 0;
+}
+
+.v1-filter-modal-item {
+  width: 100%;
+  min-height: 42px;
+  height: auto;
+  padding: 9px 14px;
+  border-radius: 10px !important;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  text-align: left;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.v1-filter-modal-item:hover {
+  background: var(--bg-surface-alt);
+  color: var(--ink-primary);
+}
+
+.v1-filter-modal-item.selected {
+  background: #ECEEF2 !important;
+  color: var(--ink-primary) !important;
+  font-weight: 600;
+}
+
+:root[data-theme="dark"] .v1-filter-modal-item:hover,
+body.dark-mode .v1-filter-modal-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #F4F4F5;
+}
+
+:root[data-theme="dark"] .v1-filter-modal-item.selected,
+body.dark-mode .v1-filter-modal-item.selected {
+  background: #242429 !important;
+  color: #F4F4F5 !important;
+}
+
+.v1-filter-modal-check {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-primary);
+}
+
+:root[data-theme="dark"] .v1-filter-modal-check,
+body.dark-mode .v1-filter-modal-check {
+  color: #F4F4F5;
+}
+
+.v1-filter-modal-dialog .v1-flyout-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  padding: 6px 14px 4px 14px;
+}
+
+.v1-filter-modal-dialog .v1-flyout-genre-wrap {
+  padding: 6px 4px;
+  gap: 7px;
+}
+
+.v1-filter-modal-dialog .v1-flyout-genre-chip {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--ink-secondary);
+}
+
+.v1-filter-modal-dialog .v1-flyout-genre-chip:hover {
+  background: var(--bg-surface-alt);
+  color: var(--ink-primary);
+  border-color: var(--border-strong);
+}
+
+.v1-filter-modal-dialog .v1-flyout-genre-chip.active {
+  background: #ECEEF2;
+  border-color: transparent;
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+:root[data-theme="dark"] .v1-filter-modal-dialog .v1-flyout-genre-chip.active,
+body.dark-mode .v1-filter-modal-dialog .v1-flyout-genre-chip.active {
+  background: #2C2C32;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #F4F4F5;
+}
+
+.v1-filter-modal-dialog .v1-mal-footer {
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.v1-filter-modal-dialog .v1-mal-btn-danger {
+  background: transparent !important;
+  border: none !important;
+  color: #F43F5E !important;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.v1-filter-modal-dialog .v1-mal-btn-danger:hover {
+  background: rgba(244, 63, 94, 0.1) !important;
+}
+
+.v1-filter-modal-dialog .v1-mal-btn-primary {
+  height: 36px;
+  padding: 0 18px;
+  border-radius: 10px !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+
+.v1-filter-source-logo-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.v1-filter-source-logo-wrap .v1-source-logo,
+.v1-filter-source-logo-wrap .v1-source-logo-fallback {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 9.5px;
+}
+
+
+/* ============================================================================
+   ULTRA-MINIMALIST SETTINGS HUB (ALA MOBILE GAMBAR 2)
+   ============================================================================ */
+
+.v1-settings-hub.is-minimal {
+  padding-top: 8px;
+}
+
+.v1-settings-hub.is-minimal .v1-settings-hub-list {
+  gap: 2px;
+}
+
+.v1-settings-hub.is-minimal .v1-settings-hub-row {
+  padding: 14px 16px;
+  gap: 20px;
+  border-radius: 10px;
+}
+
+.v1-settings-hub.is-minimal .v1-settings-hub-icon {
+  color: var(--ink-primary);
+  opacity: 0.85;
+}
+
+.v1-settings-hub.is-minimal .v1-settings-hub-title {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--ink-primary);
+}
+
+
+/* ============================================================================
+   MOBILE-STYLE FLOATING READER HUD (GAMBAR 2 — NO AUTO-SCROLL)
+   ============================================================================ */
+
+.reader-overlay .reader-topbar {
+  height: 58px !important;
+  padding: 0 18px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px;
+  background: rgba(14, 14, 16, 0.9) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.reader-top-left-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.reader-overlay .v1-reader-back-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50% !important;
+  border: none !important;
+  background: transparent !important;
+  color: #F4F4F5 !important;
+  flex-shrink: 0;
+}
+
+.reader-overlay .v1-reader-back-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.reader-overlay .reader-header-meta {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 1px !important;
+  min-width: 0;
+  flex: 1;
+  position: static !important;
+  transform: none !important;
+  max-width: none !important;
+}
+
+.reader-overlay .reader-manga-title {
+  font-size: 14.5px !important;
+  font-weight: 700 !important;
+  color: #F4F4F5 !important;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.reader-overlay .reader-chapter-dropdown-anchor {
+  position: relative;
+}
+
+.reader-overlay .reader-chapter-pill-btn {
+  height: auto !important;
+  padding: 1px 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  color: #A1A1AA !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  gap: 4px !important;
+}
+
+.reader-overlay .reader-chapter-pill-btn:hover {
+  color: #F4F4F5 !important;
+}
+
+.reader-overlay .reader-chapter-dropdown-menu {
+  left: 0 !important;
+  right: auto !important;
+  transform: none !important;
+  top: calc(100% + 10px) !important;
+  width: 280px;
+  max-height: 340px;
+  border-radius: 14px !important;
+  background: #18181B !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.55) !important;
+  padding: 6px !important;
+}
+
+.reader-overlay .reader-top-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.reader-overlay .v1-reader-nav-btn {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  border: none !important;
+  background: transparent !important;
+  color: #E4E4E7 !important;
+}
+
+.reader-overlay .v1-reader-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #FFFFFF !important;
+}
+
+.reader-overlay .v1-reader-nav-btn.is-bookmarked {
+  color: #FFFFFF !important;
+}
+
+/* Floating Bottom HUD (No full-width bar background) */
+.reader-overlay .v1-reader-bottom-bar.is-mobile-hud {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-top: none !important;
+  box-shadow: none !important;
+  padding: 0 18px 18px 18px !important;
+  pointer-events: none;
+}
+
+.reader-overlay .v1-reader-bottom-bar.is-mobile-hud .v1-reader-bottom-inner {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  pointer-events: auto;
+}
+
+/* Row 1: Circle Prev | Floating Scrubber Pill | Circle Next */
+.v1-reader-pill-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.v1-reader-circle-nav-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(22, 22, 25, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #F4F4F5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  transition: background-color 0.14s ease, transform 0.1s ease, opacity 0.14s ease;
+}
+
+.v1-reader-circle-nav-btn:hover:not(:disabled) {
+  background: rgba(38, 38, 43, 0.96);
+}
+
+.v1-reader-circle-nav-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.v1-reader-circle-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.v1-reader-scrubber-pill {
+  flex: 1;
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(22, 22, 25, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.v1-reader-pill-num {
+  font-size: 13px;
+  font-weight: 600;
+  color: #F4F4F5;
+  min-width: 22px;
+  text-align: center;
+  user-select: none;
+}
+
+.v1-reader-pill-num.total {
+  color: #A1A1AA;
+  font-weight: 500;
+}
+
+.v1-reader-scrubber-pill .v1-reader-track-wrap {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  position: relative;
+}
+
+.v1-reader-scrubber-pill .v1-reader-track-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #FFFFFF !important;
+}
+
+.v1-reader-scrubber-pill .v1-reader-scrubber-input {
+  position: absolute;
+  inset: -10px 0;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.v1-reader-scrubber-pill .v1-reader-scrubber-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  border: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  opacity: 1;
+  transition: transform 0.12s ease;
+}
+
+.v1-reader-scrubber-pill .v1-reader-scrubber-input::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+/* Row 2: Floating Mobile-Style 3-Button Dock Card */
+.v1-reader-dock-card {
+  width: 100%;
+  height: 62px;
+  padding: 6px 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(22, 22, 25, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.v1-reader-dock-btn {
+  border: none;
+  background: transparent;
+  border-radius: 12px;
+  color: #D4D4D8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.v1-reader-dock-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #FFFFFF;
+}
+
+.v1-reader-dock-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #FFFFFF;
+}
+
+/* Floating Popover Sheets above Bottom Dock */
+.v1-reader-dock-sheet {
+  position: absolute !important;
+  bottom: calc(100% + 12px) !important;
+  top: auto !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  width: 340px !important;
+  max-width: 92vw !important;
+  border-radius: 18px !important;
+  background: #18181B !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6) !important;
+  padding: 14px !important;
+  z-index: 120;
+}
+
+.v1-reader-dock-sheet.reader-display-sheet {
+  width: 360px !important;
+  padding: 16px !important;
+}
+
+.v1-reader-sheet-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #F4F4F5;
+  padding: 2px 6px 8px 6px;
+}
+
+.v1-reader-sheet-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 12px 0;
+}
+
+.v1-reader-dock-sheet .v1-reader-mode-item {
+  height: 40px;
+  border-radius: 10px;
+  padding: 0 12px;
+  font-size: 13.5px;
+  color: #D4D4D8;
+}
+
+.v1-reader-dock-sheet .v1-reader-mode-item.active {
+  background: #242429 !important;
+  color: #FFFFFF !important;
+}
+
+.v1-reader-dock-sheet .v1-mode-check {
+  stroke: #FFFFFF !important;
+}
+
+
+/* =========================================================================
+ * MOBILE READER FLOATING DOCK POLISH (SCRUBBER THUMB, CHAPTER SHEET, ACTIVE)
+ * ========================================================================= */
+.v1-reader-scrubber-pill .v1-reader-track-wrap {
+  overflow: visible !important;
+}
+
+.v1-reader-scrubber-pill .v1-reader-scrubber-input {
+  opacity: 1 !important;
+  z-index: 3;
+}
+
+.v1-reader-scrubber-pill .v1-reader-scrubber-input::-webkit-slider-runnable-track {
+  background: transparent !important;
+  height: 4px;
+}
+
+.v1-reader-scrubber-pill .v1-reader-scrubber-input::-webkit-slider-thumb {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 16px !important;
+  height: 16px !important;
+  margin-top: -6px !important;
+  border-radius: 50% !important;
+  background: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+  opacity: 1 !important;
+  cursor: pointer !important;
+  transition: transform 0.12s ease !important;
+}
+
+.v1-reader-scrubber-pill .v1-reader-scrubber-input::-webkit-slider-thumb:hover,
+.v1-reader-scrubber-pill .v1-reader-scrubber-input:active::-webkit-slider-thumb {
+  transform: scale(1.18) !important;
+}
+
+.v1-reader-dock-btn,
+.v1-reader-dock-btn:focus,
+.v1-reader-dock-btn:focus-visible,
+.v1-reader-dock-btn.active {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.v1-reader-dock-sheet.reader-chapter-sheet {
+  width: 360px !important;
+  padding: 12px 10px 10px 10px !important;
+}
+
+.v1-reader-chapter-sheet-list {
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 2px;
+}
+
+.v1-reader-chapter-sheet-list .reader-chapter-dropdown-item {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: none !important;
+  border-radius: 10px;
+  background: transparent;
+  color: #E4E4E7;
+  font-size: 13.5px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.v1-reader-chapter-sheet-list .reader-chapter-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+}
+
+.v1-reader-chapter-sheet-list .reader-chapter-dropdown-item.is-read {
+  color: #71717A;
+}
+
+.v1-reader-chapter-sheet-list .reader-chapter-dropdown-item.active {
+  background: #242429 !important;
+  color: #FFFFFF !important;
+  font-weight: 600;
+}
+
+.v1-reader-ch-item-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v1-reader-ch-item-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: #FFFFFF;
+}
+
+
+/* =========================================================================
+ * WEBTOON READER 60-120 FPS GPU RASTER VIRTUALIZATION & ZERO SUBPIXEL GAP
+ * ========================================================================= */
+.reader-pages-container.mode-webtoon {
+  font-size: 0;
+  line-height: 0;
+  gap: 0 !important;
+}
+
+.reader-pages-container.mode-webtoon .reader-page-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 740px 1000px;
+  contain: layout style;
+  font-size: 0;
+  line-height: 0;
+}
+
+.reader-pages-container.mode-webtoon .reader-page-art {
+  display: block;
+  vertical-align: top;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+
+/* =========================================================================
+ * READER ACTIVE ITEM VERTICAL PILL INDICATOR (MATCHING SIDEBAR NAV IMAGE 2)
+ * ========================================================================= */
+.reader-canvas-scroll {
+  position: relative;
+}
+
+.reader-chapter-dropdown-item,
+.v1-reader-mode-item {
+  position: relative;
+  border-left: none !important;
+}
+
+.reader-chapter-dropdown-item.active,
+.v1-reader-mode-item.active,
+:root[data-theme="dark"] .reader-chapter-dropdown-item.active,
+:root[data-theme="dark"] .v1-reader-mode-item.active,
+body.dark-mode .reader-chapter-dropdown-item.active,
+body.dark-mode .v1-reader-mode-item.active {
+  border-left: none !important;
+  padding-left: 14px !important;
+}
+
+.reader-chapter-dropdown-item.active::before,
+.v1-reader-mode-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3.5px;
+  height: 18px;
+  border-radius: 0 3px 3px 0;
+  background: #F4F4F5;
+}
+
+.v1-reader-circle-btn:disabled {
+  opacity: 1 !important;
+  background: rgba(22, 22, 25, 0.82) !important;
+  color: rgba(255, 255, 255, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+  cursor: not-allowed;
+}
+
+
+/* =========================================================================
+ * MODERN FLOATING TOAST NOTIFICATION (OPSI 1 — SONNER / MIHON / MACOS)
+ * ========================================================================= */
+.toast-container {
+  bottom: 22px !important;
+  right: 22px !important;
+  gap: 8px !important;
+  align-items: flex-end !important;
+}
+
+.toast-pill,
+:root[data-theme="dark"] .toast-pill,
+body.dark-mode .toast-pill {
+  border-left: 1px solid var(--border-subtle) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 12px !important;
+  padding: 8px 14px 8px 9px !important;
+  gap: 10px !important;
+  max-width: 360px !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--ink-primary) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06) !important;
+}
+
+:root[data-theme="dark"] .toast-pill,
+body.dark-mode .toast-pill {
+  background: rgba(24, 24, 27, 0.95) !important;
+  color: #F4F4F5 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+.toast-pill .toast-icon {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 8px !important;
+  background: rgba(15, 23, 42, 0.06) !important;
+  color: var(--ink-primary) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+:root[data-theme="dark"] .toast-pill .toast-icon,
+body.dark-mode .toast-pill .toast-icon {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #F4F4F5 !important;
+}
+
+.toast-pill .toast-text {
+  color: inherit !important;
+  letter-spacing: -0.005em !important;
+}
+
+
+/* =========================================================================
+ * READER FINAL POLISH (CIRCLE NAV DISABLED CONTRAST & UNIFIED CHAPTER SHEET)
+ * ========================================================================= */
+.v1-reader-circle-nav-btn:disabled {
+  opacity: 1 !important;
+  background: rgba(22, 22, 25, 0.88) !important;
+  color: rgba(255, 255, 255, 0.28) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  cursor: not-allowed !important;
+}
+
+#readerChapterDropdownMenu {
+  display: none !important;
+}
+
+
+/* =========================================================================
+ * MINIMALIST FLAT READER "TAMPILAN" POPOVER SHEET (MATCHING IMAGE 2)
+ * ========================================================================= */
+.v1-reader-dock-sheet.reader-display-sheet {
+  width: 356px !important;
+  padding: 18px 20px !important;
+  border-radius: 16px !important;
+  background: #161618 !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.65) !important;
+}
+
+.reader-display-sheet .v1-zoom-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 0;
+}
+
+.reader-display-sheet .v1-zoom-title {
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  color: #F4F4F5 !important;
+  text-transform: none !important;
+  letter-spacing: -0.01em !important;
+}
+
+.reader-display-sheet .v1-zoom-badge,
+.reader-display-sheet #readerZoomLabel {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  color: #A1A1AA !important;
+}
+
+.reader-display-sheet .v1-zoom-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.reader-display-sheet .v1-zoom-step-btn {
+  width: 28px !important;
+  height: 28px !important;
+  border: none !important;
+  outline: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #A1A1AA !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.reader-display-sheet .v1-zoom-step-btn:hover {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #FFFFFF !important;
+}
+
+.reader-display-sheet .v1-zoom-slider-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.reader-display-sheet .v1-zoom-range {
+  width: 100%;
+  height: 4px !important;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14) !important;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  cursor: pointer;
+}
+
+.reader-display-sheet .v1-zoom-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px !important;
+  height: 15px !important;
+  border-radius: 50% !important;
+  background: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45) !important;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.reader-display-sheet .v1-zoom-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.reader-display-sheet .v1-zoom-presets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.reader-display-sheet .v1-zoom-preset-btn {
+  height: 32px !important;
+  border: none !important;
+  outline: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #A1A1AA !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.reader-display-sheet .v1-zoom-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #F4F4F5 !important;
+}
+
+.reader-display-sheet .v1-zoom-preset-btn.active {
+  background: #242429 !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+  border: none !important;
+}
+
+.reader-display-sheet .v1-reader-sheet-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06) !important;
+  margin: 14px 0 !important;
+}
+
+.reader-display-sheet .v1-reader-image-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px !important;
+}
+
+.reader-display-sheet .v1-reader-image-row,
+:root[data-theme="dark"] .reader-display-sheet .v1-reader-image-row,
+body.dark-mode .reader-display-sheet .v1-reader-image-row {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 10px !important;
+  padding: 10px 4px !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+
+.reader-display-sheet .v1-reader-image-row:hover {
+  background: transparent !important;
+}
+
+.reader-display-sheet .v1-reader-image-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.reader-display-sheet .v1-reader-image-label {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #E4E4E7 !important;
+  line-height: 1.3;
+}
+
+.reader-display-sheet .v1-reader-image-desc {
+  font-size: 11.5px !important;
+  font-weight: 400 !important;
+  color: #71717A !important;
+  line-height: 1.35;
+}
+
+
+/* =========================================================================
+ * DUAL-PAGE BOOK SPREAD MODE (STRICT 2-PAGE SPREAD, NO 3-COLUMN WRAP/SCROLL)
+ * ========================================================================= */
+.reader-overlay.paged-mode .reader-canvas-scroll {
+  padding: 12px 16px !important;
+  justify-content: center;
+}
+
+.reader-pages-container.mode-dual {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  width: 100%;
+  min-height: calc(100vh - 28px);
+}
+
+.reader-pages-container.mode-dual .reader-dual-spread-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+
+/* Manga Right-to-Left (Kanan ke Kiri) Dual Spread Order: Page N on Right, Page N+1 on Left */
+.reader-pages-container.mode-dual {
+  flex-direction: row-reverse !important;
+}
+
+
+/* =========================================================================
+ * MOBILE-STYLE MANGA DETAIL PAGE (MATCHING IMAGE 2: TOP BACK, 5-ACTION,
+ * FLAT CHAPTER LIST, & FLOATING BOTTOM-RIGHT RESUME FAB)
+ * ========================================================================= */
+.v1-detail-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.v1-detail-back-btn {
+  width: 38px;
+  height: 38px;
+  margin-left: -8px;
+  border: none !important;
+  outline: none !important;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.v1-detail-back-btn:hover {
+  background: rgba(128, 128, 128, 0.14);
+}
+
+.v1-action-grid.v1-action-grid-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  max-width: 520px;
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.v1-action-grid.v1-action-grid-5 .v1-action-btn.is-active {
+  color: var(--ink-primary);
+}
+
+.v1-action-grid.v1-action-grid-5 .v1-action-btn.is-active span {
+  font-weight: 700;
+  color: var(--ink-primary);
+}
+
+.v1-info-col .v1-genres-wrap {
+  margin-top: 2px;
+  margin-bottom: 14px;
+}
+
+/* Flat Borderless Chapter List (No outer card box, no thick left bar) */
+.v1-chapters-list,
+:root[data-theme="dark"] .v1-chapters-list,
+body.dark-mode .v1-chapters-list {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding-bottom: 76px;
+}
+
+.v1-chapter-row,
+.v1-chapter-row.is-last-read,
+:root[data-theme="dark"] .v1-chapter-row,
+:root[data-theme="dark"] .v1-chapter-row.is-last-read,
+body.dark-mode .v1-chapter-row,
+body.dark-mode .v1-chapter-row.is-last-read {
+  background: transparent !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  border-radius: 0 !important;
+  padding: 13px 8px !important;
+}
+
+.v1-chapter-row:hover,
+:root[data-theme="dark"] .v1-chapter-row:hover,
+body.dark-mode .v1-chapter-row:hover {
+  background: rgba(128, 128, 128, 0.06) !important;
+}
+
+.v1-chapter-row .v1-chapter-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--ink-primary) !important;
+}
+
+/* Muted styling for completed/read chapters (like Chapter 1 in Image 2) */
+.v1-chapter-row.is-read .v1-chapter-title,
+:root[data-theme="dark"] .v1-chapter-row.is-read .v1-chapter-title,
+body.dark-mode .v1-chapter-row.is-read .v1-chapter-title {
+  color: #71717A !important;
+  font-weight: 500 !important;
+}
+
+.v1-chapter-row.is-read .v1-chapter-meta-sub,
+:root[data-theme="dark"] .v1-chapter-row.is-read .v1-chapter-meta-sub,
+body.dark-mode .v1-chapter-row.is-read .v1-chapter-meta-sub {
+  color: #52525B !important;
+}
+
+/* Floating Bottom-Right Resume Pill Button (▷ Lanjut Ch. X) */
+.v1-detail-resume-fab {
+  position: fixed;
+  right: 32px;
+  bottom: 28px;
+  z-index: 45;
+  height: 50px;
+  padding: 0 22px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #14181F;
+  color: #FFFFFF;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 4px 10px rgba(0, 0, 0, 0.2);
+  transition: transform 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.v1-detail-resume-fab:hover {
+  background: #1E2430;
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.45), 0 6px 14px rgba(0, 0, 0, 0.25);
+}
+
+.v1-detail-resume-fab:active {
+  transform: translateY(0) scale(0.97);
+}
+
+:root[data-theme="dark"] .v1-detail-resume-fab,
+body.dark-mode .v1-detail-resume-fab {
+  background: #1E1E24;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #F4F4F5;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.65), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="dark"] .v1-detail-resume-fab:hover,
+body.dark-mode .v1-detail-resume-fab:hover {
+  background: #27272F;
+}
+
+
+.v1-chapter-row.is-last-read::before,
+:root[data-theme="dark"] .v1-chapter-row.is-last-read::before,
+body.dark-mode .v1-chapter-row.is-last-read::before {
+  display: none !important;
+  content: none !important;
+}
+
+
+/* =========================================================================
+ * DETAIL 5-ACTION ROW OPTICAL LEFT ALIGNMENT (FLUSH WITH GENRES & SYNOPSIS)
+ * ========================================================================= */
+.v1-action-grid.v1-action-grid-5 {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 20px !important;
+  max-width: none !important;
+  margin: 14px 0 14px -8px !important;
+}
+
+.v1-action-grid.v1-action-grid-5 .v1-action-btn {
+  min-width: 64px;
+  padding: 8px 8px !important;
+  border-radius: 10px;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.v1-action-grid.v1-action-grid-5 .v1-action-btn:hover {
+  background: rgba(128, 128, 128, 0.1);
+}
+
+
+/* =========================================================================
+ * DOWNLOADS PROGRESS COLUMN SPACING & ALIGNMENT POLISH
+ * ========================================================================= */
+.v1-dl-progress-box {
+  min-width: 152px !important;
+  gap: 5px;
+}
+
+.v1-dl-progress-box .v1-update-time {
+  text-align: right;
+  white-space: nowrap;
+}
+
+
+/* Fix position:fixed FAB & modals getting trapped by persistent transform: translateY(0) on .view-transition-in */
+@keyframes tabViewEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.view-transition-in {
+  animation: tabViewEnter 0.14s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transform: none !important;
+}
+
+
+/* =========================================================================
+ * MOBILE-STYLE MINIMALIST CONFIRM MODAL (EXACT MATCH TO "RESET APLIKASI")
+ * ========================================================================= */
+.yomic-confirm-modal,
+.yomic-confirm-modal.danger,
+.yomic-confirm-modal.info {
+  width: 396px !important;
+  max-width: 92vw !important;
+  border-radius: 22px !important;
+  border: none !important;
+  padding: 24px 24px 20px 24px !important;
+  background: var(--bg-surface, #FFFFFF) !important;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.22) !important;
+}
+
+:root[data-theme="dark"] .yomic-confirm-modal,
+:root[data-theme="dark"] .yomic-confirm-modal.danger,
+:root[data-theme="dark"] .yomic-confirm-modal.info,
+body.dark-mode .yomic-confirm-modal,
+body.dark-mode .yomic-confirm-modal.danger,
+body.dark-mode .yomic-confirm-modal.info {
+  background: #161618 !important;
+  border: none !important;
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.72) !important;
+}
+
+.yomic-confirm-header {
+  margin-bottom: 10px !important;
+  gap: 0 !important;
+}
+
+.yomic-confirm-title,
+.yomic-confirm-title.danger,
+.yomic-confirm-title.info {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.015em !important;
+  color: var(--ink-primary) !important;
+  margin: 0 !important;
+}
+
+:root[data-theme="dark"] .yomic-confirm-title,
+:root[data-theme="dark"] .yomic-confirm-title.danger,
+:root[data-theme="dark"] .yomic-confirm-title.info,
+body.dark-mode .yomic-confirm-title,
+body.dark-mode .yomic-confirm-title.danger,
+body.dark-mode .yomic-confirm-title.info {
+  color: #FFFFFF !important;
+}
+
+.yomic-confirm-message {
+  font-size: 13.5px !important;
+  line-height: 1.55 !important;
+  color: var(--ink-secondary) !important;
+  margin: 0 0 22px 0 !important;
+}
+
+:root[data-theme="dark"] .yomic-confirm-message,
+body.dark-mode .yomic-confirm-message {
+  color: #A1A1AA !important;
+}
+
+.yomic-confirm-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+}
+
+.yomic-confirm-btn.cancel,
+:root[data-theme="dark"] .yomic-confirm-btn.cancel,
+body.dark-mode .yomic-confirm-btn.cancel {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #A1A1AA !important;
+  height: 40px !important;
+  padding: 0 14px !important;
+  border-radius: 10px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+}
+
+.yomic-confirm-btn.cancel:hover,
+:root[data-theme="dark"] .yomic-confirm-btn.cancel:hover,
+body.dark-mode .yomic-confirm-btn.cancel:hover {
+  background: rgba(128, 128, 128, 0.12) !important;
+  color: var(--ink-primary) !important;
+}
+
+.yomic-confirm-btn.confirm.danger {
+  background: #F43F5E !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  border-radius: 12px !important;
+  height: 40px !important;
+  padding: 0 22px !important;
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.yomic-confirm-btn.confirm.danger:hover {
+  background: #E11D48 !important;
+  box-shadow: none !important;
+}
+
+.yomic-confirm-btn.confirm.primary {
+  background: #FFFFFF !important;
+  color: #09090B !important;
+  border: none !important;
+  border-radius: 12px !important;
+  height: 40px !important;
+  padding: 0 22px !important;
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+
+/* =========================================================================
+ * INLINE CHAPTER DOWNLOAD STATUS & CIRCULAR PROGRESS RING (MOBILE IMAGE 1)
+ * ========================================================================= */
+.v1-ch-dl-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-secondary);
+  font-weight: 500;
+}
+
+.v1-ch-dl-status:empty {
+  display: none;
+}
+
+.v1-ch-icon-btn.is-downloading,
+.v1-ch-icon-btn.is-queued {
+  color: var(--ink-primary) !important;
+}
+
+.v1-ch-dl-ring {
+  display: block;
+  overflow: visible;
+}
+
+.v1-ch-dl-ring-track {
+  stroke: rgba(128, 128, 128, 0.25);
+}
+
+.v1-ch-dl-ring-fill {
+  stroke: currentColor;
+  transition: stroke-dashoffset 0.2s ease-out;
+}
+
+.v1-ch-dl-ring-dot {
+  fill: currentColor;
+}
+
+.v1-ch-dl-ring.queued {
+  animation: v1ChDlSpin 0.9s linear infinite;
+}
+
+@keyframes v1ChDlSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+/* =========================================================================
+ * 1:1 MOBILE CHAPTER DOWNLOAD SPINNER (NO DOT) & EMERALD GREEN DONE ICON
+ * ========================================================================= */
+.v1-ch-dl-status {
+  color: inherit !important;
+  font-weight: 400 !important;
+}
+
+.v1-ch-icon-btn.is-downloaded,
+:root[data-theme="dark"] .v1-ch-icon-btn.is-downloaded,
+body.dark-mode .v1-ch-icon-btn.is-downloaded {
+  color: #10B981 !important;
+}
+
+.v1-ch-dl-spinner {
+  display: block;
+  width: 16px;
+  height: 16px;
+  animation: v1ChDlSpin 0.85s linear infinite;
+}
+
+.v1-ch-dl-spinner-arc {
+  stroke: var(--ink-primary);
+}
+
+
+.v1-ch-icon-btn.is-downloaded,
+:root[data-theme="dark"] .v1-ch-icon-btn.is-downloaded,
+body.dark-mode .v1-ch-icon-btn.is-downloaded {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.v1-ch-icon-btn.is-downloaded:hover,
+:root[data-theme="dark"] .v1-ch-icon-btn.is-downloaded:hover,
+body.dark-mode .v1-ch-icon-btn.is-downloaded:hover {
+  background: rgba(16, 185, 129, 0.12) !important;
+}
+
+
+/* =========================================================================
+ * MYANIMELIST CROSS-DEVICE "IN USER LIST" BADGE
+ * ========================================================================= */
+.v1-mal-result-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.v1-mal-inlist-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.14);
+  color: #10B981;
+}
+
+
+/* =========================================================================
+ * UNIFIED RADIO BUTTONS FOR ALL SELECTION & FILTER MODALS (REPLACING CHECK)
+ * ========================================================================= */
+.v1-setting-select-check,
+.v1-filter-modal-check {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  border-radius: 50% !important;
+  border: 1.8px solid #94A3B8 !important;
+  background: transparent !important;
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  transition: border-color 0.15s ease !important;
+}
+
+.v1-setting-select-check svg,
+.v1-filter-modal-check svg {
+  display: none !important;
+}
+
+:root[data-theme="dark"] .v1-setting-select-check,
+:root[data-theme="dark"] .v1-filter-modal-check,
+body.dark-mode .v1-setting-select-check,
+body.dark-mode .v1-filter-modal-check {
+  border-color: #52525B !important;
+}
+
+.v1-setting-select-option:hover .v1-setting-select-check,
+.v1-filter-modal-item:hover .v1-filter-modal-check {
+  border-color: #64748B !important;
+}
+
+:root[data-theme="dark"] .v1-setting-select-option:hover .v1-setting-select-check,
+:root[data-theme="dark"] .v1-filter-modal-item:hover .v1-filter-modal-check,
+body.dark-mode .v1-setting-select-option:hover .v1-setting-select-check,
+body.dark-mode .v1-filter-modal-item:hover .v1-filter-modal-check {
+  border-color: #A1A1AA !important;
+}
+
+.v1-setting-select-option.selected .v1-setting-select-check,
+.v1-filter-modal-item.selected .v1-filter-modal-check {
+  border-color: var(--ocean-primary) !important;
+}
+
+:root[data-theme="dark"] .v1-setting-select-option.selected .v1-setting-select-check,
+:root[data-theme="dark"] .v1-filter-modal-item.selected .v1-filter-modal-check,
+body.dark-mode .v1-setting-select-option.selected .v1-setting-select-check,
+body.dark-mode .v1-filter-modal-item.selected .v1-filter-modal-check {
+  border-color: #FFFFFF !important;
+}
+
+.v1-setting-select-check::after,
+.v1-filter-modal-check::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ocean-primary);
+  transform: scale(0);
+  opacity: 0;
+  transition: transform 0.14s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.14s ease;
+}
+
+:root[data-theme="dark"] .v1-setting-select-check::after,
+:root[data-theme="dark"] .v1-filter-modal-check::after,
+body.dark-mode .v1-setting-select-check::after,
+body.dark-mode .v1-filter-modal-check::after {
+  background: #FFFFFF;
+}
+
+.v1-setting-select-option.selected .v1-setting-select-check::after,
+.v1-filter-modal-item.selected .v1-filter-modal-check::after {
+  transform: scale(1);
+  opacity: 1;
+}

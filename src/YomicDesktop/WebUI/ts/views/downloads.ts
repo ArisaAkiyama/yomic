@@ -1,5 +1,6 @@
 import type { YomicApp } from '../app.js';
 import { getIconSvg, SOLAR_PATHS, icons } from '../icons.js';
+import { updateDetailChapterDownloadsInPlace } from './manga-detail.js';
 import {
   buildComicPageSvg,
   buildMangaCoverSvg,
@@ -26,6 +27,20 @@ import {
 /* =========================================================================
  * 4. DOWNLOADS VIEW (MINIMALIST YOMIC V1 MIRROR — DownloadsView.axaml)
  * ========================================================================= */
+
+function formatDownloadProgressLabel(dl: DownloadQueueItem, isEn: boolean): string {
+  const pct = Math.max(0, Math.min(100, Math.round(Number(dl.progressPercent) || 0)));
+  if (dl.status === 'paused') {
+    return isEn ? `Paused · ${pct}%` : `Dijeda · ${pct}%`;
+  }
+  if (dl.status === 'queued') {
+    return isEn ? 'Queued' : 'Dalam Antrean';
+  }
+  const rawSpeed = (dl.speedText || '').trim();
+  const cleanSpeed = rawSpeed.replace(/^\d+%\s*[•·\-]\s*/u, '').trim();
+  const statusSuffix = cleanSpeed || (isEn ? 'Downloading...' : 'Mengunduh...');
+  return `${pct}% · ${statusSuffix}`;
+}
 
 /**
  * Updates download progress in-place on existing DOM elements without destroying and recreating the view.
@@ -60,7 +75,7 @@ export function updateDownloadsProgressInPlace(container: HTMLElement, downloads
       const isEn = document.documentElement.lang === 'en';
       const timeSpan = row.querySelector<HTMLElement>('.v1-dl-progress-box .v1-update-time');
       if (timeSpan) {
-        timeSpan.textContent = isPaused ? (isEn ? `Paused (${dl.progressPercent}%)` : `Dijeda (${dl.progressPercent}%)`) : `${dl.progressPercent}% · ${dl.speedText}`;
+        timeSpan.textContent = formatDownloadProgressLabel(dl, isEn);
       }
       const toggleBtn = row.querySelector<HTMLButtonElement>('[data-toggle-dl]');
       if (toggleBtn) {
@@ -155,7 +170,7 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
                            <div class="v1-dl-bar-track">
                              <div class="v1-dl-bar-fill ${stateClass}" style="width:${dl.progressPercent}%;"></div>
                            </div>
-                           <span class="v1-update-time tabular-nums">${isPaused ? `${this.t('downloads.statusPaused')} (${dl.progressPercent}%)` : `${dl.progressPercent}% · ${dl.speedText}`}</span>
+                           <span class="v1-update-time tabular-nums">${escapeXml(formatDownloadProgressLabel(dl, document.documentElement.lang === 'en'))}</span>
                          </div>
                          <button class="v1-dl-icon-btn" data-toggle-dl="${dl.id}" title="${escapeXml(isPaused ? this.l('Lanjutkan Unduhan', 'Resume Download') : this.l('Jeda Unduhan', 'Pause Download'))}" aria-label="${escapeXml(isPaused ? this.l('Lanjutkan Unduhan', 'Resume Download') : this.l('Jeda Unduhan', 'Pause Download'))}">
                            ${getIconSvg(isPaused ? 'play-linear' : 'pause-linear', { size: 15 })}
@@ -264,7 +279,7 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
         `Apakah Anda benar-benar yakin ingin membersihkan ${completedCount} daftar unduhan selesai? File yang tersimpan di komputer Anda akan tetap aman.`,
         `Are you sure you want to clear ${completedCount} completed download entries? Files saved on your computer will remain safe.`
       ),
-      confirmText: this.l('Konfirmasi Bersihkan', 'Confirm Clear'),
+      confirmText: this.l('Bersihkan', 'Clear'),
       cancelText: this.t('modal.cancel'),
       isDanger: true,
       icon: 'danger-triangle-linear',
@@ -332,7 +347,7 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
             `Apakah Anda benar-benar yakin ingin menghapus file unduhan untuk "${mangaTitle} - ${chLabel}"? Tindakan ini tidak dapat dibatalkan dan file fisik pada hard disk akan dibersihkan.`,
             `Are you sure you want to delete the downloaded file for "${mangaTitle} - ${chLabel}"? This action cannot be undone and the file on disk will be removed.`
           ),
-          confirmText: this.l('Konfirmasi Hapus', 'Confirm Delete'),
+          confirmText: this.l('Hapus', 'Delete'),
           cancelText: this.t('modal.cancel'),
           isDanger: true,
           icon: 'danger-triangle-linear',
@@ -397,6 +412,17 @@ export function enqueueDownload(
           this.downloads.length = 0;
           this.downloads.push(...queue);
           this.updateSidebarCounters();
+          if (this.activeDetailMangaId === manga.id) {
+            const container = document.getElementById('viewContainer');
+            if (container) {
+              updateDetailChapterDownloadsInPlace(
+                container,
+                manga,
+                this.downloads,
+                document.documentElement.lang === 'en'
+              );
+            }
+          }
         }
       });
     this.showToast(

@@ -30,8 +30,75 @@ namespace YomicDesktop.IPC
         private readonly string _readerCacheDir;
         private readonly string _iconsDir;
 
-        private static readonly SemaphoreSlim _pageDownloadThrottle = new(4, 4);
+        private static readonly SemaphoreSlim _pageDownloadThrottle = new(6, 6);
         private static readonly SemaphoreSlim _coverDownloadThrottle = new(8, 8);
+
+        // Thread-safe in-memory LRU cache (~48 MB) for instant 0ms scroll-back & chapter reopen
+        private const long MaxRamCacheBytes = 48L * 1024 * 1024;
+        private const int ZeroCopyFastPathMaxBytes = 1536 * 1024; // 1.5 MB
+        private readonly object _ramCacheLock = new();
+        private readonly Dictionary<string, LinkedListNode<(string Key, byte[] Data)>> _ramCacheMap = new(StringComparer.Ordinal);
+        private readonly LinkedList<(string Key, byte[] Data)> _ramCacheOrder = new();
+        private long _ramCacheBytes = 0;
+
+        private bool TryGetRamCache(string key, out byte[]? data)
+        {
+            lock (_ramCacheLock)
+            {
+                if (_ramCacheMap.TryGetValue(key, out var node))
+                {
+                    _ramCacheOrder.Remove(node);
+                    _ramCacheOrder.AddFirst(node);
+                    data = node.Value.Data;
+                    return true;
+                }
+            }
+            data = null;
+            return false;
+        }
+
+        private void PutRamCache(string key, byte[] data)
+        {
+            if (data == null || data.Length == 0 || data.Length > MaxRamCacheBytes / 4) return;
+            lock (_ramCacheLock)
+            {
+                if (_ramCacheMap.TryGetValue(key, out var existing))
+                {
+                    _ramCacheBytes -= existing.Value.Data.Length;
+                    _ramCacheOrder.Remove(existing);
+                    _ramCacheMap.Remove(key);
+                }
+
+                var node = new LinkedListNode<(string Key, byte[] Data)>((key, data));
+                _ramCacheOrder.AddFirst(node);
+                _ramCacheMap[key] = node;
+                _ramCacheBytes += data.Length;
+
+                while (_ramCacheBytes > MaxRamCacheBytes && _ramCacheOrder.Last != null)
+                {
+                    var tail = _ramCacheOrder.Last;
+                    _ramCacheOrder.RemoveLast();
+                    _ramCacheMap.Remove(tail.Value.Key);
+                    _ramCacheBytes -= tail.Value.Data.Length;
+                }
+            }
+        }
+
+        private static bool CanUseZeroCopyFastPath(byte[] bytes, bool shouldCrop, bool shouldSharpen, bool shouldOpt)
+        {
+            if (shouldCrop || shouldSharpen) return false;
+            if (!shouldOpt) return true;
+            if (bytes.Length > ZeroCopyFastPathMaxBytes || bytes.Length < 12) return false;
+            // JPEG: FF D8 FF
+            if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return true;
+            // WebP: RIFF....WEBP
+            if (bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+                bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50)
+            {
+                return true;
+            }
+            return false;
+        }
 
         public WebResourceImageProxy(
             Dispatcher dispatcher,
@@ -152,19 +219,33 @@ namespace YomicDesktop.IPC
                     {
                         if (IsAllowedLocalImagePath(localPath) && File.Exists(localPath))
                         {
-                            bytes = await File.ReadAllBytesAsync(localPath);
-                            contentType = DetectContentType(bytes, localPath);
-                            if (bytes != null && bytes.Length > 0 && (shouldCrop || shouldSharpen || shouldOpt))
+                            var localCacheKey = $"local_{localPath}_{(shouldCrop ? "c1" : "c0")}_{(shouldSharpen ? "s1" : "s0")}_{(shouldOpt ? "o1" : "o0")}_{maxDim}";
+                            if (TryGetRamCache(localCacheKey, out var ramLocal) && ramLocal != null)
                             {
-                                var opts = new ImageProcessingOptions
+                                bytes = ramLocal;
+                                contentType = DetectContentType(bytes, localPath);
+                            }
+                            else
+                            {
+                                bytes = await File.ReadAllBytesAsync(localPath);
+                                contentType = DetectContentType(bytes, localPath);
+                                if (bytes != null && bytes.Length > 0 && !CanUseZeroCopyFastPath(bytes, shouldCrop, shouldSharpen, shouldOpt))
                                 {
-                                    EnableOptimization = shouldOpt,
-                                    AutoCropBorders = shouldCrop,
-                                    EnableSharpening = shouldSharpen,
-                                    MaxDimension = maxDim
-                                };
-                                bytes = _imageProcessor.ProcessPage(bytes, opts);
-                                contentType = DetectContentType(bytes, "page.webp");
+                                    var opts = new ImageProcessingOptions
+                                    {
+                                        EnableOptimization = shouldOpt,
+                                        AutoCropBorders = shouldCrop,
+                                        EnableSharpening = shouldSharpen,
+                                        MaxDimension = maxDim
+                                    };
+                                    var rawLocal = bytes;
+                                    bytes = await Task.Run(() => _imageProcessor.ProcessPage(rawLocal, opts));
+                                    contentType = DetectContentType(bytes, "page.webp");
+                                }
+                                if (bytes != null && bytes.Length > 0)
+                                {
+                                    PutRamCache(localCacheKey, bytes);
+                                }
                             }
                         }
                     }
@@ -313,6 +394,12 @@ namespace YomicDesktop.IPC
 
             var urlHash = ComputeMd5Hex(rawUrl);
             var cacheKey = $"{urlHash}_{(shouldCrop ? "c1" : "c0")}_{(shouldSharpen ? "s1" : "s0")}_{(shouldOpt ? "o1" : "o0")}_{maxDim}";
+
+            if (!force && TryGetRamCache(cacheKey, out var ramCached) && ramCached != null && ramCached.Length > 0)
+            {
+                return ramCached;
+            }
+
             var cacheFilePath = Path.Combine(_readerCacheDir, $"{cacheKey}.cache");
 
             if (!force && File.Exists(cacheFilePath))
@@ -320,7 +407,11 @@ namespace YomicDesktop.IPC
                 try
                 {
                     var cached = await File.ReadAllBytesAsync(cacheFilePath);
-                    if (cached.Length > 0) return cached;
+                    if (cached.Length > 0)
+                    {
+                        PutRamCache(cacheKey, cached);
+                        return cached;
+                    }
                 }
                 catch { }
             }
@@ -361,7 +452,7 @@ namespace YomicDesktop.IPC
             if (rawBytes == null || rawBytes.Length == 0) return null;
 
             byte[] result = rawBytes;
-            if (shouldCrop || shouldSharpen || shouldOpt)
+            if (!CanUseZeroCopyFastPath(rawBytes, shouldCrop, shouldSharpen, shouldOpt))
             {
                 var opts = new ImageProcessingOptions
                 {
@@ -370,8 +461,11 @@ namespace YomicDesktop.IPC
                     EnableSharpening = shouldSharpen,
                     MaxDimension = maxDim
                 };
-                result = _imageProcessor.ProcessPage(rawBytes, opts);
+                var sourceBytes = rawBytes;
+                result = await Task.Run(() => _imageProcessor.ProcessPage(sourceBytes, opts));
             }
+
+            PutRamCache(cacheKey, result);
 
             _ = Task.Run(async () =>
             {

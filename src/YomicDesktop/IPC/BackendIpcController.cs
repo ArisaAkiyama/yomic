@@ -3308,7 +3308,7 @@ namespace YomicDesktop.IPC
                 return $"{kb:0.0} KB";
             }
             double mb = bytes / (1024.0 * 1024.0);
-            return $"{mb:0.1} MB";
+            return $"{mb:0.0} MB";
         }
 
         private static string FormatDirectorySize(string dirPath)
@@ -3355,7 +3355,7 @@ namespace YomicDesktop.IPC
 
                 string speedText = mappedStatus switch
                 {
-                    "downloading" => req.Status.StartsWith("Retrying") ? req.Status : $"{req.Progress}% • Mengunduh...",
+                    "downloading" => req.Status.StartsWith("Retrying") ? req.Status : "Mengunduh...",
                     "paused" => "Dijeda",
                     "completed" => "Tersimpan",
                     _ => "Dalam Antrean"
@@ -4530,7 +4530,12 @@ namespace YomicDesktop.IPC
             {
                 Id = r.Id,
                 Title = r.Title,
-                CoverUrl = r.CoverUrl
+                CoverUrl = r.CoverUrl,
+                InUserList = r.InUserList,
+                UserStatus = r.UserStatus,
+                UserChaptersRead = r.UserChaptersRead,
+                UserScore = r.UserScore,
+                TotalChapters = r.TotalChapters
             }).ToList();
 
             return new { ok = true, results = dtoList };
@@ -4540,6 +4545,7 @@ namespace YomicDesktop.IPC
         {
             string mangaId = GetString(payload, "mangaId");
             long remoteId = GetLong(payload, "remoteId", 0);
+            bool autoBind = GetBool(payload, "autoBind", false);
             var manga = await ResolveMangaAsync(mangaId);
             if (manga == null || manga.Id <= 0 || remoteId <= 0)
             {
@@ -4555,6 +4561,40 @@ namespace YomicDesktop.IPC
             if (remoteTrack == null)
             {
                 return new { ok = false, error = L("Gagal mengambil data dari MyAnimeList.", "Failed to fetch data from MyAnimeList.") };
+            }
+
+            if (autoBind)
+            {
+                try
+                {
+                    using var db = new MangaDbContext();
+                    var existing = await db.Tracks.FirstOrDefaultAsync(t => t.MangaId == manga.Id && t.TrackerName == "MyAnimeList");
+                    if (existing == null)
+                    {
+                        db.Tracks.Add(new MangaTrack
+                        {
+                            MangaId = manga.Id,
+                            TrackerName = "MyAnimeList",
+                            RemoteId = remoteTrack.RemoteId,
+                            Title = remoteTrack.Title,
+                            TotalChapters = remoteTrack.TotalChapters,
+                            Status = remoteTrack.Status,
+                            Score = remoteTrack.Score,
+                            LastChapterRead = remoteTrack.LastChapterRead
+                        });
+                    }
+                    else
+                    {
+                        existing.RemoteId = remoteTrack.RemoteId;
+                        existing.Title = remoteTrack.Title;
+                        existing.TotalChapters = remoteTrack.TotalChapters;
+                        existing.Status = remoteTrack.Status;
+                        existing.Score = remoteTrack.Score;
+                        existing.LastChapterRead = remoteTrack.LastChapterRead;
+                    }
+                    await db.SaveChangesAsync();
+                }
+                catch { }
             }
 
             return new

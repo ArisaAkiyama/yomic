@@ -196,6 +196,21 @@ namespace YomicDesktop.IPC
 
         [JsonPropertyName("coverUrl")]
         public string? CoverUrl { get; set; }
+
+        [JsonPropertyName("inUserList")]
+        public bool InUserList { get; set; }
+
+        [JsonPropertyName("userStatus")]
+        public string? UserStatus { get; set; }
+
+        [JsonPropertyName("userChaptersRead")]
+        public int UserChaptersRead { get; set; }
+
+        [JsonPropertyName("userScore")]
+        public int UserScore { get; set; }
+
+        [JsonPropertyName("totalChapters")]
+        public int TotalChapters { get; set; }
     }
 
     public class ActivityUpdateDto

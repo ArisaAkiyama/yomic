@@ -317,8 +317,8 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
                     (src) => `
                   <button class="v1-filter-modal-item ${this.librarySourceFilter === src.id ? 'selected' : ''}" data-lib-src="${src.id}">
                     <span class="v1-filter-modal-check">${this.librarySourceFilter === src.id ? checkSvg : ''}</span>
-                    <span class="v1-source-favicon" style="background:${src.accentColor};">${src.name.slice(0, 2).toUpperCase()}</span>
-                    <span>${src.name}</span>
+                    <span class="v1-filter-source-logo-wrap">${this.buildSourceLogoHtml(src)}</span>
+                    <span>${escapeXml(src.name)}</span>
                   </button>`
                   )
                   .join('')}

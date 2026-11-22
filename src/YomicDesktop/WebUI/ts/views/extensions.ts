@@ -178,33 +178,42 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
           <button id="btnRefreshExtensions" class="v1-lib-action-btn ${this.extVerificationProgress.active ? 'is-disabled' : ''}" title="${escapeXml(this.extVerificationProgress.active ? this.l('Sedang Memeriksa...', 'Checking...') : this.t('extensions.refreshRepo'))}" aria-label="${escapeXml(this.t('extensions.refreshRepo'))}" ${this.extVerificationProgress.active ? 'disabled' : ''}>
             ${getIconSvg('refresh-line', { size: 18 })}
           </button>
-          <!-- 3. Filter Languages Flyout -->
+          <!-- 3. Filter Languages Centered Modal Trigger -->
           <button id="btnExtLangFlyout" class="v1-lib-action-btn ${this.isExtensionLangFlyoutOpen ? 'active' : ''} ${this.extensionLangFilter !== 'ALL' ? 'has-filter' : ''}" title="${escapeXml(this.l('Filter Bahasa', 'Language Filter'))}" aria-label="${escapeXml(this.l('Filter Bahasa', 'Language Filter'))}">
             ${getIconSvg('filter', { size: 18 })}
           </button>
-          <div id="extLangFlyoutMenu" class="v1-lib-flyout ${this.isExtensionLangFlyoutOpen ? 'open' : ''}">
-            <div class="v1-flyout-section-label">${this.l('Filter Bahasa', 'Language Filter')}</div>
-            <button class="v1-lib-flyout-item ${this.extensionLangFilter === 'ALL' ? 'selected' : ''}" data-ext-lang="ALL">
-              <span class="v1-lib-flyout-check">${this.extensionLangFilter === 'ALL' ? checkSvg : ''}</span>
-              ${this.buildLangBadgeHtml('ALL')}
-              <span>${this.l('Tampilkan Semua', 'Show All')}</span>
-            </button>
-            <button class="v1-lib-flyout-item ${this.extensionLangFilter === 'ID' ? 'selected' : ''}" data-ext-lang="ID">
-              <span class="v1-lib-flyout-check">${this.extensionLangFilter === 'ID' ? checkSvg : ''}</span>
-              ${this.buildLangBadgeHtml('ID')}
-              <span>${this.l('Bahasa Indonesia', 'Indonesian')}</span>
-            </button>
-            <button class="v1-lib-flyout-item ${this.extensionLangFilter === 'EN' ? 'selected' : ''}" data-ext-lang="EN">
-              <span class="v1-lib-flyout-check">${this.extensionLangFilter === 'EN' ? checkSvg : ''}</span>
-              ${this.buildLangBadgeHtml('EN')}
-              <span>English</span>
-            </button>
-          </div>
         </div>
       </div>
     </div>
     ${listContentHtml}
     ${syncPillHtml}
+    <div id="extLangModalBackdrop" class="v1-mal-backdrop ${this.isExtensionLangFlyoutOpen ? 'open' : ''}">
+      <div class="v1-setting-select-modal v1-unified-filter-dialog" role="dialog" aria-modal="true" aria-label="${escapeXml(this.l('Filter Bahasa', 'Language Filter'))}">
+        <div class="v1-unified-filter-head">
+          <h3 class="v1-setting-select-title">${this.l('Filter Bahasa', 'Language Filter')}</h3>
+          <button type="button" id="btnCloseExtLangModal" class="v1-unified-filter-close" aria-label="${escapeXml(this.t('modal.close'))}">
+            ${getIconSvg('close', { size: 18 })}
+          </button>
+        </div>
+        <div class="v1-setting-select-list" role="listbox">
+          <button type="button" class="v1-setting-select-option ${this.extensionLangFilter === 'ALL' ? 'selected' : ''}" data-ext-lang="ALL" role="option" aria-selected="${this.extensionLangFilter === 'ALL' ? 'true' : 'false'}">
+            <span class="v1-setting-select-check">${this.extensionLangFilter === 'ALL' ? checkSvg : ''}</span>
+            ${this.buildLangBadgeHtml('ALL')}
+            <span class="v1-setting-select-label">${this.l('Tampilkan Semua', 'Show All')}</span>
+          </button>
+          <button type="button" class="v1-setting-select-option ${this.extensionLangFilter === 'ID' ? 'selected' : ''}" data-ext-lang="ID" role="option" aria-selected="${this.extensionLangFilter === 'ID' ? 'true' : 'false'}">
+            <span class="v1-setting-select-check">${this.extensionLangFilter === 'ID' ? checkSvg : ''}</span>
+            ${this.buildLangBadgeHtml('ID')}
+            <span class="v1-setting-select-label">${this.l('Bahasa Indonesia', 'Indonesian')}</span>
+          </button>
+          <button type="button" class="v1-setting-select-option ${this.extensionLangFilter === 'EN' ? 'selected' : ''}" data-ext-lang="EN" role="option" aria-selected="${this.extensionLangFilter === 'EN' ? 'true' : 'false'}">
+            <span class="v1-setting-select-check">${this.extensionLangFilter === 'EN' ? checkSvg : ''}</span>
+            ${this.buildLangBadgeHtml('EN')}
+            <span class="v1-setting-select-label">English</span>
+          </button>
+        </div>
+      </div>
+    </div>
   `;
 
   // In-Place Search Filtering (60 FPS without DOM rebuild or cursor jumps)
@@ -372,29 +381,32 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
   document.getElementById('btnRefreshExtRepo')?.addEventListener('click', refreshExtensionsAction);
   document.getElementById('btnRefreshExtensions')?.addEventListener('click', refreshExtensionsAction);
 
-  // Language Filter Flyout Menu & Click-Outside Listener
-  const flyout = document.getElementById('extLangFlyoutMenu');
+  // Language Filter Centered Modal & Backdrop Listener
+  const extLangBackdrop = document.getElementById('extLangModalBackdrop');
   const btnFlyout = document.getElementById('btnExtLangFlyout');
+  const closeExtLangModal = () => {
+    this.isExtensionLangFlyoutOpen = false;
+    extLangBackdrop?.classList.remove('open');
+    btnFlyout?.classList.remove('active');
+  };
   btnFlyout?.addEventListener('click', (ev) => {
     ev.stopPropagation();
     this.isExtensionLangFlyoutOpen = !this.isExtensionLangFlyoutOpen;
-    flyout?.classList.toggle('open', this.isExtensionLangFlyoutOpen);
+    extLangBackdrop?.classList.toggle('open', this.isExtensionLangFlyoutOpen);
     btnFlyout.classList.toggle('active', this.isExtensionLangFlyoutOpen);
   });
-  flyout?.addEventListener('click', (ev) => {
+  document.getElementById('btnCloseExtLangModal')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    closeExtLangModal();
+  });
+  extLangBackdrop?.addEventListener('click', (ev) => {
+    if (ev.target === extLangBackdrop) {
+      closeExtLangModal();
+    }
+  });
+  extLangBackdrop?.querySelector('.v1-unified-filter-dialog')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
   });
-  const onDocClick = (ev: MouseEvent) => {
-    if (this.isExtensionLangFlyoutOpen) {
-      const target = ev.target as Node | null;
-      if (flyout && !flyout.contains(target) && btnFlyout && !btnFlyout.contains(target)) {
-        this.isExtensionLangFlyoutOpen = false;
-        flyout.classList.remove('open');
-        btnFlyout?.classList.remove('active');
-      }
-    }
-  };
-  document.addEventListener('click', onDocClick);
 
   container.querySelectorAll<HTMLButtonElement>('[data-ext-lang]').forEach((btn) => {
     btn.addEventListener('click', () => {

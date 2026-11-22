@@ -5,7 +5,10 @@
 
 #define MyAppName "Yomic"
 #define MyAppPublisher "ArisaAkiyama"
-#define MyAppVersion "2.1.0"
+#define MyAppVersion "2.2.0"
+#ifndef MySourceDir
+  #define MySourceDir "..\dist\Yomic_v2"
+#endif
 #define MyAppExeName "Yomic.exe"
 #define MyAppIconName "app.ico"
 #define MyAppId "{{B5A9C24D-7E81-4C3D-9471-89352A9F5C12}"
@@ -57,7 +60,7 @@ Name: "startupicon"; Description: "{cm:CreateStartupIcon}"; GroupDescription: "{
 Type: filesandordirs; Name: "{app}\*"
 
 [Files]
-Source: "..\dist\Yomic_v2\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\src\YomicDesktop\Assets\app.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\YomicDesktop\Assets\app.ico"; DestDir: "{app}\Assets"; Flags: ignoreversion
 

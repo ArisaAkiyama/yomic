@@ -6,6 +6,7 @@ import type { YomicApp } from '../app.js';
 import { applyStaticDomTranslations } from '../i18n.js';
 import { AppBootstrapPayload, CategoryItem, DownloadQueueItem, MangaItem } from '../types.js';
 import { updateDownloadsProgressInPlace } from '../views/downloads.js';
+import { updateDetailChapterDownloadsInPlace } from '../views/manga-detail.js';
 import { updateSourceStatusInPlace } from '../views/browse.js';
 
 export function bindBackendEvents(this: YomicApp): void {
@@ -33,7 +34,18 @@ export function bindBackendEvents(this: YomicApp): void {
     this.downloads.length = 0;
     this.downloads.push(...queue);
     this.updateSidebarCounters();
-    if (this.currentTab === 'downloads' && !this.activeDetailMangaId) {
+    if (this.activeDetailMangaId) {
+      const container = document.getElementById('viewContainer');
+      const activeManga = this.mangaList.find((m) => m.id === this.activeDetailMangaId);
+      if (container && activeManga) {
+        updateDetailChapterDownloadsInPlace(
+          container,
+          activeManga,
+          this.downloads,
+          document.documentElement.lang === 'en'
+        );
+      }
+    } else if (this.currentTab === 'downloads') {
       const container = document.getElementById('viewContainer');
       if (container) {
         const inPlaceUpdated = updateDownloadsProgressInPlace(container, this.downloads);

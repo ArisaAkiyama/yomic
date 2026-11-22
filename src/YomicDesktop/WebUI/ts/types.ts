@@ -315,6 +315,11 @@ export interface MalSearchResult {
   id: number;
   title: string;
   coverUrl?: string;
+  inUserList?: boolean;
+  userStatus?: string;
+  userChaptersRead?: number;
+  userScore?: number;
+  totalChapters?: number;
 }
 
 declare global {

@@ -25,6 +25,7 @@ export type TranslationKey =
   | 'reader.backAria'
   | 'reader.selectChapterTitle'
   | 'reader.chapterListAria'
+  | 'reader.displayDockLabel'
   | 'reader.refreshTitle'
   | 'reader.refreshAria'
   | 'reader.fullscreenTitle'
@@ -457,11 +458,12 @@ const ID_DICT: Record<TranslationKey, string> = {
   'reader.backAria': 'Kembali',
   'reader.selectChapterTitle': 'Pilih Chapter',
   'reader.chapterListAria': 'Daftar Chapter',
+  'reader.displayDockLabel': 'Tampilan',
   'reader.refreshTitle': 'Muat Ulang Halaman',
   'reader.refreshAria': 'Muat Ulang Halaman',
   'reader.fullscreenTitle': 'Layar Penuh (F11)',
   'reader.fullscreenAria': 'Layar Penuh',
-  'reader.modeFlyoutTitle': 'Mode Baca (Reading Mode)',
+  'reader.modeFlyoutTitle': 'Mode Baca',
   'reader.modeFlyoutAria': 'Mode Baca',
   'reader.modeWebtoon': 'Webtoon',
   'reader.modeSingle': 'Halaman Tunggal',
@@ -885,6 +887,7 @@ const EN_DICT: Record<TranslationKey, string> = {
   'reader.backAria': 'Back',
   'reader.selectChapterTitle': 'Select Chapter',
   'reader.chapterListAria': 'Chapter List',
+  'reader.displayDockLabel': 'Display',
   'reader.refreshTitle': 'Reload Pages',
   'reader.refreshAria': 'Reload Pages',
   'reader.fullscreenTitle': 'Fullscreen (F11)',

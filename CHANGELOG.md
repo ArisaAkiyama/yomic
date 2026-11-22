@@ -2,6 +2,15 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [2.2.0] - 2026-11-22
+
+Update Details：
+◆ Add thread-safe 48 MB in-memory LRU image cache and zero-copy fast path (<= 1.5 MB JPEG/WebP) in WebResourceImageProxy for instant 0ms scroll-back and chapter reopening, alongside increased 6x concurrent page download throttling.
+◆ Add offline CBZ comic archive download support (SaveDownloadsAsCbz) and automatic downloaded chapter deletion after reading (AutoDeleteAfterRead) in DownloadPathService, DownloadService, SettingsService, and BackendIpcController.
+◆ Add enriched MyAnimeList (MAL) search metadata (InUserList, UserStatus, UserChaptersRead, UserScore, TotalChapters) in MyAnimeListService and one-click autoBind tracker linking in BackendIpcController.
+◆ Add localized announcement type badges and color styles (Pembaruan, Peringatan, Penting) in Announcement model.
+◆ Improve WebUI layout, reader controls, manga detail chapter view, browse source catalog, extensions manager, downloads queue, and settings hub across main.css and TypeScript views.
+
 ## [2.1.0] - 2026-11-19
 
 Update Details：

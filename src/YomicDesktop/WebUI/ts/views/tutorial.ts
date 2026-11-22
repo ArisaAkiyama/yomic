@@ -219,8 +219,8 @@ export class TutorialController {
   private showWelcomeHintToast(): void {
     this.app.showToast(
       this.app.l(
-        'Anda berada di menu Ekstensi. Silakan pasang ekstensi sumber komik pilihan Anda untuk memulai.',
-        'You are in the Extensions menu. Please install a comic source extension to get started.'
+        'Pasang ekstensi sumber komik pilihan Anda untuk memulai.',
+        'Install a comic source extension to get started.'
       ),
       'puzzle'
     );

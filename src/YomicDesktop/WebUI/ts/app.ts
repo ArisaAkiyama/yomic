@@ -102,7 +102,8 @@ import {
   stopReaderAutoScroll,
   bindReaderShellEvents,
   syncReaderPageFromScroll,
-  restoreReaderScrollPosition
+  restoreReaderScrollPosition,
+  prefetchReaderPagesAround
 } from './views/reader.js';
 import { renderSettingsView } from './views/settings.js';
 
@@ -194,6 +195,18 @@ export class YomicApp {
   public targetRestorePercent = -1;
   public isRestoringReaderScroll = false;
   public readerSaveProgressDebounceTimer: number | null = null;
+  public readerPageWrappers: HTMLElement[] = [];
+  public readerAspectRatioCache: Map<string, number> = new Map();
+  public readerPrefetchedUrls: Set<string> = new Set();
+  public readerHudRefs: {
+    curText: HTMLElement | null;
+    totText: HTMLElement | null;
+    fillBar: HTMLElement | null;
+    scrub: HTMLInputElement | null;
+    prevBtn: HTMLButtonElement | null;
+    nextBtn: HTMLButtonElement | null;
+  } | null = null;
+  public readerLastCompletedFlushKey = '';
   public viewScrollPositions: Map<string, number> = new Map();
   public isRestoringWorkspaceScroll = false;
 
@@ -573,6 +586,10 @@ export class YomicApp {
       const fbBackdrop = document.getElementById('feedbackModalBackdrop');
       const malBackdrop = document.getElementById('malTrackerModalBackdrop');
       const libFilterBackdrop = document.getElementById('libFilterModalBackdrop');
+      const sourceFilterBackdrop = document.getElementById('sourceFilterModalBackdrop');
+      const browseLangBackdrop = document.getElementById('browseLangModalBackdrop');
+      const extLangBackdrop = document.getElementById('extLangModalBackdrop');
+      const chapterFilterBackdrop = document.getElementById('chapterFilterModalBackdrop');
       if (annBackdrop?.classList.contains('open')) {
         this.closeAnnouncementsModal();
       } else if (fbBackdrop?.classList.contains('open')) {
@@ -581,6 +598,20 @@ export class YomicApp {
         this.isLibraryFlyoutOpen = false;
         const container = document.getElementById('viewContainer');
         if (container && this.currentTab === 'library') this.renderLibraryView(container);
+      } else if (sourceFilterBackdrop?.classList.contains('open')) {
+        this.isSourceFeedFilterFlyoutOpen = false;
+        this.renderCurrentWorkspace(true);
+      } else if (browseLangBackdrop?.classList.contains('open')) {
+        this.isBrowseLangFlyoutOpen = false;
+        browseLangBackdrop.classList.remove('open');
+        document.getElementById('btnBrowseLangFlyout')?.classList.remove('active');
+      } else if (extLangBackdrop?.classList.contains('open')) {
+        this.isExtensionLangFlyoutOpen = false;
+        extLangBackdrop.classList.remove('open');
+        document.getElementById('btnExtLangFlyout')?.classList.remove('active');
+      } else if (chapterFilterBackdrop?.classList.contains('open')) {
+        this.isChapterFilterFlyoutOpen = false;
+        this.renderCurrentWorkspace(true);
       } else if (malBackdrop?.classList.contains('open')) {
         this.isMalTrackerPopupOpen = false;
         this.renderCurrentWorkspace(true);
@@ -860,22 +891,27 @@ export class YomicApp {
   public showToast(message: string, iconName?: string): void {
     const container = document.getElementById('toastContainer');
     if (!container) return;
+    while (container.children.length >= 3) {
+      container.firstElementChild?.remove();
+    }
     const pill = document.createElement('div');
     pill.className = 'toast-pill';
+    const lower = message.toLowerCase();
     const isAlert =
-      message.toLowerCase().includes('dihapus') ||
-      message.toLowerCase().includes('terlepas') ||
-      message.toLowerCase().includes('diputuskan');
+      lower.includes('dihapus') ||
+      lower.includes('terlepas') ||
+      lower.includes('diputuskan') ||
+      lower.includes('gagal');
     const icon = iconName || (isAlert ? 'info-circle-linear' : 'check-circle-linear');
-    const iconSvg = getIconSvg(icon, { size: 18, color: 'var(--ink-primary)' });
+    const iconSvg = getIconSvg(icon, { size: 15, color: 'currentColor' });
     pill.innerHTML = `<span class="toast-icon">${iconSvg}</span><span class="toast-text">${message}</span>`;
     container.appendChild(pill);
     window.setTimeout(() => {
       pill.style.opacity = '0';
-      pill.style.transform = 'translateY(6px)';
-      pill.style.transition = 'opacity 0.22s ease-out, transform 0.22s ease-out';
-      window.setTimeout(() => pill.remove(), 240);
-    }, 3200);
+      pill.style.transform = 'translateY(6px) scale(0.98)';
+      pill.style.transition = 'opacity 0.2s ease-out, transform 0.2s ease-out';
+      window.setTimeout(() => pill.remove(), 220);
+    }, 3000);
   }
 
   public showConfirmModal(options: ConfirmModalOptions): Promise<boolean> {
@@ -889,17 +925,12 @@ export class YomicApp {
 
       const isDanger = options.isDanger !== false;
       const title = options.title || (isDanger ? this.l('Konfirmasi Tindakan', 'Confirm Action') : this.l('Konfirmasi', 'Confirm'));
-      const confirmText = options.confirmText || (isDanger ? this.l('Konfirmasi Hapus', 'Confirm Delete') : this.l('Konfirmasi', 'Confirm'));
+      const confirmText = options.confirmText || (isDanger ? this.l('Hapus', 'Delete') : this.l('Konfirmasi', 'Confirm'));
       const cancelText = options.cancelText || this.t('modal.cancel');
-      const icon = options.icon || (isDanger ? 'danger-triangle-linear' : 'info-circle-linear');
-      const confirmIcon = options.confirmIcon || (isDanger ? 'trash-bin-trash-linear' : 'check-circle-linear');
 
       overlay.innerHTML = `
         <div class="yomic-confirm-modal ${isDanger ? 'danger' : 'info'}" role="dialog" aria-modal="true" aria-labelledby="yomicConfirmTitle">
           <div class="yomic-confirm-header">
-            <span class="yomic-confirm-badge ${isDanger ? 'danger' : 'info'}">
-              ${getIconSvg(icon, { size: 20 })}
-            </span>
             <h3 id="yomicConfirmTitle" class="yomic-confirm-title ${isDanger ? 'danger' : 'info'}">${title}</h3>
           </div>
           <p class="yomic-confirm-message">${options.message}</p>
@@ -908,7 +939,6 @@ export class YomicApp {
               ${cancelText}
             </button>
             <button id="btnYomicConfirmOk" type="button" class="yomic-confirm-btn confirm ${isDanger ? 'danger' : 'primary'}">
-              ${getIconSvg(confirmIcon, { size: 15, style: 'flex-shrink:0;display:block;' })}
               <span>${confirmText}</span>
             </button>
           </div>
@@ -1142,6 +1172,7 @@ export class YomicApp {
   public bindReaderShellEvents = bindReaderShellEvents;
   public syncReaderPageFromScroll = syncReaderPageFromScroll;
   public restoreReaderScrollPosition = restoreReaderScrollPosition;
+  public prefetchReaderPagesAround = prefetchReaderPagesAround;
 
   public renderSettingsView = renderSettingsView;
 }

@@ -209,7 +209,7 @@ namespace Yomic.Core.Services
 
             try
             {
-                var url = $"https://api.myanimelist.net/v2/manga?q={Uri.EscapeDataString(query)}&limit=10&fields=main_picture&nsfw=true";
+                var url = $"https://api.myanimelist.net/v2/manga?q={Uri.EscapeDataString(query)}&limit=10&fields=main_picture,my_list_status,num_chapters&nsfw=true";
                 var request = await CreateAuthenticatedRequestAsync(HttpMethod.Get, url);
                 var response = await _httpClient.SendAsync(request);
 
@@ -225,16 +225,42 @@ namespace Yomic.Core.Services
                         var id = node.GetProperty("id").GetInt64();
                         var title = node.GetProperty("title").GetString() ?? "";
                         string? coverUrl = null;
-                        if (node.TryGetProperty("main_picture", out var pictureObj))
+                        if (node.TryGetProperty("main_picture", out var pictureObj) &&
+                            pictureObj.TryGetProperty("medium", out var medProp))
                         {
-                            coverUrl = pictureObj.GetProperty("medium").GetString();
+                            coverUrl = medProp.GetString();
+                        }
+
+                        int totalChapters = node.TryGetProperty("num_chapters", out var numChProp) && numChProp.ValueKind == JsonValueKind.Number
+                            ? numChProp.GetInt32()
+                            : 0;
+
+                        bool inUserList = false;
+                        string? userStatus = null;
+                        int userChaptersRead = 0;
+                        int userScore = 0;
+
+                        if (node.TryGetProperty("my_list_status", out var myStatusObj) && myStatusObj.ValueKind == JsonValueKind.Object)
+                        {
+                            inUserList = true;
+                            if (myStatusObj.TryGetProperty("status", out var stProp))
+                                userStatus = stProp.GetString();
+                            if (myStatusObj.TryGetProperty("num_chapters_read", out var crProp) && crProp.ValueKind == JsonValueKind.Number)
+                                userChaptersRead = crProp.GetInt32();
+                            if (myStatusObj.TryGetProperty("score", out var scProp) && scProp.ValueKind == JsonValueKind.Number)
+                                userScore = scProp.GetInt32();
                         }
 
                         results.Add(new MalSearchResult
                         {
                             Id = id,
                             Title = title,
-                            CoverUrl = coverUrl
+                            CoverUrl = coverUrl,
+                            InUserList = inUserList,
+                            UserStatus = userStatus,
+                            UserChaptersRead = userChaptersRead,
+                            UserScore = userScore,
+                            TotalChapters = totalChapters
                         });
                     }
                 }
@@ -338,5 +364,10 @@ namespace Yomic.Core.Services
         public long Id { get; set; }
         public string Title { get; set; } = "";
         public string? CoverUrl { get; set; }
+        public bool InUserList { get; set; }
+        public string? UserStatus { get; set; }
+        public int UserChaptersRead { get; set; }
+        public int UserScore { get; set; }
+        public int TotalChapters { get; set; }
     }
 }

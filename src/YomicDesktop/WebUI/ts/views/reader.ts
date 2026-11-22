@@ -27,6 +27,102 @@ import {
  * 6. READER OVERLAY ENGINE (AUTO DEEP-OCEAN DARK #07111E)
  * ========================================================================= */
 
+/**
+ * Pure helper to compute 0-based page indices to prefetch around the current 1-based page.
+ * Prefetches up to `lookahead` pages ahead (default 5) plus 1 page behind, deduplicated and bounds-safe.
+ */
+export function computePrefetchPageIndices(currentPage: number, totalPages: number, lookahead = 5): number[] {
+  if (totalPages <= 0) return [];
+  const clampedCurrent = Math.max(1, Math.min(totalPages, Math.floor(currentPage)));
+  const currentIdx = clampedCurrent - 1;
+  const result: number[] = [];
+  for (let offset = 1; offset <= lookahead; offset++) {
+    const idx = currentIdx + offset;
+    if (idx < totalPages) {
+      result.push(idx);
+    }
+  }
+  const prevIdx = currentIdx - 1;
+  if (prevIdx >= 0) {
+    result.push(prevIdx);
+  }
+  return result;
+}
+
+/**
+ * O(log N) binary search over cached page wrappers using layout offsets (offsetTop / offsetHeight),
+ * eliminating O(N) getBoundingClientRect() forced synchronous layouts during 60-120 FPS Webtoon scroll.
+ */
+function findActiveWebtoonPageBinarySearch(wrappers: HTMLElement[], midContentY: number): number {
+  const n = wrappers.length;
+  if (n === 0) return 1;
+  let lo = 0;
+  let hi = n - 1;
+  let ans = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const el = wrappers[mid];
+    const top = el.offsetTop;
+    const bottom = top + el.offsetHeight;
+    if (midContentY < top) {
+      hi = mid - 1;
+    } else if (midContentY > bottom) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      return mid + 1;
+    }
+  }
+  return Math.max(1, Math.min(n, ans + 1));
+}
+
+function getDualSpreadPages(currentPage: number, totalPages: number): {
+  leftPage: number;
+  rightPage: number | null;
+  spreadPages: number[];
+} {
+  const safeTotal = Math.max(1, totalPages);
+  const clamped = Math.max(1, Math.min(safeTotal, Math.floor(currentPage)));
+  const leftPage = clamped % 2 === 0 ? Math.max(1, clamped - 1) : clamped;
+  const rightPage = leftPage + 1 <= safeTotal ? leftPage + 1 : null;
+  const spreadPages = rightPage !== null ? [leftPage, rightPage] : [leftPage];
+  return { leftPage, rightPage, spreadPages };
+}
+
+function getDualPageImgStyle(zoomPercent: number): string {
+  const scale = Math.max(0.6, Math.min(1.5, zoomPercent / 100));
+  return `max-height:calc((100vh - 28px) * ${scale});max-width:calc((50vw - 20px) * ${scale});width:auto;height:auto;object-fit:contain;display:block;`;
+}
+
+export function prefetchReaderPagesAround(this: YomicApp, currentPage: number): void {
+  if (!this.isReaderOpen || !this.readerPages || this.readerPages.length === 0) return;
+  const indices = computePrefetchPageIndices(currentPage, this.readerPages.length, 5);
+  for (const idx of indices) {
+    const url = this.readerPages[idx];
+    if (!url || this.readerPrefetchedUrls.has(url)) continue;
+    this.readerPrefetchedUrls.add(url);
+
+    const pageNum = idx + 1;
+    const domImg = document.getElementById(`reader-page-${pageNum}`) as HTMLImageElement | null;
+    if (domImg) {
+      if (domImg.loading === 'lazy') {
+        domImg.loading = 'eager';
+      }
+      domImg.setAttribute('fetchpriority', 'high');
+      if (domImg.complete && domImg.naturalHeight > 0 && typeof domImg.decode === 'function') {
+        domImg.decode().catch(() => {});
+      }
+    } else {
+      const preload = new Image();
+      preload.decoding = 'async';
+      preload.src = url;
+      if (typeof preload.decode === 'function') {
+        preload.decode().catch(() => {});
+      }
+    }
+  }
+}
+
 export function openReader(this: YomicApp, mangaId: string, chapterNumber: number, forceRefresh = false, manualVerify = false): void {
   this.saveWorkspaceScroll();
   let manga: MangaItem;
@@ -80,6 +176,9 @@ export function openReader(this: YomicApp, mangaId: string, chapterNumber: numbe
   this.isReaderOpen = true;
   this.readerMangaId = manga.id;
   this.readerChapterNumber = chapterNumber;
+  this.readerPrefetchedUrls.clear();
+  this.readerPageWrappers = [];
+  this.readerLastCompletedFlushKey = '';
 
   // Retrieve instant saved position (Yomic v1 pattern)
   let initialSavedPercent = 0;
@@ -147,9 +246,16 @@ export function openReader(this: YomicApp, mangaId: string, chapterNumber: numbe
   const subEl = document.getElementById('readerChapterTitle');
   if (titleEl) titleEl.textContent = manga.title;
   if (subEl) {
-    subEl.textContent = chObj?.title
-      ? `Chapter ${chapterNumber} — ${chObj.title}`
-      : `Chapter ${chapterNumber}`;
+    subEl.textContent = `Chapter ${chapterNumber}`;
+  }
+  const bookmarkBtn = document.getElementById('btnReaderBookmarkChapter');
+  if (bookmarkBtn) {
+    const isBookmarked = Boolean(chObj?.isBookmarked);
+    bookmarkBtn.classList.toggle('is-bookmarked', isBookmarked);
+    bookmarkBtn.innerHTML = getIconSvg(isBookmarked ? 'bookmark-fill' : 'bookmark-line', { size: 19 });
+    bookmarkBtn.title = isBookmarked
+      ? this.l('Hapus Tanda Chapter', 'Remove Chapter Bookmark')
+      : this.l('Tandai Chapter', 'Bookmark Chapter');
   }
 
   // Dynamically update HUD button tooltips with effective hotkeys
@@ -168,6 +274,8 @@ export function openReader(this: YomicApp, mangaId: string, chapterNumber: numbe
   document.getElementById('btnReaderZoomFlyout')?.classList.remove('active');
   document.getElementById('readerChapterDropdownMenu')?.classList.remove('open');
   document.getElementById('btnReaderChapterDropdown')?.classList.remove('active');
+  document.getElementById('readerChapterSheetMenu')?.classList.remove('open');
+  document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
   document.getElementById('readerImageFlyoutMenu')?.classList.remove('open');
   document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
   this.applyTheme(this.settings.isDarkMode, `${manga.title} (Ch. ${chapterNumber})`);
@@ -353,6 +461,9 @@ export function closeReader(this: YomicApp): void {
   this.stopReaderAutoScroll();
   this.isRestoringReaderScroll = false;
   this.targetRestorePercent = -1;
+  this.readerPageWrappers = [];
+  this.readerPrefetchedUrls.clear();
+  this.readerLastCompletedFlushKey = '';
   const pagesContainer = document.getElementById('readerPagesContainer');
   if (pagesContainer) {
     pagesContainer.style.opacity = '1';
@@ -369,6 +480,8 @@ export function closeReader(this: YomicApp): void {
   document.getElementById('btnReaderZoomFlyout')?.classList.remove('active');
   document.getElementById('readerChapterDropdownMenu')?.classList.remove('open');
   document.getElementById('btnReaderChapterDropdown')?.classList.remove('active');
+  document.getElementById('readerChapterSheetMenu')?.classList.remove('open');
+  document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
   document.getElementById('readerImageFlyoutMenu')?.classList.remove('open');
   document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
   const overlay = document.getElementById('readerOverlay');
@@ -382,9 +495,19 @@ export function setReaderMode(this: YomicApp, mode: ReaderMode): void {
   document.querySelectorAll<HTMLButtonElement>('[data-reader-mode]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.readerMode === mode);
   });
+  const dockLabel = document.getElementById('readerModeDockLabel');
+  if (dockLabel) {
+    dockLabel.textContent =
+      mode === 'webtoon'
+        ? this.l('Webtoon', 'Webtoon')
+        : mode === 'single'
+        ? this.l('Tunggal', 'Single')
+        : this.l('Dua Hal.', 'Dual');
+  }
   const overlay = document.getElementById('readerOverlay');
   overlay?.classList.toggle('paged-mode', mode !== 'webtoon');
   this.renderReaderPages();
+  this.updateReaderPageIndicator();
 }
 
 export function renderReaderPages(this: YomicApp): void {
@@ -461,39 +584,51 @@ export function renderReaderPages(this: YomicApp): void {
     }
     return `width:${targetWidth}px;max-width:100%;height:auto;display:block;margin:0 auto;`;
   };
-  pagesContainer.dir = this.readerMode === 'dual' && this.settings.readingDirection === 'rtl' ? 'rtl' : 'ltr';
+  pagesContainer.dir = 'ltr';
+  const eagerIndices = new Set<number>([
+    Math.max(0, Math.min(this.readerTotalPages - 1, this.readerCurrentPage - 1)),
+    ...computePrefetchPageIndices(this.readerCurrentPage, this.readerTotalPages, 5)
+  ]);
+
   if (this.readerMode === 'single') {
     const realUrl = this.readerPages[this.readerCurrentPage - 1] || '';
     pagesContainer.innerHTML = `
       <div class="reader-page-item" id="reader-page-wrap-${this.readerCurrentPage}" style="position:relative;display:inline-block;margin:0 auto;">
-        <img id="reader-page-${this.readerCurrentPage}" class="reader-page-art" style="${getImgStyle(baseWidth)}" src="${realUrl}" alt="Halaman ${this.readerCurrentPage}" data-page-num="${this.readerCurrentPage}" />
+        <img id="reader-page-${this.readerCurrentPage}" class="reader-page-art" style="${getImgStyle(baseWidth)}" src="${realUrl}" alt="Halaman ${this.readerCurrentPage}" decoding="async" fetchpriority="high" data-page-num="${this.readerCurrentPage}" />
       </div>
     `;
     scrollArea.scrollTop = 0;
     pagesContainer.style.opacity = '1';
     this.isRestoringReaderScroll = false;
+    this.readerPageWrappers = [];
   } else if (this.readerMode === 'dual') {
-    const dualWidth = Math.round(480 * (this.readerZoomPercent / 100));
+    const { spreadPages } = getDualSpreadPages(this.readerCurrentPage, this.readerTotalPages);
+    const dualStyle = getDualPageImgStyle(this.readerZoomPercent);
     const pagesHtml: string[] = [];
-    for (let p = 1; p <= this.readerTotalPages; p++) {
+    for (const p of spreadPages) {
       const realUrl = this.readerPages[p - 1] || '';
       pagesHtml.push(
-        `<div class="reader-page-item" id="reader-page-wrap-${p}" style="position:relative;display:inline-block;">
-          <img id="reader-page-${p}" class="reader-page-art" style="${getImgStyle(dualWidth)}" src="${realUrl}" alt="Halaman ${p}" loading="lazy" data-page-num="${p}" />
+        `<div class="reader-page-item reader-dual-spread-item" id="reader-page-wrap-${p}">
+          <img id="reader-page-${p}" class="reader-page-art" style="${dualStyle}" src="${realUrl}" alt="Halaman ${p}" loading="eager" decoding="async" fetchpriority="high" data-page-num="${p}" />
         </div>`
       );
     }
     pagesContainer.innerHTML = pagesHtml.join('');
+    scrollArea.scrollTop = 0;
     pagesContainer.style.opacity = '1';
     this.isRestoringReaderScroll = false;
+    this.readerPageWrappers = [];
   } else {
     const pagesHtml: string[] = [];
-    const minPageHeight = Math.round(baseWidth * 1.35);
+    const fallbackHeight = Math.round(baseWidth * 1.35);
     for (let p = 1; p <= this.readerTotalPages; p++) {
       const realUrl = this.readerPages[p - 1] || '';
+      const cachedRatio = realUrl ? this.readerAspectRatioCache.get(realUrl) : undefined;
+      const estHeight = cachedRatio && cachedRatio > 0.05 ? Math.round(baseWidth / cachedRatio) : fallbackHeight;
+      const isEager = eagerIndices.has(p - 1);
       pagesHtml.push(
-        `<div class="reader-page-item" id="reader-page-wrap-${p}" style="position:relative;display:block;margin:0 auto;min-height:${minPageHeight}px;">
-          <img id="reader-page-${p}" class="reader-page-art" style="${getImgStyle(baseWidth)}" src="${realUrl}" alt="Halaman ${p}" loading="lazy" data-page-num="${p}" />
+        `<div class="reader-page-item" id="reader-page-wrap-${p}" style="position:relative;display:block;margin:0 auto;min-height:${estHeight}px;contain-intrinsic-size:auto ${baseWidth}px ${estHeight}px;">
+          <img id="reader-page-${p}" class="reader-page-art" style="${getImgStyle(baseWidth)}" src="${realUrl}" alt="Halaman ${p}" loading="${isEager ? 'eager' : 'lazy'}" decoding="async"${isEager ? ' fetchpriority="high"' : ''} data-page-num="${p}" />
         </div>`
       );
     }
@@ -518,6 +653,7 @@ export function renderReaderPages(this: YomicApp): void {
     }
 
     pagesContainer.innerHTML = pagesHtml.join('');
+    this.readerPageWrappers = Array.from(pagesContainer.querySelectorAll<HTMLElement>('.reader-page-item'));
 
     if (targetPercent > 0) {
       scrollArea.style.scrollBehavior = 'auto';
@@ -528,21 +664,32 @@ export function renderReaderPages(this: YomicApp): void {
     }
   }
 
-  // Attach onload & onerror handlers to images so wrappers fit actual image height and show retry on error
+  // Attach onload & onerror handlers to images so wrappers fit actual image height, cache aspect ratios, and show retry on error
   pagesContainer.querySelectorAll<HTMLImageElement>('img.reader-page-art').forEach((img) => {
-    const clearWrapperMinHeight = (): void => {
+    const pageNum = Number(img.dataset.pageNum || '1');
+    const rawUrl = this.readerPages[pageNum - 1] || img.getAttribute('src') || '';
+    const onImageReady = (): void => {
       const parent = img.parentElement;
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        const ratio = img.naturalWidth / img.naturalHeight;
+        if (rawUrl) {
+          this.readerAspectRatioCache.set(rawUrl, ratio);
+        }
+        if (parent && this.readerMode === 'webtoon') {
+          const exactHeight = Math.round(baseWidth / ratio);
+          parent.style.containIntrinsicSize = `auto ${baseWidth}px ${exactHeight}px`;
+        }
+      }
       if (parent) {
         parent.style.minHeight = '';
       }
     };
     if (img.complete && img.naturalHeight > 0) {
-      clearWrapperMinHeight();
+      onImageReady();
     } else {
-      img.onload = clearWrapperMinHeight;
+      img.onload = onImageReady;
     }
     img.onerror = () => {
-      const pageNum = Number(img.dataset.pageNum || '1');
       const parent = img.parentElement;
       if (parent) {
         parent.style.minHeight = '';
@@ -555,25 +702,45 @@ export function renderReaderPages(this: YomicApp): void {
       }
     };
   });
+
+  this.prefetchReaderPagesAround(this.readerCurrentPage);
 }
 
 export function updateReaderPageIndicator(this: YomicApp): void {
-  const curText = document.getElementById('readerPageCurrentText');
-  const totText = document.getElementById('readerPageTotalText');
-  const fillBar = document.getElementById('readerSliderFill');
-  const scrub = document.getElementById('readerPageScrubber') as HTMLInputElement | null;
-  if (curText) curText.textContent = String(this.readerCurrentPage);
+  if (!this.readerHudRefs) {
+    this.readerHudRefs = {
+      curText: document.getElementById('readerPageCurrentText'),
+      totText: document.getElementById('readerPageTotalText'),
+      fillBar: document.getElementById('readerSliderFill'),
+      scrub: document.getElementById('readerPageScrubber') as HTMLInputElement | null,
+      prevBtn: document.getElementById('btnPrevChapter') as HTMLButtonElement | null,
+      nextBtn: document.getElementById('btnNextChapter') as HTMLButtonElement | null
+    };
+  }
+  const { curText, totText, fillBar, scrub, prevBtn, nextBtn } = this.readerHudRefs;
+  const isDualMode = this.readerMode === 'dual';
+  const dualSpread = isDualMode ? getDualSpreadPages(this.readerCurrentPage, this.readerTotalPages) : null;
+  const effectiveEndPage = dualSpread ? (dualSpread.rightPage ?? dualSpread.leftPage) : this.readerCurrentPage;
+  const effectiveStartPage = dualSpread ? dualSpread.leftPage : this.readerCurrentPage;
+
+  if (curText) {
+    curText.textContent =
+      dualSpread && dualSpread.rightPage !== null
+        ? `${dualSpread.leftPage}-${dualSpread.rightPage}`
+        : String(effectiveStartPage);
+  }
   if (totText) totText.textContent = String(this.readerTotalPages);
   if (fillBar) {
-    const pct = Math.max(0, Math.min(100, (this.readerCurrentPage / Math.max(1, this.readerTotalPages)) * 100));
+    const pct =
+      this.readerTotalPages <= 1
+        ? 100
+        : Math.max(0, Math.min(100, ((effectiveEndPage - 1) / Math.max(1, this.readerTotalPages - 1)) * 100));
     fillBar.style.width = `${pct}%`;
   }
   if (scrub) {
     scrub.max = String(this.readerTotalPages);
-    scrub.value = String(this.readerCurrentPage);
+    scrub.value = String(effectiveEndPage);
   }
-  const prevBtn = document.getElementById('btnPrevChapter') as HTMLButtonElement | null;
-  const nextBtn = document.getElementById('btnNextChapter') as HTMLButtonElement | null;
   const isWebtoonMode = this.readerMode === 'webtoon';
   if (prevBtn) {
     const prevSpan = prevBtn.querySelector('span');
@@ -600,21 +767,21 @@ export function updateReaderPageIndicator(this: YomicApp): void {
       if (isWebtoonMode) {
         prevBtn.disabled = !manga.chapters.some((c) => c.number < this.readerChapterNumber);
       } else {
-        prevBtn.disabled = this.readerCurrentPage <= 1 && !manga.chapters.some((c) => c.number < this.readerChapterNumber);
+        prevBtn.disabled = effectiveStartPage <= 1 && !manga.chapters.some((c) => c.number < this.readerChapterNumber);
       }
     }
     if (nextBtn) {
       if (isWebtoonMode) {
         nextBtn.disabled = !manga.chapters.some((c) => c.number > this.readerChapterNumber);
       } else {
-        nextBtn.disabled = this.readerCurrentPage >= this.readerTotalPages && !manga.chapters.some((c) => c.number > this.readerChapterNumber);
+        nextBtn.disabled = effectiveEndPage >= this.readerTotalPages && !manga.chapters.some((c) => c.number > this.readerChapterNumber);
       }
     }
   }
 }
 
 export function adjustReaderZoom(this: YomicApp, delta: number): void {
-  this.readerZoomPercent = Math.max(60, Math.min(160, this.readerZoomPercent + delta));
+  this.readerZoomPercent = Math.max(60, Math.min(150, this.readerZoomPercent + delta));
   const zoomLabel = document.getElementById('readerZoomLabel');
   const zoomSlider = document.getElementById('readerZoomSlider') as HTMLInputElement | null;
   if (zoomLabel) zoomLabel.textContent = `${this.readerZoomPercent}%`;
@@ -656,8 +823,7 @@ export function adjustReaderZoom(this: YomicApp, delta: number): void {
   };
 
   if (this.readerMode === 'dual') {
-    const dualWidth = Math.round(480 * (this.readerZoomPercent / 100));
-    const targetStyle = getImgStyle(dualWidth);
+    const targetStyle = getDualPageImgStyle(this.readerZoomPercent);
     existingImages.forEach((img) => {
       img.style.cssText = targetStyle;
     });
@@ -669,7 +835,12 @@ export function adjustReaderZoom(this: YomicApp, delta: number): void {
       img.style.cssText = targetStyle;
       const parent = img.parentElement;
       if (parent && this.readerMode === 'webtoon') {
-        parent.style.minHeight = (img.complete && img.naturalHeight > 0) ? '' : `${minPageHeight}px`;
+        const pageNum = Number(img.dataset.pageNum || '1');
+        const rawUrl = this.readerPages[pageNum - 1] || img.getAttribute('src') || '';
+        const cachedRatio = rawUrl ? this.readerAspectRatioCache.get(rawUrl) : undefined;
+        const estHeight = cachedRatio && cachedRatio > 0.05 ? Math.round(baseWidth / cachedRatio) : minPageHeight;
+        parent.style.containIntrinsicSize = `auto ${baseWidth}px ${estHeight}px`;
+        parent.style.minHeight = (img.complete && img.naturalHeight > 0) ? '' : `${estHeight}px`;
       }
     });
     // Also update any retry placeholder boxes
@@ -712,6 +883,11 @@ export function stepReaderChapter(this: YomicApp, delta: number): void {
       : [...sorted].reverse().find((c) => c.number < this.readerChapterNumber);
   }
   if (targetCh) {
+    if (this.readerSaveProgressDebounceTimer) {
+      clearTimeout(this.readerSaveProgressDebounceTimer);
+      this.readerSaveProgressDebounceTimer = null;
+      this.saveReaderProgressToBackend();
+    }
     if (delta > 0) {
       // Mark current chapter as read and save progress before switching to next chapter
       const curCh = manga.chapters.find((c) => Math.abs(c.number - this.readerChapterNumber) < 0.01);
@@ -743,6 +919,33 @@ export function stepReaderChapter(this: YomicApp, delta: number): void {
 }
 
 export function stepReaderPage(this: YomicApp, delta: number): void {
+  if (this.readerMode === 'dual') {
+    const { leftPage, rightPage } = getDualSpreadPages(this.readerCurrentPage, this.readerTotalPages);
+    const stepSign = delta >= 0 ? 1 : -1;
+    if (stepSign > 0) {
+      const nextStart = (rightPage ?? leftPage) + 1;
+      if (nextStart <= this.readerTotalPages) {
+        this.readerCurrentPage = nextStart;
+        this.updateReaderPageIndicator();
+        this.renderReaderPages();
+        this.saveReaderProgressToBackend();
+      } else {
+        this.stepReaderChapter(1);
+      }
+    } else {
+      const prevStart = leftPage - 2;
+      if (prevStart >= 1) {
+        this.readerCurrentPage = prevStart;
+        this.updateReaderPageIndicator();
+        this.renderReaderPages();
+        this.saveReaderProgressToBackend();
+      } else {
+        this.stepReaderChapter(-1);
+      }
+    }
+    return;
+  }
+
   const targetPage = this.readerCurrentPage + delta;
   if (targetPage >= 1 && targetPage <= this.readerTotalPages) {
     this.readerCurrentPage = targetPage;
@@ -764,6 +967,7 @@ export function stepReaderPage(this: YomicApp, delta: number): void {
 export function isReaderFlyoutOpen(this: YomicApp): boolean {
   return !!(
     document.getElementById('readerChapterDropdownMenu')?.classList.contains('open') ||
+    document.getElementById('readerChapterSheetMenu')?.classList.contains('open') ||
     document.getElementById('readerModeFlyoutMenu')?.classList.contains('open') ||
     document.getElementById('readerZoomFlyoutMenu')?.classList.contains('open') ||
     document.getElementById('readerImageFlyoutMenu')?.classList.contains('open')
@@ -788,8 +992,11 @@ export function hideReaderHud(this: YomicApp): void {
   document.getElementById('btnReaderZoomFlyout')?.classList.remove('active');
   document.getElementById('readerChapterDropdownMenu')?.classList.remove('open');
   document.getElementById('btnReaderChapterDropdown')?.classList.remove('active');
+  document.getElementById('readerChapterSheetMenu')?.classList.remove('open');
+  document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
   document.getElementById('readerImageFlyoutMenu')?.classList.remove('open');
   document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
+  document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
 }
 
 export function toggleReaderHud(this: YomicApp): void {
@@ -806,6 +1013,8 @@ export function toggleReaderHud(this: YomicApp): void {
     document.getElementById('btnReaderZoomFlyout')?.classList.remove('active');
     document.getElementById('readerChapterDropdownMenu')?.classList.remove('open');
     document.getElementById('btnReaderChapterDropdown')?.classList.remove('active');
+    document.getElementById('readerChapterSheetMenu')?.classList.remove('open');
+    document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
     document.getElementById('readerImageFlyoutMenu')?.classList.remove('open');
     document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
   } else {
@@ -822,40 +1031,54 @@ export function toggleReaderHud(this: YomicApp): void {
 }
 
 export function renderReaderChapterDropdown(this: YomicApp): void {
-  const menu = document.getElementById('readerChapterDropdownMenu');
-  if (!menu) return;
+  const targets = [
+    document.getElementById('readerChapterDropdownMenu'),
+    document.getElementById('readerChapterSheetList')
+  ].filter((el): el is HTMLElement => el !== null);
+  if (targets.length === 0) return;
   const manga = this.mangaList.find((m) => m.id === this.readerMangaId);
   if (!manga) return;
   if (!manga.chapters || manga.chapters.length === 0) {
-    menu.innerHTML = `<div style="padding:12px 16px;text-align:center;color:#94A3B8;font-size:12px;">${this.l('Daftar chapter belum dimuat', 'Chapter list not loaded yet')}</div>`;
+    const emptyHtml = `<div style="padding:14px 16px;text-align:center;color:#A1A1AA;font-size:12.5px;">${this.l('Daftar chapter belum dimuat', 'Chapter list not loaded yet')}</div>`;
+    targets.forEach((menu) => {
+      menu.innerHTML = emptyHtml;
+    });
     return;
   }
   const sorted = [...manga.chapters].sort((a, b) => b.number - a.number);
-  menu.innerHTML = sorted
+  const itemsHtml = sorted
     .map((ch) => {
       const isActive = Math.abs(ch.number - this.readerChapterNumber) < 0.01;
       const label = ch.title ? `Chapter ${ch.number} — ${escapeXml(ch.title)}` : `Chapter ${ch.number}`;
       return `
-        <button class="reader-chapter-dropdown-item ${isActive ? 'active' : ''}" data-jump-ch="${ch.number}">
-          <span>${label}</span>
-          ${isActive ? getIconSvg('check', { size: 12, strokeWidth: 2.5, color: '#38BDF8' }) : ''}
+        <button class="reader-chapter-dropdown-item ${isActive ? 'active' : ''} ${ch.isRead && !isActive ? 'is-read' : ''}" data-jump-ch="${ch.number}">
+          <span class="v1-reader-ch-item-text">${label}</span>
+          <span class="v1-reader-ch-item-icons">
+            ${ch.isBookmarked ? getIconSvg('bookmark-fill', { size: 12 }) : ''}
+          </span>
         </button>
       `;
     })
     .join('');
-  menu.querySelectorAll<HTMLButtonElement>('[data-jump-ch]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const chNum = Number(btn.dataset.jumpCh);
-      if (!Number.isNaN(chNum)) {
-        menu.classList.remove('open');
-        document.getElementById('btnReaderChapterDropdown')?.classList.remove('active');
-        this.openReader(manga.id, chNum);
-      }
+
+  targets.forEach((menu) => {
+    menu.innerHTML = itemsHtml;
+    menu.querySelectorAll<HTMLButtonElement>('[data-jump-ch]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const chNum = Number(btn.dataset.jumpCh);
+        if (!Number.isNaN(chNum)) {
+          document.getElementById('readerChapterDropdownMenu')?.classList.remove('open');
+          document.getElementById('btnReaderChapterDropdown')?.classList.remove('active');
+          document.getElementById('readerChapterSheetMenu')?.classList.remove('open');
+          document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
+          this.openReader(manga.id, chNum);
+        }
+      });
     });
-  });
-  requestAnimationFrame(() => {
-    const activeBtn = menu.querySelector<HTMLElement>('.reader-chapter-dropdown-item.active');
-    activeBtn?.scrollIntoView({ block: 'nearest' });
+    requestAnimationFrame(() => {
+      const activeBtn = menu.querySelector<HTMLElement>('.reader-chapter-dropdown-item.active');
+      activeBtn?.scrollIntoView({ block: 'nearest' });
+    });
   });
 }
 
@@ -905,6 +1128,51 @@ export function bindReaderShellEvents(this: YomicApp): void {
     this.showToast(this.l('Memuat ulang halaman komik dari sumber...', 'Reloading comic pages from source...'), 'refresh');
     this.openReader(this.readerMangaId, this.readerChapterNumber, true);
   });
+  document.getElementById('btnReaderBookmarkChapter')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const manga = this.mangaList.find((m) => m.id === this.readerMangaId);
+    const chObj = manga?.chapters.find((c) => Math.abs(c.number - this.readerChapterNumber) < 0.01);
+    if (!manga || !chObj) return;
+    chObj.isBookmarked = !chObj.isBookmarked;
+    const bookmarkBtn = document.getElementById('btnReaderBookmarkChapter');
+    if (bookmarkBtn) {
+      bookmarkBtn.classList.toggle('is-bookmarked', chObj.isBookmarked);
+      bookmarkBtn.innerHTML = getIconSvg(chObj.isBookmarked ? 'bookmark-fill' : 'bookmark-line', { size: 19 });
+      bookmarkBtn.title = chObj.isBookmarked
+        ? this.l('Hapus Tanda Chapter', 'Remove Chapter Bookmark')
+        : this.l('Tandai Chapter', 'Bookmark Chapter');
+    }
+    if (this.bridge.isWebViewHost) {
+      void this.bridge.invoke('chapter:toggle-bookmark', {
+        mangaId: manga.id,
+        chapterNumber: chObj.number,
+        chapterUrl: chObj.url || '',
+        bookmarked: chObj.isBookmarked
+      });
+    }
+    this.showToast(
+      chObj.isBookmarked
+        ? this.l(`Chapter ${chObj.number} ditandai.`, `Chapter ${chObj.number} bookmarked.`)
+        : this.l(`Tanda Chapter ${chObj.number} dihapus.`, `Chapter ${chObj.number} bookmark removed.`)
+    );
+  });
+  document.getElementById('btnReaderChapterListDock')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const chSheet = document.getElementById('readerChapterSheetMenu');
+    const chDockBtn = document.getElementById('btnReaderChapterListDock');
+    document.getElementById('readerChapterDropdownMenu')?.classList.remove('open');
+    document.getElementById('btnReaderChapterDropdown')?.classList.remove('active');
+    document.getElementById('readerModeFlyoutMenu')?.classList.remove('open');
+    document.getElementById('btnReaderModeFlyout')?.classList.remove('active');
+    document.getElementById('readerImageFlyoutMenu')?.classList.remove('open');
+    document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
+    const isOpen = chSheet?.classList.toggle('open') ?? false;
+    chDockBtn?.classList.toggle('active', isOpen);
+    if (isOpen) {
+      this.renderReaderChapterDropdown();
+    }
+  });
+  document.getElementById('readerChapterSheetMenu')?.addEventListener('click', (ev) => ev.stopPropagation());
   document.getElementById('btnReaderFullscreen')?.addEventListener('click', () => {
     this.bridge.toggleFullscreen();
   });
@@ -925,14 +1193,18 @@ export function bindReaderShellEvents(this: YomicApp): void {
 
   chDropdownBtn?.addEventListener('click', (ev) => {
     ev.stopPropagation();
+    chDropdownMenu?.classList.remove('open');
+    chDropdownBtn.classList.remove('active');
     modeFlyoutMenu?.classList.remove('open');
     modeFlyoutBtn?.classList.remove('active');
     zoomFlyoutMenu?.classList.remove('open');
     zoomFlyoutBtn?.classList.remove('active');
     imgFlyoutMenu?.classList.remove('open');
     imgFlyoutBtn?.classList.remove('active');
-    const isOpen = chDropdownMenu?.classList.toggle('open') ?? false;
-    chDropdownBtn.classList.toggle('active', isOpen);
+    const chSheet = document.getElementById('readerChapterSheetMenu');
+    const chDockBtn = document.getElementById('btnReaderChapterListDock');
+    const isOpen = chSheet?.classList.toggle('open') ?? false;
+    chDockBtn?.classList.toggle('active', isOpen);
     if (isOpen) {
       this.renderReaderChapterDropdown();
     }
@@ -942,6 +1214,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
     ev.stopPropagation();
     chDropdownMenu?.classList.remove('open');
     chDropdownBtn?.classList.remove('active');
+    document.getElementById('readerChapterSheetMenu')?.classList.remove('open');
+    document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
     zoomFlyoutMenu?.classList.remove('open');
     zoomFlyoutBtn?.classList.remove('active');
     imgFlyoutMenu?.classList.remove('open');
@@ -967,6 +1241,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
     ev.stopPropagation();
     chDropdownMenu?.classList.remove('open');
     chDropdownBtn?.classList.remove('active');
+    document.getElementById('readerChapterSheetMenu')?.classList.remove('open');
+    document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
     modeFlyoutMenu?.classList.remove('open');
     modeFlyoutBtn?.classList.remove('active');
     zoomFlyoutMenu?.classList.remove('open');
@@ -1058,11 +1334,12 @@ export function bindReaderShellEvents(this: YomicApp): void {
   scrubber?.addEventListener('input', () => {
     this.readerCurrentPage = Number(scrubber.value);
     this.updateReaderPageIndicator();
-    if (this.readerMode === 'single') {
+    this.prefetchReaderPagesAround(this.readerCurrentPage);
+    if (this.readerMode === 'single' || this.readerMode === 'dual') {
       this.renderReaderPages();
     } else {
       const pageEl = document.getElementById(`reader-page-${this.readerCurrentPage}`);
-      pageEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      pageEl?.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
   });
   scrubber?.addEventListener('change', () => {
@@ -1109,6 +1386,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
   readerCanvas?.addEventListener('click', (ev) => {
     chDropdownMenu?.classList.remove('open');
     chDropdownBtn?.classList.remove('active');
+    document.getElementById('readerChapterSheetMenu')?.classList.remove('open');
+    document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
     modeFlyoutMenu?.classList.remove('open');
     modeFlyoutBtn?.classList.remove('active');
     zoomFlyoutMenu?.classList.remove('open');
@@ -1137,7 +1416,7 @@ export function bindReaderShellEvents(this: YomicApp): void {
     }
   });
 
-  // Auto-hide HUD on scroll down (Webtoon continuous reading)
+  // Auto-hide HUD on scroll down & O(log N) Webtoon ScrollSpy (Passive 60-120 FPS)
   let lastReaderScrollTop = 0;
   let readerScrollThrottled = false;
   readerCanvas?.addEventListener('scroll', () => {
@@ -1173,46 +1452,46 @@ export function bindReaderShellEvents(this: YomicApp): void {
         this.readerScrollPercent = Math.min(1.0, Math.max(0.0, currentScroll / maxScroll));
       }
 
-      // Webtoon ScrollSpy: detect page in middle of view
-      if (this.readerMode === 'webtoon' && this.readerTotalPages > 0) {
-        const containerRect = readerCanvas.getBoundingClientRect();
-        const midY = containerRect.top + containerRect.height / 2;
-        let activePage = 1;
-        for (let p = 1; p <= this.readerTotalPages; p++) {
-          const el = document.getElementById(`reader-page-${p}`);
-          if (el) {
-            const r = el.getBoundingClientRect();
-            if (r.top <= midY && r.bottom >= midY) {
-              activePage = p;
-              break;
-            }
-            if (r.top > midY && p > 1) {
-              activePage = p - 1;
-              break;
-            }
-            if (p === this.readerTotalPages && r.bottom < midY) {
-              activePage = this.readerTotalPages;
-            }
-          }
-        }
-        if (activePage !== this.readerCurrentPage) {
+      // Webtoon ScrollSpy: O(log N) Binary Search over cached page wrappers (0 forced layout)
+      if (this.readerMode === 'webtoon' && this.readerTotalPages > 0 && !this.isReaderInteractingWithControls) {
+        const midContentY = currentScroll + readerCanvas.clientHeight * 0.5;
+        const activePage = findActiveWebtoonPageBinarySearch(this.readerPageWrappers, midContentY);
+        const pageChanged = activePage !== this.readerCurrentPage;
+        if (pageChanged) {
           this.readerCurrentPage = activePage;
           this.updateReaderPageIndicator();
+          this.prefetchReaderPagesAround(activePage);
         }
 
-        // Debounced auto-save while reading in Webtoon mode
-        if (this.readerSaveProgressDebounceTimer) {
-          clearTimeout(this.readerSaveProgressDebounceTimer);
-        }
-        this.readerSaveProgressDebounceTimer = window.setTimeout(() => {
-          if (this.isReaderOpen && !this.isRestoringReaderScroll) {
-            this.saveReaderProgressToBackend();
+        // Immediate completion flush on reaching the last page (no 400ms delay)
+        const chapterKey = `${this.readerMangaId}_${this.readerChapterNumber}`;
+        if (
+          this.readerCurrentPage >= this.readerTotalPages &&
+          this.readerTotalPages > 0 &&
+          this.readerLastCompletedFlushKey !== chapterKey
+        ) {
+          this.readerLastCompletedFlushKey = chapterKey;
+          if (this.readerSaveProgressDebounceTimer) {
+            clearTimeout(this.readerSaveProgressDebounceTimer);
+            this.readerSaveProgressDebounceTimer = null;
           }
-        }, 350);
+          this.saveReaderProgressToBackend();
+        } else {
+          // Debounced auto-save (400ms) while reading in Webtoon mode
+          if (this.readerSaveProgressDebounceTimer) {
+            clearTimeout(this.readerSaveProgressDebounceTimer);
+          }
+          this.readerSaveProgressDebounceTimer = window.setTimeout(() => {
+            this.readerSaveProgressDebounceTimer = null;
+            if (this.isReaderOpen && !this.isRestoringReaderScroll) {
+              this.saveReaderProgressToBackend();
+            }
+          }, 400);
+        }
       }
       lastReaderScrollTop = currentScroll;
     });
-  });
+  }, { passive: true });
 
   // =========================================================================
   // AUTO-REVEAL HUD ON CURSOR HOVER NEAR HEADER / FOOTER (MANGA READER UI/UX)
@@ -1299,30 +1578,13 @@ export function syncReaderPageFromScroll(this: YomicApp): void {
   if (!readerCanvas || this.readerMode !== 'webtoon' || this.readerTotalPages <= 0) return;
   const maxScroll = Math.max(1, readerCanvas.scrollHeight - readerCanvas.clientHeight);
   this.readerScrollPercent = Math.min(1.0, Math.max(0.0, readerCanvas.scrollTop / maxScroll));
-  const containerRect = readerCanvas.getBoundingClientRect();
-  const midY = containerRect.top + containerRect.height / 2;
-  let activePage = 1;
-  for (let p = 1; p <= this.readerTotalPages; p++) {
-    const el = document.getElementById(`reader-page-${p}`);
-    if (el) {
-      const r = el.getBoundingClientRect();
-      if (r.top <= midY && r.bottom >= midY) {
-        activePage = p;
-        break;
-      }
-      if (r.top > midY && p > 1) {
-        activePage = p - 1;
-        break;
-      }
-      if (p === this.readerTotalPages && r.bottom < midY) {
-        activePage = this.readerTotalPages;
-      }
-    }
-  }
+  const midContentY = readerCanvas.scrollTop + readerCanvas.clientHeight * 0.5;
+  const activePage = findActiveWebtoonPageBinarySearch(this.readerPageWrappers, midContentY);
   if (activePage !== this.readerCurrentPage) {
     this.readerCurrentPage = activePage;
     this.updateReaderPageIndicator();
   }
+  this.prefetchReaderPagesAround(this.readerCurrentPage);
 }
 
 export function restoreReaderScrollPosition(this: YomicApp): void {
@@ -1332,18 +1594,8 @@ export function restoreReaderScrollPosition(this: YomicApp): void {
 
   scrollArea.style.scrollBehavior = 'auto';
 
-  if (this.readerMode === 'single') {
+  if (this.readerMode === 'single' || this.readerMode === 'dual') {
     scrollArea.scrollTop = 0;
-    pagesContainer.style.opacity = '1';
-    this.updateReaderPageIndicator();
-    return;
-  }
-
-  if (this.readerMode === 'dual') {
-    if (this.readerCurrentPage > 1) {
-      const targetEl = document.getElementById(`reader-page-wrap-${this.readerCurrentPage}`);
-      targetEl?.scrollIntoView({ behavior: 'instant', block: 'start' });
-    }
     pagesContainer.style.opacity = '1';
     this.updateReaderPageIndicator();
     return;

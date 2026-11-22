@@ -125,120 +125,64 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
 
   const activeSub = !this.activeSettingsTab || this.activeSettingsTab === 'all' ? 'hub' : this.activeSettingsTab;
   const subTitleMap: Record<string, string> = {
-    appearance: this.l('Tampilan & Pembaca', 'Appearance & Reader'),
-    library: this.l('Pustaka & Pembaruan', 'Library & Updates'),
+    appearance: this.l('Tampilan', 'Appearance'),
+    library: this.l('Pustaka', 'Library'),
+    reader: this.l('Pembaca', 'Reader'),
     downloads: this.l('Unduhan', 'Downloads'),
-    storage: this.l('Data & Penyimpanan', 'Data & Storage'),
+    tracker: this.l('Pelacakan', 'Tracking'),
     network: this.l('Jaringan & Sumber', 'Network & Sources'),
-    tracker: this.l('Pelacak', 'Tracking'),
+    storage: this.l('Data dan penyimpanan', 'Data and storage'),
     hotkeys: this.l('Pintasan Keyboard', 'Keyboard Shortcuts'),
     about: this.l('Tentang', 'About')
   };
 
   const hubHtml = `
-    <div class="v1-settings-hub">
-      <!-- Quick Toggles Section (Ala Mobile Top Toggles) -->
-      <div class="v1-settings-hub-list">
-        <div class="v1-settings-hub-row is-toggle" data-toggle-setting="isDarkMode" role="switch" aria-checked="${this.settings.isDarkMode}">
-          <div class="v1-settings-hub-icon">${getIconSvg('moon-linear', { size: 20 })}</div>
-          <div class="v1-settings-hub-info">
-            <span class="v1-settings-hub-title">${this.l('Mode Gelap', 'Dark Mode')}</span>
-            <span class="v1-settings-hub-desc">${this.l('Tema gelap Carbon Dark untuk kenyamanan membaca di malam hari', 'Carbon Dark theme for comfortable night reading')}</span>
-          </div>
-          <div class="toggle-switch ${this.settings.isDarkMode ? 'on' : ''}">
-            <div class="toggle-thumb"></div>
-          </div>
-        </div>
-        <div class="v1-settings-hub-row is-toggle" data-toggle-setting="isOfflineMode" role="switch" aria-checked="${this.settings.isOfflineMode}">
-          <div class="v1-settings-hub-icon">${getIconSvg('wifi-off', { size: 20 })}</div>
-          <div class="v1-settings-hub-info">
-            <span class="v1-settings-hub-title">${this.l('Mode Luring', 'Offline Mode')}</span>
-            <span class="v1-settings-hub-desc">${this.l('Hanya tampilkan dan baca komik yang telah diunduh', 'Only display and read downloaded comics')}</span>
-          </div>
-          <div class="toggle-switch ${this.settings.isOfflineMode ? 'on' : ''}">
-            <div class="toggle-thumb"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="v1-settings-hub-divider"></div>
-
-      <!-- Category Navigation List (Ala Mobile Menu) -->
+    <div class="v1-settings-hub is-minimal">
+      <!-- Category Navigation List (Ultra-Minimalist Mobile Style Gambar 2) -->
       <div class="v1-settings-hub-list">
         <button type="button" class="v1-settings-hub-row" data-open-settings-sub="appearance">
-          <div class="v1-settings-hub-icon">${getIconSvg('palette-linear', { size: 20 })}</div>
-          <div class="v1-settings-hub-info">
-            <span class="v1-settings-hub-title">${this.l('Tampilan & Pembaca', 'Appearance & Reader')}</span>
-            <span class="v1-settings-hub-desc">${this.l('Tema, bahasa, mode baca, arah halaman & kualitas gambar', 'Theme, language, reader mode, direction & image quality')}</span>
-          </div>
-          <span class="v1-settings-hub-chevron">${getIconSvg('arrow-right-s-line', { size: 18 })}</span>
+          <div class="v1-settings-hub-icon">${getIconSvg('palette-linear', { size: 21 })}</div>
+          <span class="v1-settings-hub-title">${this.l('Tampilan', 'Appearance')}</span>
         </button>
 
         <button type="button" class="v1-settings-hub-row" data-open-settings-sub="library">
-          <div class="v1-settings-hub-icon">${getIconSvg('book-open-line', { size: 20 })}</div>
-          <div class="v1-settings-hub-info">
-            <span class="v1-settings-hub-title">${this.l('Pustaka & Pembaruan', 'Library & Updates')}</span>
-            <span class="v1-settings-hub-desc">${this.l('Sinkronisasi otomatis, pembaruan cerdas & jadwal latar belakang', 'Auto-sync, smart updates & background schedule')}</span>
-          </div>
-          <span class="v1-settings-hub-chevron">${getIconSvg('arrow-right-s-line', { size: 18 })}</span>
+          <div class="v1-settings-hub-icon">${getIconSvg('book-2-linear', { size: 21 })}</div>
+          <span class="v1-settings-hub-title">${this.l('Pustaka', 'Library')}</span>
+        </button>
+
+        <button type="button" class="v1-settings-hub-row" data-open-settings-sub="reader">
+          <div class="v1-settings-hub-icon">${getIconSvg('reader-book-open', { size: 21 })}</div>
+          <span class="v1-settings-hub-title">${this.l('Pembaca', 'Reader')}</span>
         </button>
 
         <button type="button" class="v1-settings-hub-row" data-open-settings-sub="downloads">
-          <div class="v1-settings-hub-icon">${getIconSvg('download-2-line', { size: 20 })}</div>
-          <div class="v1-settings-hub-info">
-            <span class="v1-settings-hub-title">${this.l('Unduhan', 'Downloads')}</span>
-            <span class="v1-settings-hub-desc">${this.l('Lokasi folder, arsip CBZ, hapus otomatis & otomatisasi bab', 'Folder location, CBZ archives, auto-delete & chapter automation')}</span>
-          </div>
-          <span class="v1-settings-hub-chevron">${getIconSvg('arrow-right-s-line', { size: 18 })}</span>
-        </button>
-
-        <button type="button" class="v1-settings-hub-row" data-open-settings-sub="storage">
-          <div class="v1-settings-hub-icon">${getIconSvg('database-2-line', { size: 20 })}</div>
-          <div class="v1-settings-hub-info">
-            <span class="v1-settings-hub-title">${this.l('Data & Penyimpanan', 'Data & Storage')}</span>
-            <span class="v1-settings-hub-desc">${escapeXml(this.settings.dbSizeText || '0 MB')} · ${this.l('Cadangan, cache, riwayat & folder unduhan', 'Backup, cache, history & downloads folder')}</span>
-          </div>
-          <span class="v1-settings-hub-chevron">${getIconSvg('arrow-right-s-line', { size: 18 })}</span>
-        </button>
-
-        <button type="button" class="v1-settings-hub-row" data-open-settings-sub="network">
-          <div class="v1-settings-hub-icon">${getIconSvg('global-linear', { size: 20 })}</div>
-          <div class="v1-settings-hub-info">
-            <span class="v1-settings-hub-title">${this.l('Jaringan & Sumber', 'Network & Sources')}</span>
-            <span class="v1-settings-hub-desc">${this.l('DNS-over-HTTPS, mode luring & pemeriksaan status server', 'DNS-over-HTTPS, offline mode & server status checks')}</span>
-          </div>
-          <span class="v1-settings-hub-chevron">${getIconSvg('arrow-right-s-line', { size: 18 })}</span>
+          <div class="v1-settings-hub-icon">${getIconSvg('download-2-line', { size: 21 })}</div>
+          <span class="v1-settings-hub-title">${this.l('Unduhan', 'Downloads')}</span>
         </button>
 
         <button type="button" class="v1-settings-hub-row" data-open-settings-sub="tracker">
-          <div class="v1-settings-hub-icon">${getIconSvg('link', { size: 20 })}</div>
-          <div class="v1-settings-hub-info">
-            <span class="v1-settings-hub-title">${this.l('Pelacak', 'Tracking')}</span>
-            <span class="v1-settings-hub-desc">${
-              this.settings.isMalConnected
-                ? this.l(`Terhubung ke MyAnimeList (${escapeXml(this.settings.malConnectedUser)})`, `Connected to MyAnimeList (${escapeXml(this.settings.malConnectedUser)})`)
-                : this.l('Sinkronisasi otomatis progres baca dengan MyAnimeList', 'Auto-sync reading progress with MyAnimeList')
-            }</span>
-          </div>
-          <span class="v1-settings-hub-chevron">${getIconSvg('arrow-right-s-line', { size: 18 })}</span>
+          <div class="v1-settings-hub-icon">${getIconSvg('link', { size: 21 })}</div>
+          <span class="v1-settings-hub-title">${this.l('Pelacakan', 'Tracking')}</span>
+        </button>
+
+        <button type="button" class="v1-settings-hub-row" data-open-settings-sub="network">
+          <div class="v1-settings-hub-icon">${getIconSvg('global-linear', { size: 21 })}</div>
+          <span class="v1-settings-hub-title">${this.l('Jaringan & Sumber', 'Network & Sources')}</span>
+        </button>
+
+        <button type="button" class="v1-settings-hub-row" data-open-settings-sub="storage">
+          <div class="v1-settings-hub-icon">${getIconSvg('database-2-line', { size: 21 })}</div>
+          <span class="v1-settings-hub-title">${this.l('Data dan penyimpanan', 'Data and storage')}</span>
         </button>
 
         <button type="button" class="v1-settings-hub-row" data-open-settings-sub="hotkeys">
-          <div class="v1-settings-hub-icon">${getIconSvg('command-linear', { size: 20 })}</div>
-          <div class="v1-settings-hub-info">
-            <span class="v1-settings-hub-title">${this.l('Pintasan Keyboard', 'Keyboard Shortcuts')}</span>
-            <span class="v1-settings-hub-desc">${this.l('Atur tombol pintas pembaca komik & navigasi aplikasi', 'Configure reader & application navigation shortcuts')}</span>
-          </div>
-          <span class="v1-settings-hub-chevron">${getIconSvg('arrow-right-s-line', { size: 18 })}</span>
+          <div class="v1-settings-hub-icon">${getIconSvg('command-linear', { size: 21 })}</div>
+          <span class="v1-settings-hub-title">${this.l('Pintasan Keyboard', 'Keyboard Shortcuts')}</span>
         </button>
 
         <button type="button" class="v1-settings-hub-row" data-open-settings-sub="about">
-          <div class="v1-settings-hub-icon">${getIconSvg('info-circle-linear', { size: 20 })}</div>
-          <div class="v1-settings-hub-info">
-            <span class="v1-settings-hub-title">${this.l('Tentang', 'About')}</span>
-            <span class="v1-settings-hub-desc">${this.l('Informasi versi, pembaruan sistem, catatan rilis & reset aplikasi', 'Version info, system updates, release notes & app reset')}</span>
-          </div>
-          <span class="v1-settings-hub-chevron">${getIconSvg('arrow-right-s-line', { size: 18 })}</span>
+          <div class="v1-settings-hub-icon">${getIconSvg('info-circle-linear', { size: 21 })}</div>
+          <span class="v1-settings-hub-title">${this.l('Tentang', 'About')}</span>
         </button>
       </div>
     </div>
@@ -347,9 +291,9 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         </div>
       </section>
       <!-- 1C. PEMBACA -->
-      <section class="v1-settings-section has-top-divider" style="${activeSub === 'appearance' ? '' : 'display:none;'}">
+      <section class="v1-settings-section" style="${activeSub === 'reader' ? '' : 'display:none;'}">
         <div class="v1-settings-sec-head">
-          <h2 class="v1-settings-sec-title">${this.l('Pembaca', 'Reader')}</h2>
+          <h2 class="v1-settings-sec-title">${this.l('Tata Letak & Navigasi', 'Layout & Navigation')}</h2>
         </div>
         <div class="v1-settings-group">
           <div class="v1-setting-row is-select-row">
@@ -484,7 +428,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         </div>
       </section>
       <!-- 2. PEMROSESAN & KUALITAS GAMBAR (SKIASHARP) -->
-      <section class="v1-settings-section has-top-divider" style="${activeSub === 'appearance' ? '' : 'display:none;'}">
+      <section class="v1-settings-section has-top-divider" style="${activeSub === 'reader' ? '' : 'display:none;'}">
         <div class="v1-settings-sec-head">
           <h2 class="v1-settings-sec-title">${this.t('settings.appearance.imageHeaderTitle')}</h2>
         </div>
@@ -794,7 +738,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Versi', 'Version')}</span>
               </div>
-              <span class="v1-setting-desc">Stable 2.1.0 (Windows Desktop)</span>
+              <span class="v1-setting-desc">Stable 2.2.0 (Windows Desktop)</span>
             </div>
           </div>
 
@@ -812,28 +756,21 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Catatan rilis', 'Release notes')}</span>
               </div>
-              <span class="v1-setting-desc">v2.1.0</span>
+              <span class="v1-setting-desc">v2.2.0</span>
             </div>
             <span id="aboutReleaseNotesChevron" class="v1-about-release-chevron">
               ${getIconSvg('alt-arrow-down-linear', { size: 18 })}
             </span>
           </button>
           <div id="aboutReleaseNotesPanel" class="v1-about-release-notes" style="display:none;">
-            <div class="v1-about-release-head">[2.1.0] - Update</div>
+            <div class="v1-about-release-head">[2.2.0] - Update</div>
             <div class="v1-about-release-subhead">Update Details:</div>
             <ul class="v1-about-release-list">
-              <li>Add smart WebView2 chapter page extractor window (WebViewPageExtractorWindow) that runs off-screen silently during an 8-second grace period to resolve automatic security checks without popups, and automatically reveals itself centered on screen only when interactive verification (Cloudflare Turnstile / CAPTCHA) is required.</li>
-              <li>Add custom per-source WebView page extraction hooks (chapterReadySelector &amp; pageWebViewExtractScript) and verification status reporting (GetPageListWithStatusAsync &amp; RequiresVerification) in JsMangaSource.</li>
-              <li>Add automatic &amp; manual WebView verification fallback flow in BackendIpcController (reader:pages with manualVerify &amp; requiresVerification flags) to seamlessly recover chapter image lists when HTTP scraping is gated by dynamic client-side challenges.</li>
-              <li>Add "Verify in WebView" (Verifikasi di WebView) interactive recovery button and dedicated "Security Verification Required" state in Reader view (reader.ts) when a chapter requires user verification.</li>
-              <li>Add dynamic Next.js Server Action ID resolver (resolveUnlockActionId) in VoraToon extension (voratoon.js v1.2.1) to automatically extract the active unlockChapterPages action hash from Next.js series chunks instead of relying on a static hardcoded hash.</li>
-              <li>Add automatic Next-Action cache invalidation and 404 retry logic in VoraToon extension when unlocking pagesTicket chapter images, plus automatic Turnstile/pagesTicket verification detection.</li>
-              <li>Add standard multi-resolution Windows application icon (Assets/app.ico) containing 16x16, 24x24, 32x32, 48x48, and 64x64 32-bit ARGB BMP DIB frames alongside a 256x256 high-DPI PNG frame for crisp rendering across Windows 11 Taskbar, Desktop shortcuts, and Start Menu.</li>
-              <li>Improve RSC (React Server Components) JSON chunk parser performance in voratoon.js using compiled regular expression token scanning instead of character-by-character loops.</li>
-              <li>Improve MSBuild output packaging in YomicDesktop.csproj and Inno Setup script (Installer/Yomic.iss) to deploy app.ico to both {app}\app.ico and {app}\Assets\app.ico while keeping Assets/app.ico embedded as a WPF resource.</li>
-              <li>Fix blank white document icon on Windows 11 Taskbar, Desktop shortcut, and Start Menu shortcut after installation by ensuring {app}\app.ico is always packaged and deployed by the installer.</li>
-              <li>Fix startup XamlParseException / DirectoryNotFoundException crash on MainWindow initialization by keeping Assets/app.ico as an embedded WPF Resource instead of an external AssemblyAssociatedContentFile.</li>
-              <li>Fix VoraToon chapter images failing to load when Next.js deployment updates rotate the unlockChapterPages Server Action ID or require client-side ticket verification.</li>
+              <li>Add thread-safe 48 MB in-memory LRU image cache and zero-copy fast path (&lt;= 1.5 MB JPEG/WebP) in WebResourceImageProxy for instant 0ms scroll-back and chapter reopening, alongside increased 6x concurrent page download throttling.</li>
+              <li>Add offline CBZ comic archive download support (SaveDownloadsAsCbz) and automatic downloaded chapter deletion after reading (AutoDeleteAfterRead) in DownloadPathService, DownloadService, SettingsService, and BackendIpcController.</li>
+              <li>Add enriched MyAnimeList (MAL) search metadata (InUserList, UserStatus, UserChaptersRead, UserScore, TotalChapters) in MyAnimeListService and one-click autoBind tracker linking in BackendIpcController.</li>
+              <li>Add localized announcement type badges and color styles (Pembaruan, Peringatan, Penting) in Announcement model.</li>
+              <li>Improve WebUI layout, reader controls, manga detail chapter view, browse source catalog, extensions manager, downloads queue, and settings hub across main.css and TypeScript views.</li>
             </ul>
           </div>
         </div>
@@ -1819,7 +1756,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
             if (descEl) {
               descEl.textContent = this.l('Periksa versi rilis terbaru dari server', 'Check latest release version from server');
             }
-            this.showToast(this.l(`Anda sudah menggunakan Yomic versi terbaru (v${info?.currentVersion || '2.1.0'}).`, `You are already using the latest version of Yomic (v${info?.currentVersion || '2.1.0'}).`));
+            this.showToast(this.l(`Anda sudah menggunakan Yomic versi terbaru (v${info?.currentVersion || '2.2.0'}).`, `You are already using the latest version of Yomic (v${info?.currentVersion || '2.2.0'}).`));
           }
         })
         .catch(() => {
@@ -1829,11 +1766,11 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           if (descEl) {
             descEl.textContent = this.l('Periksa versi rilis terbaru dari server', 'Check latest release version from server');
           }
-          this.showToast(this.l('Anda sudah menggunakan Yomic versi terbaru (v2.1.0).', 'You are already using the latest version of Yomic (v2.1.0).'));
+          this.showToast(this.l('Anda sudah menggunakan Yomic versi terbaru (v2.2.0).', 'You are already using the latest version of Yomic (v2.2.0).'));
         });
       return;
     }
-    this.showToast(this.l('Anda sudah menggunakan Yomic versi terbaru (v2.1.0).', 'You are already using the latest version of Yomic (v2.1.0).'));
+    this.showToast(this.l('Anda sudah menggunakan Yomic versi terbaru (v2.2.0).', 'You are already using the latest version of Yomic (v2.2.0).'));
   });
   document.getElementById('btnAboutTrakteer')?.addEventListener('click', () => {
     this.bridge.openExternalUrl('https://trakteer.id/Arisa-Akiyama');

@@ -137,6 +137,30 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
     }
     this.activeBrowseSourceId = null;
   }
+  const PINNED_SOURCES_KEY = 'yomic_pinned_sources_v1';
+  const loadPinnedSources = (): Set<string> => {
+    try {
+      const raw = localStorage.getItem(PINNED_SOURCES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return new Set(parsed.map((item) => String(item)));
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return new Set<string>();
+  };
+  const savePinnedSources = (set: Set<string>): void => {
+    try {
+      localStorage.setItem(PINNED_SOURCES_KEY, JSON.stringify(Array.from(set)));
+    } catch {
+      // ignore storage errors
+    }
+  };
+  const pinnedSources = loadPinnedSources();
+
   const installedSources = this.extensions
     .filter((e) => {
       if (!e.installed) return false;
@@ -149,6 +173,9 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
       return true;
     })
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+  const pinnedList = installedSources.filter((src) => pinnedSources.has(src.id));
+  const unpinnedList = installedSources.filter((src) => !pinnedSources.has(src.id));
 
   const checkSvg = getIconSvg('check', { size: 13, strokeWidth: 2.5 });
   const isFiltered = this.browseLangFilter !== 'ALL';
@@ -199,42 +226,77 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
         }
       </div>`;
   } else {
-    listHtml = `
-      <div class="v1-source-list">
-        ${installedSources
-          .map((src) => {
-            const st = src.status ?? 'online';
-            const statusTitle =
+    const buildSourceRowHtml = (src: ExtensionItem, isPinned: boolean): string => {
+      const st = src.status ?? 'online';
+      const statusTitle =
+        st === 'online'
+          ? this.l('Status Server: Online (Stabil)', 'Server Status: Online (Stable)')
+          : st === 'warning'
+          ? this.l('Status Server: Dilindungi Cloudflare / Lambat', 'Server Status: Cloudflare Protected / Slow')
+          : st === 'offline'
+          ? this.l('Status Server: Offline / Tidak Dapat Dijangkau', 'Server Status: Offline / Unreachable')
+          : this.l('Memeriksa status...', 'Checking status...');
+      const cleanDomain = src.baseUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+      return `
+        <div class="v1-source-row" data-open-source="${escapeXml(src.id)}" data-source-id="${src.sourceId ?? ''}">
+          ${this.buildSourceLogoHtml(src)}
+          <div class="v1-source-info">
+            <div class="v1-source-name-row">
+              <span class="v1-source-name">${escapeXml(src.name)}</span>
+            </div>
+            <div class="v1-source-domain">${escapeXml(cleanDomain)}</div>
+          </div>
+          <div class="v1-source-actions">
+            ${
               st === 'online'
-                ? this.l('Status Server: Online (Stabil)', 'Server Status: Online (Stable)')
-                : st === 'warning'
-                ? this.l('Status Server: Dilindungi Cloudflare / Lambat', 'Server Status: Cloudflare Protected / Slow')
-                : st === 'offline'
-                ? this.l('Status Server: Offline / Tidak Dapat Dijangkau', 'Server Status: Offline / Unreachable')
-                : this.l('Memeriksa status...', 'Checking status...');
-            const cleanDomain = src.baseUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-            return `
-              <div class="v1-source-row" data-open-source="${escapeXml(src.id)}" data-source-id="${src.sourceId ?? ''}">
-                ${this.buildSourceLogoHtml(src)}
-                <div class="v1-source-info">
-                  <div class="v1-source-name-row">
-                    <span class="v1-source-name">${escapeXml(src.name)}</span>
-                  </div>
-                  <div class="v1-source-domain">${escapeXml(cleanDomain)}</div>
-                </div>
-                <div class="v1-source-actions">
-                  ${st === 'online'
-                    ? `<span class="v1-status-dot-wrap" title="${escapeXml(statusTitle)}"><span class="v1-status-dot online"></span></span>`
-                    : `<span class="v1-status-badge ${st}" title="${escapeXml(statusTitle)}"><span class="v1-status-dot ${st}"></span><span>${st === 'warning' ? 'Cloudflare' : st === 'checking' ? this.l('Memeriksa...', 'Checking...') : 'Offline'}</span></span>`
-                  }
-                  <button class="v1-webview-btn" data-open-source-web="${escapeXml(src.id)}" title="${this.l(`Buka ${escapeXml(src.name)} di Browser`, `Open ${escapeXml(src.name)} in Browser`)}" aria-label="${this.l('Buka di Browser', 'Open in Browser')}">
-                    ${getIconSvg('global-linear', { size: 15 })}
-                  </button>
-                </div>
-              </div>`;
-          })
-          .join('')}
-      </div>`;
+                ? `<span class="v1-status-dot-wrap" title="${escapeXml(statusTitle)}"><span class="v1-status-dot online"></span></span>`
+                : `<span class="v1-status-badge ${st}" title="${escapeXml(statusTitle)}"><span class="v1-status-dot ${st}"></span><span>${st === 'warning' ? 'Cloudflare' : st === 'checking' ? this.l('Memeriksa...', 'Checking...') : 'Offline'}</span></span>`
+            }
+            <button type="button" class="v1-webview-btn v1-source-pin-btn ${isPinned ? 'is-pinned' : ''}" data-pin-source="${escapeXml(src.id)}" title="${escapeXml(isPinned ? this.l('Lepas Sematan', 'Unpin Source') : this.l('Sematkan Sumber', 'Pin Source'))}" aria-label="${escapeXml(isPinned ? this.l('Lepas Sematan', 'Unpin Source') : this.l('Sematkan Sumber', 'Pin Source'))}" aria-pressed="${isPinned ? 'true' : 'false'}">
+              ${getIconSvg(isPinned ? 'pin-filled' : 'pin-linear', { size: 15 })}
+            </button>
+            <button type="button" class="v1-webview-btn" data-open-source-web="${escapeXml(src.id)}" title="${this.l(`Buka ${escapeXml(src.name)} di Browser`, `Open ${escapeXml(src.name)} in Browser`)}" aria-label="${this.l('Buka di Browser', 'Open in Browser')}">
+              ${getIconSvg('global-linear', { size: 15 })}
+            </button>
+          </div>
+        </div>`;
+    };
+
+    if (pinnedList.length > 0) {
+      listHtml = `
+        <div class="v1-source-sections">
+          <div class="v1-source-section" data-source-section="pinned">
+            <div class="v1-source-section-head">
+              <span class="v1-source-section-title">${this.l('Disematkan', 'Pinned')}</span>
+            </div>
+            <div class="v1-source-list">
+              ${pinnedList.map((src) => buildSourceRowHtml(src, true)).join('')}
+            </div>
+          </div>
+          ${
+            unpinnedList.length > 0
+              ? `
+          <div class="v1-source-section has-top-divider" data-source-section="all">
+            <div class="v1-source-section-head">
+              <span class="v1-source-section-title">${this.l('Semua Sumber', 'All Sources')}</span>
+            </div>
+            <div class="v1-source-list">
+              ${unpinnedList.map((src) => buildSourceRowHtml(src, false)).join('')}
+            </div>
+          </div>`
+              : ''
+          }
+        </div>`;
+    } else {
+      listHtml = `
+        <div class="v1-source-sections">
+          <div class="v1-source-section" data-source-section="all">
+            <div class="v1-source-list">
+              ${unpinnedList.map((src) => buildSourceRowHtml(src, false)).join('')}
+            </div>
+          </div>
+        </div>`;
+    }
   }
 
   container.innerHTML = `
@@ -266,34 +328,47 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
           <button id="btnRefreshBrowseStatus" class="v1-lib-action-btn ${this.isManualBrowseRefreshing ? 'is-disabled' : ''}" ${this.isManualBrowseRefreshing ? 'disabled' : ''} title="${this.isManualBrowseRefreshing ? this.l('Sedang Memperbarui Status...', 'Refreshing Status...') : this.l('Segarkan Status Sumber', 'Refresh Source Status')}" aria-label="${this.l('Segarkan Status Sumber', 'Refresh Source Status')}">
             ${getIconSvg('refresh-line', { size: 18 })}
           </button>
-          <!-- 3. Filter by Language Flyout -->
+          <!-- 3. Filter by Language Modal Trigger -->
           <button id="btnBrowseLangFlyout" class="v1-lib-action-btn ${this.isBrowseLangFlyoutOpen ? 'active' : ''} ${this.browseLangFilter !== 'ALL' ? 'has-filter' : ''}" title="${this.l('Filter Bahasa', 'Language Filter')}" aria-label="${this.l('Filter Bahasa', 'Language Filter')}">
             ${getIconSvg('filter', { size: 18 })}
           </button>
-          <div id="browseLangFlyoutMenu" class="v1-lib-flyout ${this.isBrowseLangFlyoutOpen ? 'open' : ''}">
-            <div class="v1-flyout-section-label">${this.l('Filter Bahasa', 'Language Filter')}</div>
-            <button class="v1-lib-flyout-item ${this.browseLangFilter === 'ALL' ? 'selected' : ''}" data-browse-lang="ALL">
-              <span class="v1-lib-flyout-check">${this.browseLangFilter === 'ALL' ? checkSvg : ''}</span>
-              ${this.buildLangBadgeHtml('ALL')}
-              <span>${this.l('Tampilkan Semua', 'Show All')}</span>
-            </button>
-            <button class="v1-lib-flyout-item ${this.browseLangFilter === 'ID' ? 'selected' : ''}" data-browse-lang="ID">
-              <span class="v1-lib-flyout-check">${this.browseLangFilter === 'ID' ? checkSvg : ''}</span>
-              ${this.buildLangBadgeHtml('ID')}
-              <span>${this.l('Bahasa Indonesia', 'Indonesian')}</span>
-            </button>
-            <button class="v1-lib-flyout-item ${this.browseLangFilter === 'EN' ? 'selected' : ''}" data-browse-lang="EN">
-              <span class="v1-lib-flyout-check">${this.browseLangFilter === 'EN' ? checkSvg : ''}</span>
-              ${this.buildLangBadgeHtml('EN')}
-              <span>English</span>
-            </button>
-          </div>
         </div>`
             : ''
         }
       </div>
     </div>
     ${listHtml}
+    ${
+      totalInstalledCount > 0
+        ? `<div id="browseLangModalBackdrop" class="v1-mal-backdrop ${this.isBrowseLangFlyoutOpen ? 'open' : ''}">
+            <div class="v1-setting-select-modal v1-unified-filter-dialog" role="dialog" aria-modal="true" aria-label="${escapeXml(this.l('Filter Bahasa', 'Language Filter'))}">
+              <div class="v1-unified-filter-head">
+                <h3 class="v1-setting-select-title">${this.l('Filter Bahasa', 'Language Filter')}</h3>
+                <button type="button" id="btnCloseBrowseLangModal" class="v1-unified-filter-close" aria-label="${escapeXml(this.t('modal.close'))}">
+                  ${getIconSvg('close', { size: 18 })}
+                </button>
+              </div>
+              <div class="v1-setting-select-list" role="listbox">
+                <button type="button" class="v1-setting-select-option ${this.browseLangFilter === 'ALL' ? 'selected' : ''}" data-browse-lang="ALL" role="option" aria-selected="${this.browseLangFilter === 'ALL' ? 'true' : 'false'}">
+                  <span class="v1-setting-select-check">${this.browseLangFilter === 'ALL' ? checkSvg : ''}</span>
+                  ${this.buildLangBadgeHtml('ALL')}
+                  <span class="v1-setting-select-label">${this.l('Tampilkan Semua', 'Show All')}</span>
+                </button>
+                <button type="button" class="v1-setting-select-option ${this.browseLangFilter === 'ID' ? 'selected' : ''}" data-browse-lang="ID" role="option" aria-selected="${this.browseLangFilter === 'ID' ? 'true' : 'false'}">
+                  <span class="v1-setting-select-check">${this.browseLangFilter === 'ID' ? checkSvg : ''}</span>
+                  ${this.buildLangBadgeHtml('ID')}
+                  <span class="v1-setting-select-label">${this.l('Bahasa Indonesia', 'Indonesian')}</span>
+                </button>
+                <button type="button" class="v1-setting-select-option ${this.browseLangFilter === 'EN' ? 'selected' : ''}" data-browse-lang="EN" role="option" aria-selected="${this.browseLangFilter === 'EN' ? 'true' : 'false'}">
+                  <span class="v1-setting-select-check">${this.browseLangFilter === 'EN' ? checkSvg : ''}</span>
+                  ${this.buildLangBadgeHtml('EN')}
+                  <span class="v1-setting-select-label">English</span>
+                </button>
+              </div>
+            </div>
+          </div>`
+        : ''
+    }
   `;
   // In-Place Search Filtering (60 FPS without destroying DOM or losing cursor)
   const searchInput = document.getElementById('browseSearchInput') as HTMLInputElement | null;
@@ -309,6 +384,12 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
       row.style.display = matches ? '' : 'none';
       if (matches) visibleCount++;
     });
+    container.querySelectorAll<HTMLElement>('.v1-source-section').forEach((sec) => {
+      const hasVisible = Array.from(sec.querySelectorAll<HTMLElement>('.v1-source-row')).some(
+        (r) => r.style.display !== 'none'
+      );
+      sec.style.display = hasVisible ? '' : 'none';
+    });
     const countEl = container.querySelector('.v1-lib-count-inline');
     if (countEl) {
       countEl.textContent = `(${visibleCount})`;
@@ -316,7 +397,7 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
     let emptyBox = container.querySelector<HTMLElement>('.v1-browse-search-empty');
     if (visibleCount === 0 && rows.length > 0) {
       if (!emptyBox) {
-        const listEl = container.querySelector('.v1-source-list');
+        const listEl = container.querySelector('.v1-source-sections') || container.querySelector('.v1-source-list');
         if (listEl) {
           const newEmpty = document.createElement('div');
           newEmpty.className = 'empty-state-box v1-browse-search-empty';
@@ -476,29 +557,32 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
     }
   });
 
-  // Language Filter Flyout Menu & Click-Outside Listener
-  const flyout = document.getElementById('browseLangFlyoutMenu');
+  // Language Filter Centered Modal & Backdrop Listener
+  const langBackdrop = document.getElementById('browseLangModalBackdrop');
   const btnFlyout = document.getElementById('btnBrowseLangFlyout');
+  const closeBrowseLangModal = () => {
+    this.isBrowseLangFlyoutOpen = false;
+    langBackdrop?.classList.remove('open');
+    btnFlyout?.classList.remove('active');
+  };
   btnFlyout?.addEventListener('click', (ev) => {
     ev.stopPropagation();
     this.isBrowseLangFlyoutOpen = !this.isBrowseLangFlyoutOpen;
-    flyout?.classList.toggle('open', this.isBrowseLangFlyoutOpen);
+    langBackdrop?.classList.toggle('open', this.isBrowseLangFlyoutOpen);
     btnFlyout.classList.toggle('active', this.isBrowseLangFlyoutOpen);
   });
-  flyout?.addEventListener('click', (ev) => {
+  document.getElementById('btnCloseBrowseLangModal')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    closeBrowseLangModal();
+  });
+  langBackdrop?.addEventListener('click', (ev) => {
+    if (ev.target === langBackdrop) {
+      closeBrowseLangModal();
+    }
+  });
+  langBackdrop?.querySelector('.v1-unified-filter-dialog')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
   });
-  const onDocClick = (ev: MouseEvent) => {
-    if (this.isBrowseLangFlyoutOpen) {
-      const target = ev.target as Node | null;
-      if (flyout && !flyout.contains(target) && btnFlyout && !btnFlyout.contains(target)) {
-        this.isBrowseLangFlyoutOpen = false;
-        flyout.classList.remove('open');
-        btnFlyout?.classList.remove('active');
-      }
-    }
-  };
-  document.addEventListener('click', onDocClick);
 
   container.querySelectorAll<HTMLButtonElement>('[data-browse-lang]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -524,6 +608,34 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
         } else {
           this.renderBrowseView(container);
         }
+      }
+    });
+  });
+
+  container.querySelectorAll<HTMLButtonElement>('[data-pin-source]').forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const srcId = btn.dataset.pinSource;
+      if (!srcId) return;
+      const src = this.extensions.find((e) => e.id === srcId);
+      const nextPinned = loadPinnedSources();
+      let nowPinned = false;
+      if (nextPinned.has(srcId)) {
+        nextPinned.delete(srcId);
+      } else {
+        nextPinned.add(srcId);
+        nowPinned = true;
+      }
+      savePinnedSources(nextPinned);
+      this.savedBrowseScrollTop = container.scrollTop;
+      this.viewScrollPositions.set('browse_sources_list', container.scrollTop);
+      this.renderBrowseView(container);
+      if (src) {
+        this.showToast(
+          nowPinned
+            ? this.l(`${src.name} disematkan di atas.`, `${src.name} pinned to top.`)
+            : this.l(`Sematan ${src.name} dilepas.`, `${src.name} unpinned.`)
+        );
       }
     });
   });
@@ -822,114 +934,9 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
           ${this.sourceFeedSearchQuery ? `<button id="btnClearSourceSearch" class="v1-search-clear-btn" title="${this.l('Hapus pencarian', 'Clear search')}">${getIconSvg('close-line', { size: 13 })}</button>` : ''}
         </div>
         ${mangaDexLangToggleHtml}
-        <div class="v1-source-filter-anchor" style="position: relative;">
-          <button id="btnToggleSourceFilter" class="v1-lib-action-btn ${this.isSourceFeedFilterFlyoutOpen ? 'active' : ''} ${hasActiveSourceFilter ? 'has-filter' : ''}" title="${this.l('Filter &amp; Urutkan', 'Filter &amp; Sort')}" aria-label="${this.l('Filter dan Urutkan', 'Filter and Sort')}">
-            ${getIconSvg('filter', { size: 18 })}
-          </button>
-          <div id="sourceFilterFlyout" class="v1-lib-flyout ${this.isSourceFeedFilterFlyoutOpen ? 'open' : ''}" style="width: 280px;">
-            <!-- Segmented Tabs (Saring | Genre | Urutkan) -->
-            <div class="v1-flyout-tabs">
-              <button class="v1-flyout-tab-btn ${this.sourceFeedFlyoutTab === 'filter' ? 'active' : ''}" data-source-flyout-tab="filter" type="button">
-                ${(this.sourceFeedStatusFilter !== 'all' || this.sourceFeedTypeFilter !== 'all') ? '<span class="v1-tab-dot"></span>' : ''}
-                <span>${this.l('Saring', 'Filter')}</span>
-              </button>
-              <button class="v1-flyout-tab-btn ${this.sourceFeedFlyoutTab === 'genre' ? 'active' : ''}" data-source-flyout-tab="genre" type="button">
-                ${this.sourceFeedGenreFilter !== 'Semua' ? '<span class="v1-tab-dot"></span>' : ''}
-                <span>${this.l('Genre', 'Genre')}</span>
-              </button>
-              <button class="v1-flyout-tab-btn ${this.sourceFeedFlyoutTab === 'sort' ? 'active' : ''}" data-source-flyout-tab="sort" type="button">
-                ${this.sourceFeedSort !== 'popular' ? '<span class="v1-tab-dot"></span>' : ''}
-                <span>${this.l('Urutkan', 'Sort')}</span>
-              </button>
-            </div>
-            <!-- Tab Content -->
-            <div class="v1-flyout-tab-content">
-              ${
-                this.sourceFeedFlyoutTab === 'filter'
-                  ? `
-                    <div class="v1-flyout-section-label">${this.l('Status Komik', 'Comic Status')}</div>
-                    <button class="v1-lib-flyout-item ${this.sourceFeedStatusFilter === 'all' ? 'selected' : ''}" data-source-status="all" type="button">
-                      <span class="v1-lib-flyout-check">${this.sourceFeedStatusFilter === 'all' ? checkSvg : ''}</span>
-                      <span>${this.l('Semua Status', 'All Statuses')}</span>
-                    </button>
-                    <button class="v1-lib-flyout-item ${this.sourceFeedStatusFilter === 'Ongoing' ? 'selected' : ''}" data-source-status="Ongoing" type="button">
-                      <span class="v1-lib-flyout-check">${this.sourceFeedStatusFilter === 'Ongoing' ? checkSvg : ''}</span>
-                      <span>${this.l('Sedang Berjalan (Ongoing)', 'Ongoing')}</span>
-                    </button>
-                    <button class="v1-lib-flyout-item ${this.sourceFeedStatusFilter === 'Completed' ? 'selected' : ''}" data-source-status="Completed" type="button">
-                      <span class="v1-lib-flyout-check">${this.sourceFeedStatusFilter === 'Completed' ? checkSvg : ''}</span>
-                      <span>${this.l('Tamat (Completed)', 'Completed')}</span>
-                    </button>
-                    <div class="v1-lib-flyout-divider"></div>
-                    <div class="v1-flyout-section-label">${this.l('Tipe Komik', 'Comic Type')}</div>
-                    <button class="v1-lib-flyout-item ${this.sourceFeedTypeFilter === 'all' ? 'selected' : ''}" data-source-type="all" type="button">
-                      <span class="v1-lib-flyout-check">${this.sourceFeedTypeFilter === 'all' ? checkSvg : ''}</span>
-                      <span>${this.l('Semua Tipe', 'All Types')}</span>
-                    </button>
-                    <button class="v1-lib-flyout-item ${this.sourceFeedTypeFilter === 'Manhwa' ? 'selected' : ''}" data-source-type="Manhwa" type="button">
-                      <span class="v1-lib-flyout-check">${this.sourceFeedTypeFilter === 'Manhwa' ? checkSvg : ''}</span>
-                      <span>${this.l('Manhwa (Korea)', 'Manhwa (Korean)')}</span>
-                    </button>
-                    <button class="v1-lib-flyout-item ${this.sourceFeedTypeFilter === 'Manga' ? 'selected' : ''}" data-source-type="Manga" type="button">
-                      <span class="v1-lib-flyout-check">${this.sourceFeedTypeFilter === 'Manga' ? checkSvg : ''}</span>
-                      <span>${this.l('Manga (Jepang)', 'Manga (Japanese)')}</span>
-                    </button>
-                    <button class="v1-lib-flyout-item ${this.sourceFeedTypeFilter === 'Manhua' ? 'selected' : ''}" data-source-type="Manhua" type="button">
-                      <span class="v1-lib-flyout-check">${this.sourceFeedTypeFilter === 'Manhua' ? checkSvg : ''}</span>
-                      <span>${this.l('Manhua (China)', 'Manhua (Chinese)')}</span>
-                    </button>
-                  `
-                  : ''
-              }
-              ${
-                this.sourceFeedFlyoutTab === 'genre'
-                  ? `
-                    <div class="v1-flyout-genre-wrap">
-                      <button class="v1-flyout-genre-chip ${this.sourceFeedGenreFilter === 'Semua' ? 'active' : ''}" data-source-genre="Semua" type="button">
-                        ${this.l('Semua Genre', 'All Genres')}
-                      </button>
-                      ${genres
-                        .filter((g) => g !== 'Semua')
-                        .map(
-                          (g) => `
-                        <button class="v1-flyout-genre-chip ${this.sourceFeedGenreFilter === g ? 'active' : ''}" data-source-genre="${escapeXml(g)}" type="button">
-                          ${escapeXml(g)}
-                        </button>`
-                        )
-                        .join('')}
-                    </div>
-                  `
-                  : ''
-              }
-              ${
-                this.sourceFeedFlyoutTab === 'sort'
-                  ? `
-                    <div class="v1-flyout-section-label">${this.l('Urutkan Komik', 'Sort Comics')}</div>
-                    <button class="v1-lib-flyout-item ${this.sourceFeedSort === 'popular' ? 'selected' : ''}" data-source-sort="popular" type="button">
-                      <span class="v1-lib-flyout-check">${this.sourceFeedSort === 'popular' ? checkSvg : ''}</span>
-                      <span>${this.l('Populer', 'Popular')}</span>
-                    </button>
-                    <button class="v1-lib-flyout-item ${this.sourceFeedSort === 'latest' ? 'selected' : ''}" data-source-sort="latest" type="button">
-                      <span class="v1-lib-flyout-check">${this.sourceFeedSort === 'latest' ? checkSvg : ''}</span>
-                      <span>${this.l('Terbaru', 'Latest')}</span>
-                    </button>
-                  `
-                  : ''
-              }
-            </div>
-            ${
-              hasActiveSourceFilter
-                ? `
-                  <div class="v1-lib-flyout-divider"></div>
-                  <button id="btnResetSourceFilter" class="v1-lib-flyout-reset-btn" type="button" title="${this.l('Kembalikan semua filter ke pengaturan awal', 'Reset all filters to default')}">
-                    ${getIconSvg('refresh-line', { size: 13 })}
-                    <span>${this.l('Atur Ulang Filter', 'Reset Filters')}</span>
-                  </button>
-                `
-                : ''
-            }
-          </div>
-        </div>
+        <button id="btnToggleSourceFilter" class="v1-lib-action-btn ${this.isSourceFeedFilterFlyoutOpen ? 'active' : ''} ${hasActiveSourceFilter ? 'has-filter' : ''}" title="${this.l('Filter &amp; Urutkan', 'Filter &amp; Sort')}" aria-label="${this.l('Filter dan Urutkan', 'Filter and Sort')}">
+          ${getIconSvg('filter', { size: 18 })}
+        </button>
         <button id="btnRefreshSourceFeed" class="v1-lib-action-btn" title="${this.l(`Segarkan Feed & Daftar Komik (${escapeXml(source.name)})`, `Refresh Feed & Comics (${escapeXml(source.name)})`)}" aria-label="${this.l('Segarkan Feed', 'Refresh Feed')}">
           ${getIconSvg('refresh-line', { size: 18 })}
         </button>
@@ -986,6 +993,119 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
           }`
         : emptyStateHtml
     }
+    <!-- Source Catalog Filter & Sort Centered Modal (Mobile Underline Tab Style) -->
+    <div id="sourceFilterModalBackdrop" class="v1-mal-backdrop ${this.isSourceFeedFilterFlyoutOpen ? 'open' : ''}">
+      <div id="sourceFilterModalDialog" class="v1-mal-dialog v1-filter-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="sourceFilterModalTitle">
+        <div class="v1-mal-header">
+          <div class="v1-mal-title-wrap">
+            <span id="sourceFilterModalTitle" class="v1-mal-title">${this.l('Filter &amp; Urutkan', 'Filter &amp; Sort')}</span>
+          </div>
+          <button id="btnCloseSourceFilterModal" class="v1-mal-close-btn" type="button" aria-label="${escapeXml(this.t('modal.close'))}">
+            ${getIconSvg('close', { size: 18 })}
+          </button>
+        </div>
+        <div class="v1-filter-modal-tabs is-cols-3">
+          <button class="v1-filter-modal-tab-btn ${this.sourceFeedFlyoutTab === 'filter' ? 'active' : ''}" data-source-flyout-tab="filter" type="button">
+            <span>${this.l('Saring', 'Filter')}</span>
+          </button>
+          <button class="v1-filter-modal-tab-btn ${this.sourceFeedFlyoutTab === 'genre' ? 'active' : ''}" data-source-flyout-tab="genre" type="button">
+            <span>${this.l('Genre', 'Genre')}</span>
+          </button>
+          <button class="v1-filter-modal-tab-btn ${this.sourceFeedFlyoutTab === 'sort' ? 'active' : ''}" data-source-flyout-tab="sort" type="button">
+            <span>${this.l('Urutkan', 'Sort')}</span>
+          </button>
+        </div>
+        <div class="v1-filter-modal-content">
+          ${
+            this.sourceFeedFlyoutTab === 'filter'
+              ? `
+                <div class="v1-flyout-section-label">${this.l('Status Komik', 'Comic Status')}</div>
+                <button class="v1-filter-modal-item ${this.sourceFeedStatusFilter === 'all' ? 'selected' : ''}" data-source-status="all" type="button">
+                  <span class="v1-filter-modal-check">${this.sourceFeedStatusFilter === 'all' ? checkSvg : ''}</span>
+                  <span>${this.l('Semua Status', 'All Statuses')}</span>
+                </button>
+                <button class="v1-filter-modal-item ${this.sourceFeedStatusFilter === 'Ongoing' ? 'selected' : ''}" data-source-status="Ongoing" type="button">
+                  <span class="v1-filter-modal-check">${this.sourceFeedStatusFilter === 'Ongoing' ? checkSvg : ''}</span>
+                  <span>${this.l('Sedang Berjalan (Ongoing)', 'Ongoing')}</span>
+                </button>
+                <button class="v1-filter-modal-item ${this.sourceFeedStatusFilter === 'Completed' ? 'selected' : ''}" data-source-status="Completed" type="button">
+                  <span class="v1-filter-modal-check">${this.sourceFeedStatusFilter === 'Completed' ? checkSvg : ''}</span>
+                  <span>${this.l('Tamat (Completed)', 'Completed')}</span>
+                </button>
+                <div class="v1-lib-flyout-divider"></div>
+                <div class="v1-flyout-section-label">${this.l('Tipe Komik', 'Comic Type')}</div>
+                <button class="v1-filter-modal-item ${this.sourceFeedTypeFilter === 'all' ? 'selected' : ''}" data-source-type="all" type="button">
+                  <span class="v1-filter-modal-check">${this.sourceFeedTypeFilter === 'all' ? checkSvg : ''}</span>
+                  <span>${this.l('Semua Tipe', 'All Types')}</span>
+                </button>
+                <button class="v1-filter-modal-item ${this.sourceFeedTypeFilter === 'Manhwa' ? 'selected' : ''}" data-source-type="Manhwa" type="button">
+                  <span class="v1-filter-modal-check">${this.sourceFeedTypeFilter === 'Manhwa' ? checkSvg : ''}</span>
+                  <span>${this.l('Manhwa (Korea)', 'Manhwa (Korean)')}</span>
+                </button>
+                <button class="v1-filter-modal-item ${this.sourceFeedTypeFilter === 'Manga' ? 'selected' : ''}" data-source-type="Manga" type="button">
+                  <span class="v1-filter-modal-check">${this.sourceFeedTypeFilter === 'Manga' ? checkSvg : ''}</span>
+                  <span>${this.l('Manga (Jepang)', 'Manga (Japanese)')}</span>
+                </button>
+                <button class="v1-filter-modal-item ${this.sourceFeedTypeFilter === 'Manhua' ? 'selected' : ''}" data-source-type="Manhua" type="button">
+                  <span class="v1-filter-modal-check">${this.sourceFeedTypeFilter === 'Manhua' ? checkSvg : ''}</span>
+                  <span>${this.l('Manhua (China)', 'Manhua (Chinese)')}</span>
+                </button>
+              `
+              : ''
+          }
+          ${
+            this.sourceFeedFlyoutTab === 'genre'
+              ? `
+                <div class="v1-flyout-genre-wrap">
+                  <button class="v1-flyout-genre-chip ${this.sourceFeedGenreFilter === 'Semua' ? 'active' : ''}" data-source-genre="Semua" type="button">
+                    ${this.l('Semua Genre', 'All Genres')}
+                  </button>
+                  ${genres
+                    .filter((g) => g !== 'Semua')
+                    .map(
+                      (g) => `
+                    <button class="v1-flyout-genre-chip ${this.sourceFeedGenreFilter === g ? 'active' : ''}" data-source-genre="${escapeXml(g)}" type="button">
+                      ${escapeXml(g)}
+                    </button>`
+                    )
+                    .join('')}
+                </div>
+              `
+              : ''
+          }
+          ${
+            this.sourceFeedFlyoutTab === 'sort'
+              ? `
+                <button class="v1-filter-modal-item ${this.sourceFeedSort === 'popular' ? 'selected' : ''}" data-source-sort="popular" type="button">
+                  <span class="v1-filter-modal-check">${this.sourceFeedSort === 'popular' ? checkSvg : ''}</span>
+                  <span>${this.l('Populer', 'Popular')}</span>
+                </button>
+                <button class="v1-filter-modal-item ${this.sourceFeedSort === 'latest' ? 'selected' : ''}" data-source-sort="latest" type="button">
+                  <span class="v1-filter-modal-check">${this.sourceFeedSort === 'latest' ? checkSvg : ''}</span>
+                  <span>${this.l('Terbaru', 'Latest')}</span>
+                </button>
+              `
+              : ''
+          }
+        </div>
+        <div class="v1-mal-footer">
+          ${
+            hasActiveSourceFilter
+              ? `
+                <button id="btnResetSourceFilter" class="v1-mal-btn-danger" type="button" title="${this.l('Kembalikan semua filter ke pengaturan awal', 'Reset all filters to default')}">
+                  ${this.l('Atur Ulang', 'Reset')}
+                </button>
+              `
+              : '<div style="flex:1;"></div>'
+          }
+          <div class="v1-mal-footer-actions">
+            <button id="btnApplySourceFilterModal" class="v1-mal-btn-primary" type="button">
+              ${this.l('Selesai', 'Done')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   `;
   document.getElementById('btnBackToSourcesList')?.addEventListener('click', () => {
     container.onscroll = null;
@@ -1148,33 +1268,38 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
     nextInput?.focus();
   });
 
-  // Filter Flyout Toggle
+  // Filter Centered Modal Toggle & Backdrop Listeners
   document.getElementById('btnToggleSourceFilter')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
     this.isSourceFeedFilterFlyoutOpen = !this.isSourceFeedFilterFlyoutOpen;
     this.renderSourceCatalogFeed(container, source, true);
   });
 
-  // Stop clicks inside flyout from closing it
-  document.getElementById('sourceFilterFlyout')?.addEventListener('click', (ev) => {
+  const closeSourceFilterModal = () => {
+    if (!this.isSourceFeedFilterFlyoutOpen) return;
+    this.isSourceFeedFilterFlyoutOpen = false;
+    this.renderSourceCatalogFeed(container, source, true);
+  };
+
+  document.getElementById('btnCloseSourceFilterModal')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
+    closeSourceFilterModal();
   });
 
-  // Close flyout on click outside
-  if (this.isSourceFeedFilterFlyoutOpen) {
-    const onOutsideClick = (ev: MouseEvent) => {
-      const flyout = document.getElementById('sourceFilterFlyout');
-      const toggleBtn = document.getElementById('btnToggleSourceFilter');
-      if (flyout && toggleBtn && !flyout.contains(ev.target as Node) && !toggleBtn.contains(ev.target as Node)) {
-        this.isSourceFeedFilterFlyoutOpen = false;
-        document.removeEventListener('click', onOutsideClick);
-        this.renderSourceCatalogFeed(container, source, true);
-      }
-    };
-    window.setTimeout(() => {
-      document.addEventListener('click', onOutsideClick);
-    }, 10);
-  }
+  document.getElementById('btnApplySourceFilterModal')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    closeSourceFilterModal();
+  });
+
+  document.getElementById('sourceFilterModalBackdrop')?.addEventListener('click', (ev) => {
+    if (ev.target === document.getElementById('sourceFilterModalBackdrop')) {
+      closeSourceFilterModal();
+    }
+  });
+
+  document.getElementById('sourceFilterModalDialog')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+  });
 
   // Segmented Tabs Switch inside Flyout
   container.querySelectorAll<HTMLButtonElement>('[data-source-flyout-tab]').forEach((btn) => {
