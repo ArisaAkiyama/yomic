@@ -82,6 +82,25 @@ namespace Yomic.Core.Services
         public bool SkipFilteredChapters { get; set; } = false;
         public bool SaveDownloadsAsCbz { get; set; } = false;
         public bool AutoDeleteAfterRead { get; set; } = false;
+
+        private string _downloadSpeedMode = "fast"; // "safe" | "fast" | "max"
+        public string DownloadSpeedMode
+        {
+            get => _downloadSpeedMode;
+            set
+            {
+                var normalized = string.Equals(value, "safe", StringComparison.OrdinalIgnoreCase) ? "safe"
+                    : string.Equals(value, "max", StringComparison.OrdinalIgnoreCase) ? "max"
+                    : "fast";
+                if (_downloadSpeedMode != normalized)
+                {
+                    _downloadSpeedMode = normalized;
+                    DownloadSpeedModeChanged?.Invoke(normalized);
+                }
+            }
+        }
+
+        public event Action<string>? DownloadSpeedModeChanged;
         public string LastBackupTime { get; set; } = "";
         public string LastBackupSize { get; set; } = "";
         public string MangaDexLanguage { get; set; } = "en";
@@ -155,6 +174,7 @@ namespace Yomic.Core.Services
                         SkipFilteredChapters = settings.SkipFilteredChapters;
                         SaveDownloadsAsCbz = settings.SaveDownloadsAsCbz;
                         AutoDeleteAfterRead = settings.AutoDeleteAfterRead;
+                        DownloadSpeedMode = string.IsNullOrWhiteSpace(settings.DownloadSpeedMode) ? "fast" : settings.DownloadSpeedMode;
                         LastBackupTime = settings.LastBackupTime ?? "";
                         LastBackupSize = settings.LastBackupSize ?? "";
                         MangaDexLanguage = settings.MangaDexLanguage ?? "en";
@@ -254,6 +274,7 @@ namespace Yomic.Core.Services
                     SkipFilteredChapters = SkipFilteredChapters,
                     SaveDownloadsAsCbz = SaveDownloadsAsCbz,
                     AutoDeleteAfterRead = AutoDeleteAfterRead,
+                    DownloadSpeedMode = DownloadSpeedMode,
                     LastBackupTime = LastBackupTime,
                     LastBackupSize = LastBackupSize,
                     MangaDexLanguage = MangaDexLanguage,
@@ -313,6 +334,7 @@ namespace Yomic.Core.Services
                 SkipFilteredChapters = false;
                 SaveDownloadsAsCbz = false;
                 AutoDeleteAfterRead = false;
+                DownloadSpeedMode = "fast";
                 LastBackupTime = "";
                 LastBackupSize = "";
                 DefaultReaderMode = 0;
@@ -468,6 +490,7 @@ namespace Yomic.Core.Services
             public bool SkipFilteredChapters { get; set; } = false;
             public bool SaveDownloadsAsCbz { get; set; } = false;
             public bool AutoDeleteAfterRead { get; set; } = false;
+            public string DownloadSpeedMode { get; set; } = "fast";
             public string LastBackupTime { get; set; } = "";
             public string LastBackupSize { get; set; } = "";
             public string MangaDexLanguage { get; set; } = "en";

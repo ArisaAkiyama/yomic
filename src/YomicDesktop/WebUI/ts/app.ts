@@ -643,6 +643,19 @@ export class YomicApp {
     if (tab === 'browse') {
       this.activeBrowseSourceId = null;
       this.sourceFeedSearchQuery = '';
+      this.savedBrowseScrollTop = 0;
+      this.viewScrollPositions.delete('browse_sources_list');
+      for (const key of Array.from(this.viewScrollPositions.keys())) {
+        if (key.startsWith('browse_source_')) {
+          this.viewScrollPositions.delete(key);
+        }
+      }
+    } else {
+      for (const key of Array.from(this.viewScrollPositions.keys())) {
+        if (key.startsWith('browse_source_')) {
+          this.viewScrollPositions.delete(key);
+        }
+      }
     }
     if (tab === 'settings') {
       this.activeSettingsTab = 'hub';
@@ -662,6 +675,7 @@ export class YomicApp {
     document.getElementById('btnOpenTutorialSidebar')?.classList.remove('active');
     const viewContainer = document.getElementById('viewContainer');
     if (viewContainer) {
+      viewContainer.scrollTop = 0;
       viewContainer.classList.remove('view-transition-in');
       void viewContainer.offsetWidth;
       viewContainer.classList.add('view-transition-in');

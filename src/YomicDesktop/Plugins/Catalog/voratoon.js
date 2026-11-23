@@ -4,7 +4,7 @@ var source = {
     apiUrl: "https://13.voratoon.com",
     iconUrl: "https://13.voratoon.com/logo/voratoon-icon-512.png",
     language: "id",
-    version: "1.2.1",
+    version: "1.2.2",
     description: "Baca Komik Online Bahasa Indonesia - Manga, Manhwa, Manhua Terbaru",
     author: "DesktopKomik",
     iconBackground: "#ea580c",
@@ -64,8 +64,34 @@ var source = {
         let closeChar = openChar === '{' ? '}' : ']';
 
         let depth = 0;
+
+        if (!isEscaped) {
+            // Fast disjoint regex: skips complete JSON strings & non-matching chars natively in C#
+            // so even 3,800+ chapter arrays finish in ~2 loop iterations instead of >100k.
+            let re = openChar === '['
+                ? /(?:"(?:\\[\s\S]|[^"\\])*"|[^"\[\]])*([\[\]])/y
+                : /(?:"(?:\\[\s\S]|[^"\\])*"|[^"{}])*([{}])/y;
+            re.lastIndex = valStart;
+            let m;
+            while ((m = re.exec(text)) !== null) {
+                if (m[1] === openChar) depth++;
+                else {
+                    depth--;
+                    if (depth === 0) {
+                        let raw = text.substring(valStart, re.lastIndex);
+                        try {
+                            return { value: JSON.parse(raw), endIndex: re.lastIndex };
+                        } catch (e) {
+                            return null;
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
         let inString = false;
-        let re = isEscaped ? /[{}\[\]\\]/g : /[{}\[\]"\\]/g;
+        let re = /[{}\[\]\\]/g;
         re.lastIndex = valStart;
         let m;
 
@@ -73,26 +99,13 @@ var source = {
             let ch = m[0];
             let pos = m.index;
 
-            if (isEscaped) {
-                if (ch === '\\') {
-                    let next = text[pos + 1];
-                    if (next === '"') {
-                        inString = !inString;
-                    }
-                    re.lastIndex = pos + 2;
-                    continue;
-                }
-            } else {
-                if (ch === '\\') {
-                    if (inString) {
-                        re.lastIndex = pos + 2;
-                    }
-                    continue;
-                }
-                if (ch === '"') {
+            if (ch === '\\') {
+                let next = text[pos + 1];
+                if (next === '"') {
                     inString = !inString;
-                    continue;
                 }
+                re.lastIndex = pos + 2;
+                continue;
             }
 
             if (!inString) {
@@ -101,9 +114,7 @@ var source = {
                     depth--;
                     if (depth === 0) {
                         let raw = text.substring(valStart, pos + 1);
-                        if (isEscaped) {
-                            raw = raw.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                        }
+                        raw = raw.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
                         try {
                             return { value: JSON.parse(raw), endIndex: pos + 1 };
                         } catch (e) {

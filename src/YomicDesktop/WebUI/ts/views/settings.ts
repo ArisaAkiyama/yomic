@@ -362,6 +362,24 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <span class="v1-setting-desc">${escapeXml(this.settings.downloadsFolder)}</span>
             </div>
           </button>
+          <div class="v1-setting-row is-select-row">
+            <div class="v1-setting-info">
+              <div class="v1-setting-title-row">
+                <span class="v1-setting-title">${this.l('Kecepatan Unduhan', 'Download Speed')}</span>
+              </div>
+              <span class="v1-setting-desc">${this.l('Atur jumlah bab dan halaman yang diunduh secara bersamaan', 'Configure concurrent chapter and page download connections')}</span>
+            </div>
+            ${renderSettingDropdown(
+              'selDownloadSpeedMode',
+              [
+                { value: 'safe', label: this.l('Aman (2 Bab × 4 Halaman)', 'Safe (2 Chapters × 4 Pages)') },
+                { value: 'fast', label: this.l('Cepat — Rekomendasi (3 Bab × 6 Halaman)', 'Fast — Recommended (3 Chapters × 6 Pages)') },
+                { value: 'max', label: this.l('Maksimal (4 Bab × 8 Halaman)', 'Maximum (4 Chapters × 8 Pages)') }
+              ],
+              this.settings.downloadSpeedMode || 'fast',
+              this.l('Kecepatan Unduhan', 'Download Speed')
+            )}
+          </div>
           <div class="v1-setting-row">
             <div class="v1-setting-info">
               <div class="v1-setting-title-row">
@@ -1180,6 +1198,19 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     persistSetting('readerFitMode', val);
     const label = val === 'fit-width' ? this.l('Pas Lebar', 'Fit Width') : val === 'fit-height' ? this.l('Pas Tinggi', 'Fit Height') : this.l('Ukuran Asli', 'Original Size');
     this.showToast(this.l(`Skala tampilan gambar diatur ke: ${label}.`, `Image fit mode set to: ${label}.`));
+  });
+  document.getElementById('selDownloadSpeedMode')?.addEventListener('change', (ev) => {
+    const raw = (ev.target as HTMLSelectElement).value;
+    const val = (raw === 'safe' || raw === 'max' ? raw : 'fast') as 'safe' | 'fast' | 'max';
+    this.settings.downloadSpeedMode = val;
+    persistSetting('downloadSpeedMode', val);
+    const label =
+      val === 'safe'
+        ? this.l('Aman (2 Bab × 4 Halaman)', 'Safe (2 Chapters × 4 Pages)')
+        : val === 'max'
+        ? this.l('Maksimal (4 Bab × 8 Halaman)', 'Maximum (4 Chapters × 8 Pages)')
+        : this.l('Cepat — Rekomendasi (3 Bab × 6 Halaman)', 'Fast — Recommended (3 Chapters × 6 Pages)');
+    this.showToast(this.l(`Kecepatan unduhan diatur ke: ${label}.`, `Download speed set to: ${label}.`));
   });
 
   // Action buttons

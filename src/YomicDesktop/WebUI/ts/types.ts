@@ -229,6 +229,7 @@ export interface ReadingStatisticsPayload {
 
 export type ReadingDirection = 'ltr' | 'rtl';
 export type ReaderFitMode = 'fit-width' | 'fit-height' | 'original';
+export type DownloadSpeedMode = 'safe' | 'fast' | 'max';
 export type HotkeyActionCategory = 'reader' | 'global';
 export type AppLanguage = 'id' | 'en';
 
@@ -264,6 +265,7 @@ export interface AppSettingsState {
   skipFilteredChapters: boolean;
   saveDownloadsAsCbz: boolean;
   autoDeleteAfterRead: boolean;
+  downloadSpeedMode: DownloadSpeedMode;
   maxReaderCacheSize: '250MB' | '500MB' | '1GB' | '2GB';
   autoSyncStartup: boolean;
   smartUpdate: boolean;

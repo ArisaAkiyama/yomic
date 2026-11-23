@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Net.NetworkInformation;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,6 +35,8 @@ namespace Yomic.Core.Services
         private const int PollingIntervalSeconds = 20; // Safe 20s periodic check (OS events handle instant changes)
 
         private readonly SettingsService _settingsService;
+        private static readonly System.Net.Http.HttpClient _dohQueryClient = new() { Timeout = TimeSpan.FromSeconds(2) };
+        private readonly ConcurrentDictionary<string, (List<System.Net.IPAddress> Ips, DateTime ExpiresAt)> _dohDnsCache = new(StringComparer.OrdinalIgnoreCase);
 
         public NetworkService(SettingsService settingsService)
         {
@@ -278,6 +282,7 @@ namespace Yomic.Core.Services
                  {
                      AutomaticDecompression = System.Net.DecompressionMethods.All,
                      EnableMultipleHttp2Connections = true,
+                     MaxConnectionsPerServer = 32,
                      SendTimeout = TimeSpan.FromSeconds(60),
                      ReceiveDataTimeout = TimeSpan.FromSeconds(60)
                  };
@@ -290,80 +295,96 @@ namespace Yomic.Core.Services
                      ConnectCallback = async (context, token) =>
                      {
                          var host = context.DnsEndPoint.Host;
-                         var candidateIps = new List<System.Net.IPAddress>();
-                         
-                         if (dohProvider == 0)
+                         var cacheKey = $"{dohProvider}:{host}";
+                         List<System.Net.IPAddress> candidateIps;
+
+                         if (_dohDnsCache.TryGetValue(cacheKey, out var cached) && cached.ExpiresAt > DateTime.UtcNow && cached.Ips.Count > 0)
                          {
-                             // If DoH is disabled, just use System DNS directly
-                             try
-                             {
-                                 var hostAddresses = await System.Net.Dns.GetHostAddressesAsync(host, token);
-                                 candidateIps.AddRange(hostAddresses);
-                             }
-                             catch { }
+                             candidateIps = cached.Ips;
                          }
                          else
                          {
-                             // List of DoH providers (IPv4)
-                             string[] dohQueries = dohProvider switch
+                             candidateIps = new List<System.Net.IPAddress>();
+                             if (System.Net.IPAddress.TryParse(host, out var literalIp))
                              {
-                                 1 => new[] { "https://1.1.1.1/dns-query?name={0}&type=A", "https://cloudflare-dns.com/dns-query?name={0}&type=A" }, // Cloudflare
-                                 2 => new[] { "https://8.8.8.8/resolve?name={0}&type=A", "https://dns.google/resolve?name={0}&type=A" }, // Google
-                                 3 => new[] { "https://dns.adguard-dns.com/resolve?name={0}&type=A", "https://94.140.14.14/resolve?name={0}&type=A" }, // AdGuard
-                                 _ => new[] { "https://8.8.8.8/resolve?name={0}&type=A" } // Fallback
-                             };
-                         
-                             using var dohClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-
-                             foreach (var template in dohQueries)
+                                 candidateIps.Add(literalIp);
+                             }
+                             else if (dohProvider == 0)
                              {
+                                 // If DoH is disabled, just use System DNS directly
                                  try
                                  {
-                                     string dohUrl = string.Format(template, host);
-                                     var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, dohUrl);
-                                     request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-json"));
-                                     
-                                     var response = await dohClient.SendAsync(request, token);
-                                     if (response.IsSuccessStatusCode)
+                                     var hostAddresses = await System.Net.Dns.GetHostAddressesAsync(host, token);
+                                     candidateIps.AddRange(hostAddresses);
+                                 }
+                                 catch { }
+                             }
+                             else
+                             {
+                                 // List of DoH providers (IPv4)
+                                 string[] dohQueries = dohProvider switch
+                                 {
+                                     1 => new[] { "https://1.1.1.1/dns-query?name={0}&type=A", "https://cloudflare-dns.com/dns-query?name={0}&type=A" }, // Cloudflare
+                                     2 => new[] { "https://8.8.8.8/resolve?name={0}&type=A", "https://dns.google/resolve?name={0}&type=A" }, // Google
+                                     3 => new[] { "https://dns.adguard-dns.com/resolve?name={0}&type=A", "https://94.140.14.14/resolve?name={0}&type=A" }, // AdGuard
+                                     _ => new[] { "https://8.8.8.8/resolve?name={0}&type=A" } // Fallback
+                                 };
+
+                                 foreach (var template in dohQueries)
+                                 {
+                                     try
                                      {
-                                         var json = await response.Content.ReadAsStringAsync(token);
-                                         var obj = JsonNode.Parse(json);
-                                         var answers = obj?["Answer"] as JsonArray;
-                                         
-                                         if (answers != null)
+                                         string dohUrl = string.Format(template, host);
+                                         using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, dohUrl);
+                                         request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-json"));
+
+                                         using var response = await _dohQueryClient.SendAsync(request, token);
+                                         if (response.IsSuccessStatusCode)
                                          {
-                                             foreach (var ans in answers)
+                                             var json = await response.Content.ReadAsStringAsync(token);
+                                             var obj = JsonNode.Parse(json);
+                                             var answers = obj?["Answer"] as JsonArray;
+
+                                             if (answers != null)
                                              {
-                                                 var ipStr = ans?["data"]?.ToString();
-                                                 if (System.Net.IPAddress.TryParse(ipStr, out var parsedIp) && !candidateIps.Contains(parsedIp))
+                                                 foreach (var ans in answers)
                                                  {
-                                                     candidateIps.Add(parsedIp);
+                                                     var ipStr = ans?["data"]?.ToString();
+                                                     if (System.Net.IPAddress.TryParse(ipStr, out var parsedIp) && !candidateIps.Contains(parsedIp))
+                                                     {
+                                                         candidateIps.Add(parsedIp);
+                                                     }
                                                  }
+
+                                                 if (candidateIps.Count > 0) break;
                                              }
-                                             
-                                             if (candidateIps.Count > 0) break;
+                                         }
+                                     }
+                                     catch (Exception ex)
+                                     {
+                                         LogService.Debug("NetworkService", $"DoH query failed: {ex.Message}");
+                                     }
+                                 }
+
+                                 // Append system DNS addresses as fallback candidates
+                                 try
+                                 {
+                                     var hostAddresses = await System.Net.Dns.GetHostAddressesAsync(host, token);
+                                     foreach (var ip in hostAddresses)
+                                     {
+                                         if (!candidateIps.Contains(ip))
+                                         {
+                                             candidateIps.Add(ip);
                                          }
                                      }
                                  }
-                                 catch (Exception ex)
-                                 {
-                                     LogService.Debug("NetworkService", $"DoH query failed: {ex.Message}");
-                                 }
+                                 catch { }
                              }
 
-                             // Append system DNS addresses as fallback candidates
-                             try
+                             if (candidateIps.Count > 0)
                              {
-                                 var hostAddresses = await System.Net.Dns.GetHostAddressesAsync(host, token);
-                                 foreach (var ip in hostAddresses)
-                                 {
-                                     if (!candidateIps.Contains(ip))
-                                     {
-                                         candidateIps.Add(ip);
-                                     }
-                                 }
+                                 _dohDnsCache[cacheKey] = (candidateIps, DateTime.UtcNow.AddMinutes(5));
                              }
-                             catch { }
                          }
 
                          if (candidateIps.Count == 0) throw new Exception($"Could not resolve host: {host}");
@@ -414,6 +435,8 @@ namespace Yomic.Core.Services
                          EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13
                      },
                      PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+                     MaxConnectionsPerServer = 32,
+                     EnableMultipleHttp2Connections = true,
                      AutomaticDecompression = System.Net.DecompressionMethods.All,
                      UseCookies = true
                  };
@@ -439,6 +462,7 @@ namespace Yomic.Core.Services
             try
             {
                 LogService.Info("Network", "Resetting connections...");
+                _dohDnsCache.Clear();
                 
                 // Flush Windows DNS cache (requires cmd)
                 try

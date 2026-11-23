@@ -144,6 +144,7 @@ export const DEFAULT_APP_SETTINGS: AppSettingsState = {
   enableImageSharpening: false,
   saveDownloadsAsCbz: false,
   autoDeleteAfterRead: false,
+  downloadSpeedMode: 'fast',
   appLanguage: 'id',
   mangaDexLanguage: 'en'
 };

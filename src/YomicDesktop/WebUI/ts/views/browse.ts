@@ -598,9 +598,11 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
       if (srcId) {
         this.saveWorkspaceScroll('browse_sources_list');
         this.savedBrowseScrollTop = container.scrollTop;
+        this.viewScrollPositions.delete(`browse_source_${srcId}`);
         this.activeBrowseSourceId = srcId;
         this.sourceFeedSearchQuery = '';
         this.sourceFeedError = null;
+        container.scrollTop = 0;
         const src = this.extensions.find((e) => e.id === srcId);
         if (src && this.bridge.isWebViewHost) {
           this.sourceFeedItems = [];
@@ -751,6 +753,9 @@ export async function fetchSourceCatalogFeed(this: YomicApp, source: ExtensionIt
       const activeInput = document.activeElement as HTMLInputElement | null;
       const selStart = activeInput?.selectionStart ?? null;
       const selEnd = activeInput?.selectionEnd ?? null;
+      if (!resetPage && nextContainer.scrollTop > 0) {
+        this.viewScrollPositions.set(`browse_source_${source.id}`, nextContainer.scrollTop);
+      }
       this.renderSourceCatalogFeed(nextContainer, source, !resetPage);
       if (wasFocused) {
         const nextInput = document.getElementById('sourceCatalogSearchInput') as HTMLInputElement | null;
@@ -1109,6 +1114,9 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
   `;
   document.getElementById('btnBackToSourcesList')?.addEventListener('click', () => {
     container.onscroll = null;
+    if (this.activeBrowseSourceId) {
+      this.viewScrollPositions.delete(`browse_source_${this.activeBrowseSourceId}`);
+    }
     this.activeBrowseSourceId = null;
     this.browseSearchQuery = '';
     this.sourceFeedSearchQuery = '';
@@ -1431,6 +1439,9 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
         });
       });
     }
+  } else {
+    container.style.scrollBehavior = 'auto';
+    container.scrollTop = 0;
   }
   this.bindCommonCardTriggers(container);
 }

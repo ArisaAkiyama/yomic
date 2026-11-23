@@ -231,6 +231,13 @@ namespace YomicDesktop.IPC
 
                 await SourceIdMigrationService.RunIfNeededAsync(SourceManager);
 
+                var updatedExts = await ExtensionRepoService.AutoUpdateInstalledExtensionsAsync();
+                if (updatedExts > 0)
+                {
+                    var dtos = await GetExtensionsDtosAsync(false);
+                    PushEvent("event:extensions-updated", dtos);
+                }
+
             });
 
         }
@@ -718,6 +725,8 @@ namespace YomicDesktop.IPC
                 ["saveDownloadsAsCbz"] = SettingsService.SaveDownloadsAsCbz,
 
                 ["autoDeleteAfterRead"] = SettingsService.AutoDeleteAfterRead,
+
+                ["downloadSpeedMode"] = string.IsNullOrWhiteSpace(SettingsService.DownloadSpeedMode) ? "fast" : SettingsService.DownloadSpeedMode,
 
                 ["maxReaderCacheSize"] = SettingsService.MaxCacheSizeMb switch
                 {
@@ -3853,6 +3862,17 @@ namespace YomicDesktop.IPC
 
                     break;
 
+                }
+
+                case "downloadSpeedMode":
+                {
+                    var str = valElem.GetString();
+                    if (!string.IsNullOrWhiteSpace(str))
+                    {
+                        SettingsService.DownloadSpeedMode = str;
+                        DownloadService.ProcessQueue();
+                    }
+                    break;
                 }
 
                 case "showUnreadBadges":

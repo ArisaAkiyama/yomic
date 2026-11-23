@@ -238,12 +238,14 @@ namespace Yomic.Core.Services
                     }
                 }
 
-                // 2. Scan User JS Plugins (AppData)
+                // 2. Scan User JS Plugins (AppData) — auto-upgrade from bundled Plugins/Catalog if bundled is newer
+                var catalogDir = System.IO.Path.Combine(_localPluginsDir, "Catalog");
                 if (System.IO.Directory.Exists(_userPluginsDir))
                 {
                     var jss = System.IO.Directory.GetFiles(_userPluginsDir, "*.js", System.IO.SearchOption.AllDirectories);
                     foreach (var js in jss)
                     {
+                        TryUpgradeUserPluginFromCatalog(js, catalogDir);
                         LoadJsExtension(js);
                     }
                 }
@@ -252,6 +254,43 @@ namespace Yomic.Core.Services
             {
                 LogService.Error("SourceManager", $"Failed to load extensions", ex);
             }
+        }
+
+        private static int ParseJsVersionCode(string jsText)
+        {
+            if (string.IsNullOrWhiteSpace(jsText)) return 0;
+            var m = System.Text.RegularExpressions.Regex.Match(
+                jsText,
+                @"\bversion\s*:\s*[""']v?(\d+)\.(\d+)(?:\.(\d+))?[""']",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!m.Success) return 0;
+            int.TryParse(m.Groups[1].Value, out int major);
+            int.TryParse(m.Groups[2].Value, out int minor);
+            int patch = 0;
+            if (m.Groups[3].Success) int.TryParse(m.Groups[3].Value, out patch);
+            return (major * 100) + (minor * 10) + patch;
+        }
+
+        private static void TryUpgradeUserPluginFromCatalog(string userJsPath, string catalogDir)
+        {
+            try
+            {
+                if (!System.IO.Directory.Exists(catalogDir)) return;
+                var fileName = System.IO.Path.GetFileName(userJsPath);
+                var catalogJsPath = System.IO.Path.Combine(catalogDir, fileName);
+                if (!System.IO.File.Exists(catalogJsPath)) return;
+
+                var userCode = ParseJsVersionCode(System.IO.File.ReadAllText(userJsPath));
+                var catalogText = System.IO.File.ReadAllText(catalogJsPath);
+                var catalogCode = ParseJsVersionCode(catalogText);
+
+                if (catalogCode > userCode)
+                {
+                    System.IO.File.WriteAllText(userJsPath, catalogText);
+                    LogService.Info("SourceManager", $"Auto-upgraded installed extension '{fileName}' from bundled catalog ({userCode} -> {catalogCode}).");
+                }
+            }
+            catch { }
         }
 
         public IMangaSource? InstallPlugin(string sourcePath)

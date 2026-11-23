@@ -541,13 +541,26 @@ namespace Yomic.Core.Services
             return new List<ExtensionEntryDto>();
         }
 
+        private static int ExtractScriptVersionCode(string? jsContent)
+        {
+            if (string.IsNullOrWhiteSpace(jsContent)) return 0;
+            var m = Regex.Match(jsContent, @"\bversion\s*:\s*[""']([^""']+)[""']", RegexOptions.IgnoreCase);
+            return m.Success ? CalculateVersionCode(m.Groups[1].Value) : 0;
+        }
+
         private static List<ExtensionEntryDto> MergeCatalogEntries(
             List<ExtensionEntryDto>? primary,
             List<ExtensionEntryDto>? secondary)
         {
             var map = new Dictionary<string, ExtensionEntryDto>(StringComparer.OrdinalIgnoreCase);
 
-            void Upsert(ExtensionEntryDto item, bool overwrite)
+            static int EffectiveVersionCode(ExtensionEntryDto item)
+            {
+                int parsedCode = CalculateVersionCode(item.Version);
+                return Math.Max(item.VersionCode, parsedCode);
+            }
+
+            void Upsert(ExtensionEntryDto item, bool preferOnTie)
             {
                 if (item == null) return;
                 string key = !string.IsNullOrWhiteSpace(item.Pkg)
@@ -559,19 +572,24 @@ namespace Yomic.Core.Services
                 {
                     map[key] = item;
                 }
-                else if (overwrite || item.VersionCode >= existing.VersionCode)
+                else
                 {
-                    map[key] = item;
+                    int itemCode = EffectiveVersionCode(item);
+                    int existingCode = EffectiveVersionCode(existing);
+                    if (itemCode > existingCode || (itemCode == existingCode && preferOnTie))
+                    {
+                        map[key] = item;
+                    }
                 }
             }
 
             if (secondary != null)
             {
-                foreach (var item in secondary) Upsert(item, overwrite: false);
+                foreach (var item in secondary) Upsert(item, preferOnTie: false);
             }
             if (primary != null)
             {
-                foreach (var item in primary) Upsert(item, overwrite: true);
+                foreach (var item in primary) Upsert(item, preferOnTie: true);
             }
 
             return map.Values.OrderBy(e => CleanExtensionName(e.Name), StringComparer.OrdinalIgnoreCase).ToList();
@@ -599,6 +617,15 @@ namespace Yomic.Core.Services
                     if (parsed != null && parsed.Count > 0)
                     {
                         _cachedRepoEntries = MergeCatalogEntries(parsed, bundledEntries);
+                        try
+                        {
+                            var mergedJson = JsonSerializer.Serialize(_cachedRepoEntries);
+                            if (!string.Equals(mergedJson, cachedJson, StringComparison.Ordinal))
+                            {
+                                await File.WriteAllTextAsync(cachePath, mergedJson);
+                            }
+                        }
+                        catch { }
                         return _cachedRepoEntries;
                     }
                 }
@@ -975,22 +1002,30 @@ namespace Yomic.Core.Services
 
                 onProgress?.Invoke(65);
 
-                // 2. Fallback to bundled Plugins/Catalog/{cleanFileName}
+                // 2. Also check bundled Plugins/Catalog/{cleanFileName} and prefer it if online failed or is older
+                string? bundledJsContent = null;
+                var bundledCandidates = new[]
+                {
+                    Path.Combine(GetBundledCatalogDir(), "src", langFolder, cleanFileName),
+                    Path.Combine(GetBundledCatalogDir(), cleanFileName)
+                };
+                foreach (var bundledScriptPath in bundledCandidates)
+                {
+                    if (File.Exists(bundledScriptPath))
+                    {
+                        bundledJsContent = await File.ReadAllTextAsync(bundledScriptPath);
+                        break;
+                    }
+                }
+
                 if (string.IsNullOrWhiteSpace(jsContent))
                 {
-                    var bundledCandidates = new[]
-                    {
-                        Path.Combine(GetBundledCatalogDir(), "src", langFolder, cleanFileName),
-                        Path.Combine(GetBundledCatalogDir(), cleanFileName)
-                    };
-                    foreach (var bundledScriptPath in bundledCandidates)
-                    {
-                        if (File.Exists(bundledScriptPath))
-                        {
-                            jsContent = await File.ReadAllTextAsync(bundledScriptPath);
-                            break;
-                        }
-                    }
+                    jsContent = bundledJsContent;
+                }
+                else if (!string.IsNullOrWhiteSpace(bundledJsContent) &&
+                         ExtractScriptVersionCode(bundledJsContent) > ExtractScriptVersionCode(jsContent))
+                {
+                    jsContent = bundledJsContent;
                 }
 
                 scriptFileName = cleanFileName;
@@ -1121,6 +1156,30 @@ namespace Yomic.Core.Services
                 return (false, isEnUninstErr ? $"Failed to uninstall extension: {ex.Message}" : $"Gagal mencopot ekstensi: {ex.Message}");
             }
 
+        }
+
+        public async Task<int> AutoUpdateInstalledExtensionsAsync()
+        {
+            int updatedCount = 0;
+            try
+            {
+                var list = await GetExtensionsListAsync(forceRefresh: !_settingsService.IsOfflineMode);
+                var outdated = list.Where(e => e.Installed && e.HasUpdate).ToList();
+                foreach (var ext in outdated)
+                {
+                    var (ok, _) = await InstallOrUpdateAsync(ext.Id);
+                    if (ok)
+                    {
+                        updatedCount++;
+                        LogService.Info("ExtensionRepo", $"Auto-updated extension '{ext.Name}' to {ext.Version}.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Warning("ExtensionRepo", $"Auto-update check failed: {ex.Message}");
+            }
+            return updatedCount;
         }
 
     }
