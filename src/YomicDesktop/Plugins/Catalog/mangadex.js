@@ -6,7 +6,7 @@ var source = {
     uploadsUrl: "https://uploads.mangadex.org",
     language: "en",
     selectedLanguage: "en",
-    version: "1.0.3",
+    version: "1.0.4",
     description: "MangaDex extension implemented in JavaScript using the official MangaDex API",
     author: "DesktopKomik",
     iconBackground: "#ff6740",
