@@ -68,7 +68,7 @@ var source = {
         url += queryString || "";
         
         let response = fetch(url);
-        if (response.status !== 200) return { items: [], totalPages: page };
+        if (!response || response.status !== 200) return { items: [], totalPages: page };
         
         let doc = Html.parse(response.body, url);
         let items = this.parseMangaList(doc);
@@ -164,7 +164,7 @@ var source = {
     getMangaDetails: function(url) {
         let fullUrl = url.indexOf('http') === 0 ? url : (this.baseUrl + (url.charAt(0) === '/' ? url : '/' + url));
         let response = fetch(fullUrl);
-        if (response.status !== 200) return {};
+        if (!response || response.status !== 200) return {};
 
         let doc = Html.parse(response.body, fullUrl);
         
@@ -237,7 +237,7 @@ var source = {
     getChapterList: function(mangaUrl) {
         let fullUrl = mangaUrl.indexOf('http') === 0 ? mangaUrl : (this.baseUrl + (mangaUrl.charAt(0) === '/' ? mangaUrl : '/' + mangaUrl));
         let response = fetch(fullUrl);
-        if (response.status !== 200) return [];
+        if (!response || response.status !== 200) return [];
 
         let doc = Html.parse(response.body, fullUrl);
         let chapters = [];
@@ -276,7 +276,7 @@ var source = {
     getPageList: function(chapterUrl) {
         let fullUrl = chapterUrl.indexOf('http') === 0 ? chapterUrl : (this.baseUrl + (chapterUrl.charAt(0) === '/' ? chapterUrl : '/' + chapterUrl));
         let response = fetch(fullUrl);
-        if (response.status !== 200) return [];
+        if (!response || response.status !== 200) return [];
 
         let doc = Html.parse(response.body, fullUrl);
         let pages = [];

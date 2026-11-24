@@ -64,7 +64,7 @@ namespace Yomic.Core.Sources
         public override string IconUrl => _iconUrl;
         public override string IconBackground => _iconBackground;
         public override string IconForeground => _iconForeground;
-        public bool IsNsfw => _isNsfw;
+        public override bool IsNsfw => _isNsfw;
         public override bool IsHasMorePages => _isHasMorePages;
         public bool SupportsStatusFilter => _supportsStatusFilter;
         public bool SupportsGenreFilter => _availableGenres.Count > 0;
@@ -137,12 +137,14 @@ namespace Yomic.Core.Sources
                 }
                 if (!parsedNsfw)
                 {
-                    var lowerDesc = (_description ?? "").ToLowerInvariant();
-                    var lowerName = (_name ?? "").ToLowerInvariant();
-                    var lowerUrl = (_baseUrl ?? "").ToLowerInvariant();
-                    if (lowerDesc.Contains("18+") || lowerDesc.Contains("dewasa") || lowerDesc.Contains("hentai") || lowerDesc.Contains("doujin") || lowerDesc.Contains("smut") ||
-                        lowerName.Contains("18+") || lowerName.Contains("dewasa") || lowerName.Contains("hentai") || lowerName.Contains("doujin") || lowerName.Contains("crot") ||
-                        lowerUrl.Contains("hentai") || lowerUrl.Contains("doujin") || lowerUrl.Contains("xxx"))
+                    var adultKeywords = new[]
+                    {
+                        "18+", "dewasa", "hentai", "doujin", "smut", "crot", "porn", "xxx",
+                        "ecchi", "eromanga", "nhentai", "nekopoi", "mangapoi", "kumapoi", "kumopoi",
+                        "mangasusu", "r-18", "r18", "mature", "adult", "guro", "yaoi", "yuri"
+                    };
+                    var combined = $"{_name} {_description} {_baseUrl}".ToLowerInvariant();
+                    if (adultKeywords.Any(kw => combined.Contains(kw, StringComparison.Ordinal)))
                     {
                         parsedNsfw = true;
                     }
@@ -200,7 +202,10 @@ namespace Yomic.Core.Sources
         {
             var engine = new Engine(cfg => cfg
                 .TimeoutInterval(TimeSpan.FromSeconds(30))
-                .MaxStatements(2_000_000));
+                .MaxStatements(2_000_000)
+                .LimitRecursion(64)
+                .LimitMemory(64 * 1024 * 1024)
+                .MaxArraySize(100_000));
 
             engine.SetValue("fetch", new Func<string, JsValue, JsResponse>(FetchUrl));
             engine.SetValue("Html", new
@@ -210,9 +215,11 @@ namespace Yomic.Core.Sources
             engine.SetValue("log", new Action<object>(o => {
                 if (!SilenceLogs) Console.WriteLine($"[JS Extension Log] {o}");
             }));
+            engine.SetValue("atob", new Func<string, string>(DecodeBase64Latin1));
+            engine.SetValue("btoa", new Func<string, string>(EncodeBase64Latin1));
 
             engine.Execute(_scriptCode);
-            engine.Execute($"if (typeof source === 'object' && source !== null) {{ source.selectedLanguage = '{_selectedLanguage}'; }}");
+            ApplySelectedLanguageToEngine(engine);
             engine.Execute(@"
                 globalThis.__callMethod = function(methodName, ...args) {
                     return source[methodName].apply(source, args);
@@ -225,6 +232,15 @@ namespace Yomic.Core.Sources
             return engine;
         }
 
+        private static void ApplySelectedLanguageToEngine(Engine engine)
+        {
+            var sourceVal = engine.GetValue("source");
+            if (sourceVal.IsObject())
+            {
+                sourceVal.AsObject().Set("selectedLanguage", _selectedLanguage);
+            }
+        }
+
         private Engine RentEngine()
         {
             if (_enginePool.TryDequeue(out var engine))
@@ -232,7 +248,7 @@ namespace Yomic.Core.Sources
                 // IMPORTANT: Always refresh selectedLanguage before reuse.
                 // The engine pool caches engines, so if user changes language,
                 // old engines from the pool still have the previous language.
-                engine.Execute($"if (typeof source === 'object' && source !== null) {{ source.selectedLanguage = '{_selectedLanguage}'; }}");
+                ApplySelectedLanguageToEngine(engine);
                 return engine;
             }
             return CreateEngine();
@@ -246,20 +262,40 @@ namespace Yomic.Core.Sources
             }
         }
 
+        private sealed class ChapterCacheContext
+        {
+            public string? RequestETag;
+            public string? RequestLastModified;
+            public string? ExtractedETag;
+            public string? ExtractedLastModified;
+            public bool Was304;
+            public bool WasPartial;
+        }
+
+        private static readonly System.Threading.AsyncLocal<ChapterCacheContext?> _asyncCacheContext = new();
+
         private async Task<T> ExecuteJsAsync<T>(Func<Engine, T> action)
         {
             await _globalExecutionLimit.WaitAsync();
-            var engine = RentEngine();
+            Engine? engine = null;
+            bool succeeded = false;
             try
             {
                 return await Task.Run(() =>
                 {
-                    return action(engine);
+                    engine = RentEngine();
+                    var result = action(engine);
+                    succeeded = true;
+                    return result;
                 });
             }
             finally
             {
-                ReturnEngine(engine);
+                // Only recycle healthy engines back to the pool; ALWAYS release semaphore even if RentEngine throws
+                if (succeeded && engine != null)
+                {
+                    ReturnEngine(engine);
+                }
                 _globalExecutionLimit.Release();
             }
         }
@@ -272,18 +308,17 @@ namespace Yomic.Core.Sources
             return BitConverter.ToInt64(hash, 0);
         }
 
-        [ThreadStatic] private static string? _currentCacheETag;
-        [ThreadStatic] private static string? _currentCacheLastModified;
-        [ThreadStatic] private static string? _lastExtractedETag;
-        [ThreadStatic] private static string? _lastExtractedLastModified;
-        [ThreadStatic] private static bool _lastFetchWas304;
-
         private JsResponse FetchUrl(string url, JsValue options)
         {
             try
             {
+                if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out var validatedUri) || validatedUri == null)
+                {
+                    return new JsResponse { body = "Blocked unsafe URL.", status = 403 };
+                }
+
                 var method = HttpMethod.Get;
-                var headers = new Dictionary<string, string>();
+                var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 string? postBody = null;
 
                 if (options != null && options.IsObject())
@@ -292,8 +327,16 @@ namespace Yomic.Core.Sources
                     var mVal = opts.Get("method");
                     if (mVal.IsString())
                     {
-                        var mStr = mVal.AsString().ToUpper();
-                        if (mStr == "POST") method = HttpMethod.Post;
+                        var mStr = mVal.AsString().ToUpperInvariant();
+                        method = mStr switch
+                        {
+                            "POST" => HttpMethod.Post,
+                            "PUT" => HttpMethod.Put,
+                            "DELETE" => HttpMethod.Delete,
+                            "PATCH" => HttpMethod.Patch,
+                            "HEAD" => HttpMethod.Head,
+                            _ => HttpMethod.Get
+                        };
                     }
 
                     var hVal = opts.Get("headers");
@@ -303,8 +346,11 @@ namespace Yomic.Core.Sources
                         foreach (var key in hObj.GetOwnPropertyKeys())
                         {
                             var keyStr = key.AsString();
-                            var valStr = hObj.Get(keyStr).AsString();
-                            headers[keyStr] = valStr;
+                            var propVal = hObj.Get(keyStr);
+                            if (propVal.IsString())
+                                headers[keyStr] = propVal.AsString();
+                            else if (!propVal.IsNull() && !propVal.IsUndefined())
+                                headers[keyStr] = propVal.ToString();
                         }
                     }
 
@@ -315,53 +361,67 @@ namespace Yomic.Core.Sources
                     }
                 }
 
-                if (!string.IsNullOrEmpty(_currentCacheETag) && !headers.ContainsKey("If-None-Match"))
+                var cacheCtx = _asyncCacheContext.Value;
+                if (cacheCtx != null)
                 {
-                    headers["If-None-Match"] = _currentCacheETag;
-                }
-                if (!string.IsNullOrEmpty(_currentCacheLastModified) && !headers.ContainsKey("If-Modified-Since"))
-                {
-                    headers["If-Modified-Since"] = _currentCacheLastModified;
-                }
-
-                var cfBypass = Yomic.Core.Services.CloudflareBypassService.Instance;
-                if (cfBypass.SavedCookies.Count > 0 && !headers.ContainsKey("Cookie") && Uri.TryCreate(url, UriKind.Absolute, out var targetUri))
-                {
-                    var matchingCookies = cfBypass.SavedCookies
-                        .Where(c => !string.IsNullOrEmpty(c.Domain) &&
-                                    targetUri.Host.EndsWith(c.Domain.TrimStart('.'), StringComparison.OrdinalIgnoreCase))
-                        .Select(c => $"{c.Name}={c.Value}")
-                        .ToList();
-                    if (matchingCookies.Count > 0)
+                    if (!string.IsNullOrEmpty(cacheCtx.RequestETag) && !headers.ContainsKey("If-None-Match"))
                     {
-                        headers["Cookie"] = string.Join("; ", matchingCookies);
+                        headers["If-None-Match"] = cacheCtx.RequestETag;
+                    }
+                    if (!string.IsNullOrEmpty(cacheCtx.RequestLastModified) && !headers.ContainsKey("If-Modified-Since"))
+                    {
+                        headers["If-Modified-Since"] = cacheCtx.RequestLastModified;
                     }
                 }
-                if (!string.IsNullOrEmpty(cfBypass.BypassUserAgent) && !headers.ContainsKey("User-Agent"))
+
+                if (Yomic.Core.Services.CloudflareBypassService.IsInstanceCreated)
                 {
-                    headers["User-Agent"] = cfBypass.BypassUserAgent;
+                    var cfBypass = Yomic.Core.Services.CloudflareBypassService.Instance;
+                    var savedCookies = cfBypass.SavedCookies;
+                    bool matchedHostCookies = false;
+                    if (savedCookies.Count > 0 && !headers.ContainsKey("Cookie"))
+                    {
+                        var matchingCookies = savedCookies
+                            .Where(c => Yomic.Core.Helpers.UrlSecurityHelper.CookieMatchesRequest(validatedUri, c.Domain, c.Secure ?? false))
+                            .Select(c => $"{c.Name}={c.Value}")
+                            .ToList();
+                        if (matchingCookies.Count > 0)
+                        {
+                            headers["Cookie"] = string.Join("; ", matchingCookies);
+                            matchedHostCookies = true;
+                        }
+                    }
+                    // Only override User-Agent with CF bypass UA when this host actually uses CF cookies (never clobber MangaDex custom UA)
+                    if (matchedHostCookies && !string.IsNullOrEmpty(cfBypass.BypassUserAgent) && !headers.ContainsKey("User-Agent"))
+                    {
+                        headers["User-Agent"] = cfBypass.BypassUserAgent;
+                    }
                 }
+
+                const long MaxJsFetchBytes = 25L * 1024 * 1024;
+                using var reqCts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
 
                 // If it's a GET and no custom headers, check media type or binary bytes cleanly
                 if (method == HttpMethod.Get && headers.Count == 0)
                 {
-                    var responseNoHead = Task.Run(() => Client.GetAsync(url)).GetAwaiter().GetResult();
+                    using var responseNoHead = Client.GetAsync(validatedUri, HttpCompletionOption.ResponseHeadersRead, reqCts.Token).GetAwaiter().GetResult();
                     if (responseNoHead.StatusCode == System.Net.HttpStatusCode.NotModified)
                     {
-                        _lastFetchWas304 = true;
+                        if (cacheCtx != null) cacheCtx.Was304 = true;
                         return new JsResponse { body = "", status = 304 };
                     }
 
-                    if (responseNoHead.StatusCode == System.Net.HttpStatusCode.OK)
+                    if (responseNoHead.StatusCode == System.Net.HttpStatusCode.OK && cacheCtx != null)
                     {
-                        if (responseNoHead.Headers.ETag != null) _lastExtractedETag = responseNoHead.Headers.ETag.Tag;
-                        if (responseNoHead.Content.Headers.LastModified != null) _lastExtractedLastModified = responseNoHead.Content.Headers.LastModified.Value.ToString("r");
+                        if (responseNoHead.Headers.ETag != null) cacheCtx.ExtractedETag = responseNoHead.Headers.ETag.Tag;
+                        if (responseNoHead.Content.Headers.LastModified != null) cacheCtx.ExtractedLastModified = responseNoHead.Content.Headers.LastModified.Value.ToString("r");
                     }
 
-                    var bytesNoHead = Task.Run(() => responseNoHead.Content.ReadAsByteArrayAsync()).GetAwaiter().GetResult();
+                    var bytesNoHead = Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(
+                        responseNoHead.Content, MaxJsFetchBytes, reqCts.Token).GetAwaiter().GetResult();
                     var mediaTypeNoHead = responseNoHead.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "";
                     string content;
-                    if (mediaTypeNoHead.Contains("protobuf") || mediaTypeNoHead.Contains("octet-stream") || bytesNoHead.Contains((byte)0))
+                    if (mediaTypeNoHead.Contains("protobuf") || mediaTypeNoHead.Contains("octet-stream") || Array.IndexOf(bytesNoHead, (byte)0) >= 0)
                     {
                         content = System.Text.Encoding.Latin1.GetString(bytesNoHead);
                     }
@@ -372,39 +432,57 @@ namespace Yomic.Core.Sources
                     return new JsResponse { body = content, status = (int)responseNoHead.StatusCode };
                 }
 
-                // Otherwise make a custom request using our client
-                var request = new HttpRequestMessage(method, url)
+                // Otherwise make a custom request using our client, properly preserving Content-Type
+                using var request = new HttpRequestMessage(method, validatedUri)
                 {
                     Version = System.Net.HttpVersion.Version20,
                     VersionPolicy = System.Net.Http.HttpVersionPolicy.RequestVersionOrLower
                 };
+                string? requestedContentType = null;
                 foreach (var h in headers)
                 {
+                    if (string.Equals(h.Key, "Content-Type", StringComparison.OrdinalIgnoreCase))
+                    {
+                        requestedContentType = h.Value;
+                        continue;
+                    }
                     request.Headers.TryAddWithoutValidation(h.Key, h.Value);
                 }
                 if (postBody != null)
                 {
-                    request.Content = new StringContent(postBody, System.Text.Encoding.UTF8, "application/json");
+                    string mediaTypeOnly = "application/json";
+                    if (!string.IsNullOrWhiteSpace(requestedContentType))
+                    {
+                        mediaTypeOnly = requestedContentType.Split(';')[0].Trim();
+                    }
+                    request.Content = new StringContent(postBody, System.Text.Encoding.UTF8, mediaTypeOnly);
+                    if (!string.IsNullOrWhiteSpace(requestedContentType) && requestedContentType.Contains(';'))
+                    {
+                        // Remove default Content-Type before re-adding full parameterized header to prevent duplicates
+                        request.Content.Headers.Remove("Content-Type");
+                        request.Content.Headers.TryAddWithoutValidation("Content-Type", requestedContentType);
+                    }
                 }
 
-                var response = Task.Run(() => Client.SendAsync(request)).GetAwaiter().GetResult();
+                using var response = Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, reqCts.Token).GetAwaiter().GetResult();
 
                 if (response.StatusCode == System.Net.HttpStatusCode.NotModified)
                 {
-                    _lastFetchWas304 = true;
+                    if (cacheCtx != null) cacheCtx.Was304 = true;
                     return new JsResponse { body = "", status = 304 };
                 }
 
-                if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                if (response.StatusCode == System.Net.HttpStatusCode.OK && cacheCtx != null)
                 {
-                    if (response.Headers.ETag != null) _lastExtractedETag = response.Headers.ETag.Tag;
-                    if (response.Content.Headers.LastModified != null) _lastExtractedLastModified = response.Content.Headers.LastModified.Value.ToString("r");
+                    if (response.Headers.ETag != null) cacheCtx.ExtractedETag = response.Headers.ETag.Tag;
+                    if (response.Content.Headers.LastModified != null) cacheCtx.ExtractedLastModified = response.Content.Headers.LastModified.Value.ToString("r");
                 }
 
-                var responseBytes = Task.Run(() => response.Content.ReadAsByteArrayAsync()).GetAwaiter().GetResult();
+                var responseBytes = Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(
+                    response.Content, MaxJsFetchBytes, reqCts.Token).GetAwaiter().GetResult();
                 var mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "";
                 string bodyText;
-                if (mediaType.Contains("protobuf") || mediaType.Contains("octet-stream") || responseBytes.Contains((byte)0))
+                if (mediaType.Contains("protobuf") || mediaType.Contains("octet-stream") || Array.IndexOf(responseBytes, (byte)0) >= 0)
                 {
                     bodyText = System.Text.Encoding.Latin1.GetString(responseBytes);
                 }
@@ -612,12 +690,65 @@ namespace Yomic.Core.Sources
                     {
                         Name = name,
                         Url = GetSafeString(obj, "url"),
-                        DateUpload = (long)GetSafeNumber(obj, "dateUpload"),
+                        DateUpload = ParseChapterDateUpload(obj),
                         ChapterNumber = chapterNumber
                     });
                 }
             }
             return list;
+        }
+
+        private static string DecodeBase64Latin1(string? input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+            string cleaned = input.Trim().Replace('-', '+').Replace('_', '/');
+            int mod = cleaned.Length % 4;
+            if (mod == 2) cleaned += "==";
+            else if (mod == 3) cleaned += "=";
+            byte[] bytes = Convert.FromBase64String(cleaned);
+            return System.Text.Encoding.Latin1.GetString(bytes);
+        }
+
+        private static string EncodeBase64Latin1(string? input)
+        {
+            if (string.IsNullOrEmpty(input)) return string.Empty;
+            byte[] bytes = System.Text.Encoding.Latin1.GetBytes(input);
+            return Convert.ToBase64String(bytes);
+        }
+
+        private static long ParseChapterDateUpload(ObjectInstance obj)
+        {
+            long numeric = (long)GetSafeNumber(obj, "dateUpload");
+            if (numeric > 0)
+            {
+                // Normalize Unix seconds (< 10^11) to milliseconds
+                return numeric < 100_000_000_000L ? numeric * 1000L : numeric;
+            }
+
+            foreach (var fallbackKey in new[] { "uploadDate", "dateUploaded" })
+            {
+                var val = obj.Get(fallbackKey);
+                if (val.IsNumber())
+                {
+                    long num = (long)val.AsNumber();
+                    if (num > 0) return num < 100_000_000_000L ? num * 1000L : num;
+                }
+                else if (val.IsString())
+                {
+                    var raw = val.AsString().Trim();
+                    if (string.IsNullOrEmpty(raw)) continue;
+                    if (long.TryParse(raw, out long rawNum) && rawNum > 0)
+                    {
+                        return rawNum < 100_000_000_000L ? rawNum * 1000L : rawNum;
+                    }
+                    if (DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var dto))
+                    {
+                        return dto.ToUnixTimeMilliseconds();
+                    }
+                }
+            }
+
+            return 0;
         }
 
         public override async Task<List<Chapter>> GetChapterListAsync(string mangaUrl)
@@ -632,12 +763,11 @@ namespace Yomic.Core.Sources
             });
         }
 
-        private bool _lastFetchWasPartial = false;
-
         public override async Task<List<Chapter>> GetLatestChaptersAsync(string mangaUrl)
         {
             return await ExecuteJsAsync(engine =>
             {
+                var ctx = _asyncCacheContext.Value;
                 var hasMethod = engine.Invoke("__hasMethod", "getLatestChapters").AsBoolean();
                 if (hasMethod)
                 {
@@ -645,12 +775,12 @@ namespace Yomic.Core.Sources
                     var latest = ParseChapterListFromJs(jsResult);
                     if (latest.Count > 0)
                     {
-                        _lastFetchWasPartial = true;
+                        if (ctx != null) ctx.WasPartial = true;
                         return latest;
                     }
                 }
 
-                _lastFetchWasPartial = false;
+                if (ctx != null) ctx.WasPartial = false;
                 var hasStandard = engine.Invoke("__hasMethod", "getChapterList").AsBoolean();
                 if (!hasStandard) return new List<Chapter>();
 
@@ -661,18 +791,19 @@ namespace Yomic.Core.Sources
 
         public override async Task<ChapterListCacheResult> GetChapterListWithCacheAsync(string mangaUrl, string? eTag, string? lastModified)
         {
-            _currentCacheETag = eTag;
-            _currentCacheLastModified = lastModified;
-            _lastExtractedETag = null;
-            _lastExtractedLastModified = null;
-            _lastFetchWas304 = false;
-            _lastFetchWasPartial = false;
+            var ctx = new ChapterCacheContext
+            {
+                RequestETag = eTag,
+                RequestLastModified = lastModified
+            };
+            var prev = _asyncCacheContext.Value;
+            _asyncCacheContext.Value = ctx;
 
             try
             {
                 var chapters = await GetLatestChaptersAsync(mangaUrl);
 
-                if (_lastFetchWas304)
+                if (ctx.Was304)
                 {
                     return new ChapterListCacheResult { IsNotModified = true };
                 }
@@ -680,20 +811,15 @@ namespace Yomic.Core.Sources
                 return new ChapterListCacheResult
                 {
                     IsNotModified = false,
-                    IsPartial = _lastFetchWasPartial,
+                    IsPartial = ctx.WasPartial,
                     Chapters = chapters,
-                    ETag = _lastExtractedETag,
-                    LastModified = _lastExtractedLastModified
+                    ETag = ctx.ExtractedETag,
+                    LastModified = ctx.ExtractedLastModified
                 };
             }
             finally
             {
-                _currentCacheETag = null;
-                _currentCacheLastModified = null;
-                _lastExtractedETag = null;
-                _lastExtractedLastModified = null;
-                _lastFetchWas304 = false;
-                _lastFetchWasPartial = false;
+                _asyncCacheContext.Value = prev;
             }
         }
 
@@ -827,6 +953,15 @@ namespace Yomic.Core.Sources
             }
             
             return -1;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                while (_enginePool.TryDequeue(out _)) { }
+            }
+            base.Dispose(disposing);
         }
     }
 }

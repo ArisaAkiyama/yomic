@@ -56,7 +56,7 @@ var source = {
         let url = this.baseUrl + "/api/manga.php?page=" + p + "&limit=20&mode=all&sort=updated";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: p };
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let list = json.items || [];
         let items = list.map(item => ({
             title: item.title,
@@ -72,7 +72,7 @@ var source = {
         let url = this.baseUrl + "/api/manga.php?page=" + p + "&limit=20&mode=all&q=" + encodeURIComponent(query || "");
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: p };
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let list = json.items || [];
         let items = list.map(item => ({
             title: item.title,
@@ -166,7 +166,7 @@ var source = {
     },
 
     getPageList: function(url) {
-        let fullUrl = url.startsWith("http") ? url : this.baseUrl + url;
+        let fullUrl = !url ? this.baseUrl : (url.startsWith("http") ? url : (url.startsWith("//") ? "https:" + url : (this.baseUrl + (url.startsWith("/") ? url : "/" + url))));
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) return [];
         let doc = Html.parse(res.body, fullUrl);

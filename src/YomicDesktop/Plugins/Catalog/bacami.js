@@ -95,7 +95,7 @@ var source = {
     },
 
     getMangaDetails: function(url) {
-        let fullUrl = url.startsWith("http") ? url : this.baseUrl + url;
+        let fullUrl = !url ? this.baseUrl : (url.startsWith("http") ? url : (url.startsWith("//") ? "https:" + url : (this.baseUrl + (url.startsWith("/") ? url : "/" + url))));
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
@@ -146,7 +146,7 @@ var source = {
     },
 
     getChapterList: function(url) {
-        let fullUrl = url.startsWith("http") ? url : this.baseUrl + url;
+        let fullUrl = !url ? this.baseUrl : (url.startsWith("http") ? url : (url.startsWith("//") ? "https:" + url : (this.baseUrl + (url.startsWith("/") ? url : "/" + url))));
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) return [];
         let doc = Html.parse(res.body, fullUrl);
@@ -170,7 +170,7 @@ var source = {
     },
 
     getPageList: function(url) {
-        let fullUrl = url.startsWith("http") ? url : this.baseUrl + url;
+        let fullUrl = !url ? this.baseUrl : (url.startsWith("http") ? url : (url.startsWith("//") ? "https:" + url : (this.baseUrl + (url.startsWith("/") ? url : "/" + url))));
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) return [];
         let match = res.body.match(/imageUrls:\s*(\[[^\]]+\])/);

@@ -8,11 +8,13 @@ using System.Linq;
 
 namespace Yomic.Core.Services
 {
-    public class SettingsService
+    public class SettingsService : IDisposable
     {
         private readonly string _settingsFilePath;
         private System.Threading.Timer? _saveTimer;
         private readonly object _saveLock = new();
+        private bool _isDirty;
+        private bool _isDisposed;
 
         public bool IsDarkMode { get; set; } = true;
         
@@ -128,15 +130,18 @@ namespace Yomic.Core.Services
         public string CustomHotkeysJson { get; set; } = "";
 
         public SettingsService()
+            : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Yomic", "settings.json"))
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var appDir = Path.Combine(appData, "Yomic");
-            if (!Directory.Exists(appDir))
+        }
+
+        internal SettingsService(string settingsFilePath)
+        {
+            var dir = Path.GetDirectoryName(settingsFilePath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             {
-                Directory.CreateDirectory(appDir);
+                Directory.CreateDirectory(dir);
             }
-            _settingsFilePath = Path.Combine(appDir, "settings.json");
-            
+            _settingsFilePath = settingsFilePath;
             Load();
         }
 
@@ -166,7 +171,7 @@ namespace Yomic.Core.Services
                         ReaderPerformanceMode = settings.ReaderPerformanceMode;
                         EnableImageOptimization = settings.EnableImageOptimization;
                         EnableAutoCropBorders = settings.EnableAutoCropBorders;
-                        MaxImageDimension = settings.MaxImageDimension > 0 ? settings.MaxImageDimension : 2160;
+                        MaxImageDimension = settings.MaxImageDimension >= 0 ? settings.MaxImageDimension : 2160;
                         EnableImageSharpening = settings.EnableImageSharpening;
                         UseSmartUpdate = settings.UseSmartUpdate;
                         LibraryIsListView = settings.LibraryIsListView;
@@ -212,11 +217,102 @@ namespace Yomic.Core.Services
 
         public void Reload()
         {
+            bool prevOffline, nextOffline;
+            bool prevNsfw, nextNsfw;
+            int prevInterval, nextInterval;
+            string prevSpeed, nextSpeed;
+
             lock (_saveLock)
             {
                 _saveTimer?.Dispose();
                 _saveTimer = null;
-                Load();
+                _isDirty = false;
+
+                prevOffline = _isOfflineMode;
+                prevNsfw = _showNsfwSources;
+                prevInterval = _sourceStatusRefreshIntervalMinutes;
+                prevSpeed = _downloadSpeedMode;
+
+                LoadWithoutEvents();
+
+                nextOffline = _isOfflineMode;
+                nextNsfw = _showNsfwSources;
+                nextInterval = _sourceStatusRefreshIntervalMinutes;
+                nextSpeed = _downloadSpeedMode;
+            }
+
+            // Fire events strictly OUTSIDE _saveLock to avoid AB-BA deadlock with subscribers calling Save()
+            if (prevOffline != nextOffline) OfflineModeChanged?.Invoke(nextOffline);
+            if (prevNsfw != nextNsfw) ShowNsfwSourcesChanged?.Invoke(nextNsfw);
+            if (prevInterval != nextInterval) SourceStatusRefreshIntervalMinutesChanged?.Invoke(nextInterval);
+            if (prevSpeed != nextSpeed) DownloadSpeedModeChanged?.Invoke(nextSpeed);
+        }
+
+        private void LoadWithoutEvents()
+        {
+            try
+            {
+                if (!File.Exists(_settingsFilePath)) return;
+                var json = File.ReadAllText(_settingsFilePath);
+                var settings = JsonSerializer.Deserialize<SettingsModel>(json);
+                if (settings == null) return;
+
+                IsDarkMode = settings.IsDarkMode;
+                _isOfflineMode = settings.IsOfflineMode;
+                SecureScreen = settings.SecureScreen;
+                UpdateOnStart = settings.UpdateOnStart;
+                AutoUpdateIntervalHours = settings.AutoUpdateIntervalHours;
+                CheckAppUpdateOnStart = settings.CheckAppUpdateOnStart;
+                IsFirstRun = settings.IsFirstRun;
+                LibrarySortMode = settings.LibrarySortMode;
+                _showNsfwSources = settings.ShowNsfwSources;
+                DnsOverHttpsProvider = settings.DnsOverHttpsProvider;
+                PreloadNextChapter = settings.PreloadNextChapter;
+                MaxCacheSizeMb = settings.MaxCacheSizeMb;
+                ReaderPerformanceMode = settings.ReaderPerformanceMode;
+                EnableImageOptimization = settings.EnableImageOptimization;
+                EnableAutoCropBorders = settings.EnableAutoCropBorders;
+                MaxImageDimension = settings.MaxImageDimension >= 0 ? settings.MaxImageDimension : 2160;
+                EnableImageSharpening = settings.EnableImageSharpening;
+                UseSmartUpdate = settings.UseSmartUpdate;
+                LibraryIsListView = settings.LibraryIsListView;
+                AutoDownloadNextChapter = settings.AutoDownloadNextChapter;
+                SkipFilteredChapters = settings.SkipFilteredChapters;
+                SaveDownloadsAsCbz = settings.SaveDownloadsAsCbz;
+                AutoDeleteAfterRead = settings.AutoDeleteAfterRead;
+                _downloadSpeedMode = string.Equals(settings.DownloadSpeedMode, "safe", StringComparison.OrdinalIgnoreCase) ? "safe"
+                    : string.Equals(settings.DownloadSpeedMode, "max", StringComparison.OrdinalIgnoreCase) ? "max"
+                    : "fast";
+                LastBackupTime = settings.LastBackupTime ?? "";
+                LastBackupSize = settings.LastBackupSize ?? "";
+                MangaDexLanguage = settings.MangaDexLanguage ?? "en";
+                DefaultReaderMode = settings.DefaultReaderMode;
+                ReadingDirection = string.IsNullOrWhiteSpace(settings.ReadingDirection) ? "ltr" : settings.ReadingDirection;
+                ReaderFitMode = string.IsNullOrWhiteSpace(settings.ReaderFitMode) ? "fit-width" : settings.ReaderFitMode;
+                AutoDarkReader = settings.AutoDarkReader;
+                ShowUnreadBadges = settings.ShowUnreadBadges;
+                AutoSyncTracker = settings.AutoSyncTracker;
+                AppLanguage = string.IsNullOrWhiteSpace(settings.AppLanguage) ? "id" : settings.AppLanguage;
+                LastFeedbackDate = settings.LastFeedbackDate ?? "";
+                FeedbackWebhookUrl = string.IsNullOrWhiteSpace(settings.FeedbackWebhookUrl) ||
+                                     settings.FeedbackWebhookUrl.Contains("AKfycby_qcMGyle2jYmxGmhf3j_L1VcYsyVcy8iBdxfnXzAf5zruVKttJ3FHe8w52XOUVNHi", StringComparison.OrdinalIgnoreCase) ||
+                                     settings.FeedbackWebhookUrl.Contains("AKfycbwuIPT0bwyrpQoIvcrEdyfnaDSSI98UjZSzFnd1EtzJUVIVW45RTmsPLHztJ5wGRf3tkg", StringComparison.OrdinalIgnoreCase)
+                    ? DefaultFeedbackWebhookUrl
+                    : settings.FeedbackWebhookUrl;
+                MalAccessToken = UnprotectSecret(settings.MalAccessToken);
+                MalRefreshToken = UnprotectSecret(settings.MalRefreshToken);
+                MalTokenExpiresAt = settings.MalTokenExpiresAt;
+                MalUsername = settings.MalUsername ?? "";
+                LastReadAnnouncementId = settings.LastReadAnnouncementId ?? "";
+                CustomHotkeysJson = settings.CustomHotkeysJson ?? "";
+                if (settings.SourceStatusRefreshIntervalMinutes >= 0)
+                {
+                    _sourceStatusRefreshIntervalMinutes = settings.SourceStatusRefreshIntervalMinutes;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Error("Settings", "Error reloading settings", ex);
             }
         }
 
@@ -226,6 +322,7 @@ namespace Yomic.Core.Services
             {
                 _saveTimer?.Dispose();
                 _saveTimer = null;
+                _isDirty = false;
                 SaveInternal();
             }
         }
@@ -234,11 +331,15 @@ namespace Yomic.Core.Services
         {
             lock (_saveLock)
             {
+                if (_isDisposed) return;
+                _isDirty = true;
                 _saveTimer?.Dispose();
                 _saveTimer = new System.Threading.Timer(_ => 
                 {
                     lock (_saveLock)
                     {
+                        if (!_isDirty) return;
+                        _isDirty = false;
                         SaveInternal();
                     }
                 }, null, 300, System.Threading.Timeout.Infinite);
@@ -297,7 +398,19 @@ namespace Yomic.Core.Services
                 };
 
                 var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(_settingsFilePath, json);
+                var tempPath = $"{_settingsFilePath}.{Guid.NewGuid():N}.tmp";
+                try
+                {
+                    File.WriteAllText(tempPath, json);
+                    File.Move(tempPath, _settingsFilePath, overwrite: true);
+                }
+                finally
+                {
+                    if (File.Exists(tempPath))
+                    {
+                        try { File.Delete(tempPath); } catch { }
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -307,57 +420,89 @@ namespace Yomic.Core.Services
 
         public void Reset()
         {
-            try
+            bool prevOffline, nextOffline;
+            bool prevNsfw, nextNsfw;
+            int prevInterval, nextInterval;
+            string prevSpeed, nextSpeed;
+
+            lock (_saveLock)
             {
-                if (File.Exists(_settingsFilePath))
+                prevOffline = _isOfflineMode;
+                prevNsfw = _showNsfwSources;
+                prevInterval = _sourceStatusRefreshIntervalMinutes;
+                prevSpeed = _downloadSpeedMode;
+
+                try
                 {
-                    File.Delete(_settingsFilePath);
+                    _saveTimer?.Dispose();
+                    _saveTimer = null;
+                    _isDirty = false;
+
+                    if (File.Exists(_settingsFilePath))
+                    {
+                        File.Delete(_settingsFilePath);
+                    }
+
+                    // Reset ALL properties cleanly to default (mutate backing fields under lock, fire events outside lock)
+                    IsDarkMode = true;
+                    _isOfflineMode = false;
+                    SecureScreen = false;
+                    UpdateOnStart = false;
+                    AutoUpdateIntervalHours = 12;
+                    CheckAppUpdateOnStart = true;
+                    IsFirstRun = true;
+                    LibrarySortMode = 4;
+                    _showNsfwSources = false;
+                    DnsOverHttpsProvider = 2;
+                    PreloadNextChapter = true;
+                    MaxCacheSizeMb = 500;
+                    ReaderPerformanceMode = false;
+                    EnableImageOptimization = true;
+                    EnableAutoCropBorders = false;
+                    MaxImageDimension = 2160;
+                    EnableImageSharpening = false;
+                    UseSmartUpdate = true;
+                    LibraryIsListView = false;
+                    AutoDownloadNextChapter = false;
+                    SkipFilteredChapters = false;
+                    SaveDownloadsAsCbz = false;
+                    AutoDeleteAfterRead = false;
+                    _downloadSpeedMode = "fast";
+                    LastBackupTime = "";
+                    LastBackupSize = "";
+                    MangaDexLanguage = "en";
+                    DefaultReaderMode = 0;
+                    ReadingDirection = "ltr";
+                    ReaderFitMode = "fit-width";
+                    AutoDarkReader = true;
+                    ShowUnreadBadges = true;
+                    AutoSyncTracker = true;
+                    AppLanguage = "id";
+                    LastFeedbackDate = "";
+                    FeedbackWebhookUrl = DefaultFeedbackWebhookUrl;
+                    _sourceStatusRefreshIntervalMinutes = 30;
+                    MalAccessToken = "";
+                    MalRefreshToken = "";
+                    MalTokenExpiresAt = 0;
+                    MalUsername = "";
+                    LastReadAnnouncementId = "";
+                    CustomHotkeysJson = "";
+                }
+                catch (Exception ex)
+                {
+                    LogService.Error("Settings", "Error resetting settings", ex);
                 }
 
-                // Reset properties to default
-                IsDarkMode = true;
-                IsOfflineMode = false;
-                SecureScreen = false;
-                UpdateOnStart = false;
-                AutoUpdateIntervalHours = 12;
-                CheckAppUpdateOnStart = true;
-                IsFirstRun = true;
-                LibrarySortMode = 0;
-                ShowNsfwSources = false;
-                DnsOverHttpsProvider = 2;
-                PreloadNextChapter = true;
-                MaxCacheSizeMb = 500;
-                ReaderPerformanceMode = false;
-                UseSmartUpdate = true;
-                LibraryIsListView = false;
-                AutoDownloadNextChapter = false;
-                SkipFilteredChapters = false;
-                SaveDownloadsAsCbz = false;
-                AutoDeleteAfterRead = false;
-                DownloadSpeedMode = "fast";
-                LastBackupTime = "";
-                LastBackupSize = "";
-                DefaultReaderMode = 0;
-                ReadingDirection = "ltr";
-                ReaderFitMode = "fit-width";
-                AutoDarkReader = true;
-                ShowUnreadBadges = true;
-                AutoSyncTracker = true;
-                AppLanguage = "id";
-                LastFeedbackDate = "";
-                FeedbackWebhookUrl = DefaultFeedbackWebhookUrl;
-                SourceStatusRefreshIntervalMinutes = 30;
-                MalAccessToken = "";
-                MalRefreshToken = "";
-                MalTokenExpiresAt = 0;
-                MalUsername = "";
-                LastReadAnnouncementId = "";
-                CustomHotkeysJson = "";
+                nextOffline = _isOfflineMode;
+                nextNsfw = _showNsfwSources;
+                nextInterval = _sourceStatusRefreshIntervalMinutes;
+                nextSpeed = _downloadSpeedMode;
             }
-            catch (Exception ex)
-            {
-                LogService.Error("Settings", "Error resetting settings", ex);
-            }
+
+            if (prevOffline != nextOffline) OfflineModeChanged?.Invoke(nextOffline);
+            if (prevNsfw != nextNsfw) ShowNsfwSourcesChanged?.Invoke(nextNsfw);
+            if (prevInterval != nextInterval) SourceStatusRefreshIntervalMinutesChanged?.Invoke(nextInterval);
+            if (prevSpeed != nextSpeed) DownloadSpeedModeChanged?.Invoke(nextSpeed);
         }
 
         private const string DpapiPrefix = "dpapi:";
@@ -419,13 +564,22 @@ namespace Yomic.Core.Services
                         if (outBlob.pbData != IntPtr.Zero) LocalFree(outBlob.pbData);
                     }
                 }
+                LogService.Error("SettingsService", $"DPAPI CryptProtectData failed (Win32={Marshal.GetLastWin32Error()}). Refusing plaintext secret storage.");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogService.Error("SettingsService", "DPAPI ProtectSecret failed. Refusing plaintext secret storage.", ex);
+            }
             finally
             {
-                Marshal.FreeHGlobal(inPtr);
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(inputBytes);
+                if (inPtr != IntPtr.Zero)
+                {
+                    for (int i = 0; i < inputBytes.Length; i++) Marshal.WriteByte(inPtr, i, 0);
+                    Marshal.FreeHGlobal(inPtr);
+                }
             }
-            return plainText;
+            return string.Empty;
         }
 
         private static string UnprotectSecret(string? storedValue)
@@ -443,15 +597,21 @@ namespace Yomic.Core.Services
                     var inBlob = new DATA_BLOB { cbData = cipherBytes.Length, pbData = inPtr };
                     if (CryptUnprotectData(ref inBlob, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, CRYPTPROTECT_UI_FORBIDDEN, out var outBlob))
                     {
+                        byte[]? decrypted = null;
                         try
                         {
-                            byte[] decrypted = new byte[outBlob.cbData];
+                            decrypted = new byte[outBlob.cbData];
                             Marshal.Copy(outBlob.pbData, decrypted, 0, outBlob.cbData);
                             return Encoding.UTF8.GetString(decrypted);
                         }
                         finally
                         {
-                            if (outBlob.pbData != IntPtr.Zero) LocalFree(outBlob.pbData);
+                            if (decrypted != null) System.Security.Cryptography.CryptographicOperations.ZeroMemory(decrypted);
+                            if (outBlob.pbData != IntPtr.Zero)
+                            {
+                                for (int i = 0; i < outBlob.cbData; i++) Marshal.WriteByte(outBlob.pbData, i, 0);
+                                LocalFree(outBlob.pbData);
+                            }
                         }
                     }
                 }
@@ -467,14 +627,14 @@ namespace Yomic.Core.Services
         // Helper class for serialization
         private class SettingsModel
         {
-            public bool IsDarkMode { get; set; }
+            public bool IsDarkMode { get; set; } = true;
             public bool IsOfflineMode { get; set; }
             public bool SecureScreen { get; set; }
             public bool UpdateOnStart { get; set; }
             public int AutoUpdateIntervalHours { get; set; } = 12;
             public bool CheckAppUpdateOnStart { get; set; } = true;
-            public bool IsFirstRun { get; set; }
-            public int LibrarySortMode { get; set; }
+            public bool IsFirstRun { get; set; } = true;
+            public int LibrarySortMode { get; set; } = 4;
             public bool ShowNsfwSources { get; set; }
             public int DnsOverHttpsProvider { get; set; } = 2;
             public bool PreloadNextChapter { get; set; } = true;
@@ -513,6 +673,24 @@ namespace Yomic.Core.Services
 
             public string LastReadAnnouncementId { get; set; } = "";
         public string CustomHotkeysJson { get; set; } = "";
+        }
+
+        public void Dispose()
+        {
+            lock (_saveLock)
+            {
+                if (_isDisposed) return;
+                _isDisposed = true;
+                _saveTimer?.Dispose();
+                _saveTimer = null;
+                // Only flush to disk if settings were actually modified on this instance
+                // (prevents read-only throwaway instances from overwriting live settings.json with stale data!)
+                if (_isDirty)
+                {
+                    _isDirty = false;
+                    SaveInternal();
+                }
+            }
         }
     }
 }

@@ -65,7 +65,7 @@ var source = {
         let res = this.requestUrl(url, { "Accept": "application/json" });
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: page || 1 };
 
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let data = json.data || {};
         let list = data.mangas || data.project || [];
         let items = [];
@@ -97,7 +97,7 @@ var source = {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
         }
 
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let d = json.data || {};
         let title = d.title || slug;
         let thumb = d.cover || "";
@@ -131,7 +131,7 @@ var source = {
         let res = this.requestUrl(apiUrl, { "Accept": "application/json" });
         if (!res || res.status !== 200 || !res.body) return [];
 
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let d = json.data || {};
         let chs = (d.chapters && d.chapters.chapters) ? d.chapters.chapters : (d.chapters || []);
         let chapters = [];
@@ -149,7 +149,7 @@ var source = {
     },
 
     getPageList: function(url) {
-        let fullUrl = url.startsWith("http") ? url : this.baseUrl + url;
+        let fullUrl = !url ? this.baseUrl : (url.startsWith("http") ? url : (url.startsWith("//") ? "https:" + url : (this.baseUrl + (url.startsWith("/") ? url : "/" + url))));
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) return [];
 

@@ -1,0 +1,49 @@
+name: Yomic Desktop CI (Windows)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'src/YomicDesktop/**'
+      - 'tests/**'
+      - 'Installer/**'
+      - 'YomicV2.sln'
+      - '.github/workflows/ci-desktop.yml'
+  pull_request:
+    paths:
+      - 'src/YomicDesktop/**'
+      - 'tests/**'
+      - 'Installer/**'
+      - 'YomicV2.sln'
+      - '.github/workflows/ci-desktop.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Restore .NET dependencies
+        run: dotnet restore YomicV2.sln
+
+      - name: Build & Run C# xUnit Tests (includes 102-plugin Jint load & SQLite FK/Index tests)
+        run: dotnet test tests/YomicDesktop.Tests/YomicDesktop.Tests.csproj --no-restore --configuration Release --verbosity normal
+
+      - name: Run WebUI TypeScript Automated Tests (node:test)
+        run: node --test tests/WebUI.Tests/webui.test.mjs
+
+      - name: Build Yomic Desktop (Release win-x64, treat warnings check)
+        run: dotnet build src/YomicDesktop/YomicDesktop.csproj -c Release --no-restore -v minimal

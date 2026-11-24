@@ -28,6 +28,10 @@ namespace Yomic.Core.Services
         
         private Timer? _pollingTimer;
         private readonly System.Net.Http.HttpClient _connectivityClient;
+        private readonly NetworkAvailabilityChangedEventHandler _availabilityChangedHandler;
+        private readonly NetworkAddressChangedEventHandler _addressChangedHandler;
+        private readonly Action<bool> _offlineModeChangedHandler;
+        private volatile bool _isDisposed;
         
         // Debounce/Grace period settings
         private int _consecutiveFailures = 0;
@@ -51,9 +55,10 @@ namespace Yomic.Core.Services
             // Initial check
             _ = CheckConnectivityAsync();
 
-            // Hook into OS network availability & address changes for immediate detection
-            NetworkChange.NetworkAvailabilityChanged += (s, e) =>
+            // Hook into OS network availability & address changes with named delegates for proper Dispose cleanup
+            _availabilityChangedHandler = (s, e) =>
             {
+                if (_isDisposed) return;
                 if (!e.IsAvailable)
                 {
                     SetOnlineStatus(false);
@@ -63,23 +68,27 @@ namespace Yomic.Core.Services
                     _ = CheckConnectivityAsync();
                 }
             };
-
-            NetworkChange.NetworkAddressChanged += (s, e) =>
+            _addressChangedHandler = (s, e) =>
             {
+                if (_isDisposed) return;
+                _ = CheckConnectivityAsync();
+            };
+            _offlineModeChangedHandler = (isOffline) =>
+            {
+                if (_isDisposed) return;
                 _ = CheckConnectivityAsync();
             };
 
-            // Hook into Settings Offline Mode
-            _settingsService.OfflineModeChanged += (isOffline) => 
-            {
-                _ = CheckConnectivityAsync();
-            };
+            NetworkChange.NetworkAvailabilityChanged += _availabilityChangedHandler;
+            NetworkChange.NetworkAddressChanged += _addressChangedHandler;
+            _settingsService.OfflineModeChanged += _offlineModeChangedHandler;
             
-            // Start polling timer
-            _pollingTimer = new Timer(async _ => 
-            {
-                await CheckConnectivityAsync();
-            }, null, TimeSpan.FromSeconds(PollingIntervalSeconds), TimeSpan.FromSeconds(PollingIntervalSeconds));
+            // Start polling timer (avoid async void callback)
+            _pollingTimer = new Timer(
+                _ => { if (!_isDisposed) _ = Task.Run(CheckConnectivityAsync); },
+                null,
+                TimeSpan.FromSeconds(PollingIntervalSeconds),
+                TimeSpan.FromSeconds(PollingIntervalSeconds));
         }
 
         // Fallback constructor for designer
@@ -263,38 +272,31 @@ namespace Yomic.Core.Services
         }
 
         /// <summary>
-        /// Creates an HttpClient with DNS-over-HTTPS (DoH) support to bypass ISP blocking.
-        /// Uses SOCKS5 proxy when sing-box VPN is running.
+        /// Creates an HttpClient with DNS-over-HTTPS (DoH) support and socket-level SSRF protection
+        /// (even when DoH is disabled, private/loopback/metadata IPs are blocked before TCP connect).
+        /// Set <paramref name="useCookies"/> to false for shared cross-site clients (images/downloads/pings)
+        /// to prevent cross-site cookie accumulation and header duplication.
         /// </summary>
-        public System.Net.Http.HttpClient CreateOptimizedHttpClient()
+        public System.Net.Http.HttpClient CreateOptimizedHttpClient(bool useCookies = false)
         {
              if (_settingsService.IsOfflineMode)
              {
                  throw new System.Net.WebException("Application is in Offline Mode.");
              }
 
-             System.Net.Http.HttpMessageHandler handler;
              int dohProvider = _settingsService.DnsOverHttpsProvider;
 
-             if (dohProvider == 0 && OperatingSystem.IsWindows())
+             // Always use SocketsHttpHandler with our SSRF-filtering ConnectCallback (even when dohProvider == 0)
+             // so DNS/302 redirects to 127.0.0.1 / LAN / cloud metadata are blocked regardless of DoH setting.
+             var handler = new System.Net.Http.SocketsHttpHandler
              {
-                 handler = new System.Net.Http.WinHttpHandler
+                 ConnectCallback = async (context, token) =>
                  {
-                     AutomaticDecompression = System.Net.DecompressionMethods.All,
-                     EnableMultipleHttp2Connections = true,
-                     MaxConnectionsPerServer = 32,
-                     SendTimeout = TimeSpan.FromSeconds(60),
-                     ReceiveDataTimeout = TimeSpan.FromSeconds(60)
-                 };
-             }
-             else
-             {
-                 handler = new System.Net.Http.SocketsHttpHandler
-                 {
-                     // Custom connection logic to use DoH resolved IP with fallback and per-attempt timeout
-                     ConnectCallback = async (context, token) =>
+                     if (_settingsService.IsOfflineMode)
                      {
-                         var host = context.DnsEndPoint.Host;
+                         throw new System.Net.WebException("Application is in Offline Mode.");
+                     }
+                     var host = context.DnsEndPoint.Host;
                          var cacheKey = $"{dohProvider}:{host}";
                          List<System.Net.IPAddress> candidateIps;
 
@@ -334,14 +336,15 @@ namespace Yomic.Core.Services
                                  {
                                      try
                                      {
-                                         string dohUrl = string.Format(template, host);
+                                         string dohUrl = string.Format(template, Uri.EscapeDataString(host));
                                          using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, dohUrl);
                                          request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-json"));
 
                                          using var response = await _dohQueryClient.SendAsync(request, token);
                                          if (response.IsSuccessStatusCode)
                                          {
-                                             var json = await response.Content.ReadAsStringAsync(token);
+                                             var jsonBytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(response.Content, 256 * 1024, token);
+                                             var json = System.Text.Encoding.UTF8.GetString(jsonBytes);
                                              var obj = JsonNode.Parse(json);
                                              var answers = obj?["Answer"] as JsonArray;
 
@@ -366,31 +369,53 @@ namespace Yomic.Core.Services
                                      }
                                  }
 
-                                 // Append system DNS addresses as fallback candidates
-                                 try
+                                 // Append system DNS addresses ONLY if DoH yielded no IPs (prevents leaking DNS queries to ISP)
+                                 if (candidateIps.Count == 0)
                                  {
-                                     var hostAddresses = await System.Net.Dns.GetHostAddressesAsync(host, token);
-                                     foreach (var ip in hostAddresses)
+                                     try
                                      {
-                                         if (!candidateIps.Contains(ip))
+                                         var hostAddresses = await System.Net.Dns.GetHostAddressesAsync(host, token);
+                                         foreach (var ip in hostAddresses)
                                          {
-                                             candidateIps.Add(ip);
+                                             if (!candidateIps.Contains(ip))
+                                             {
+                                                 candidateIps.Add(ip);
+                                             }
                                          }
                                      }
+                                     catch { }
                                  }
-                                 catch { }
                              }
 
                              if (candidateIps.Count > 0)
                              {
+                                 if (_dohDnsCache.Count >= 512)
+                                 {
+                                     var nowUtc = DateTime.UtcNow;
+                                     foreach (var k in _dohDnsCache.Keys.ToList())
+                                     {
+                                         if (_dohDnsCache.TryGetValue(k, out var c) && c.ExpiresAt <= nowUtc)
+                                         {
+                                             _dohDnsCache.TryRemove(k, out _);
+                                         }
+                                     }
+                                     if (_dohDnsCache.Count >= 512) _dohDnsCache.Clear();
+                                 }
                                  _dohDnsCache[cacheKey] = (candidateIps, DateTime.UtcNow.AddMinutes(5));
                              }
                          }
 
                          if (candidateIps.Count == 0) throw new Exception($"Could not resolve host: {host}");
 
+                         // SSRF protection at socket level: refuse connecting to loopback/private/link-local/metadata IPs
+                         var publicIps = candidateIps.Where(ip => !Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp(ip)).ToList();
+                         if (publicIps.Count == 0)
+                         {
+                             throw new System.Net.Http.HttpRequestException($"Blocked connection to private/loopback IP for host: {host}");
+                         }
+
                          Exception? lastConnectEx = null;
-                         foreach (var ip in candidateIps)
+                         foreach (var ip in publicIps)
                          {
                              var socket = new System.Net.Sockets.Socket(ip.AddressFamily, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
                              try
@@ -413,34 +438,14 @@ namespace Yomic.Core.Services
                      },
                      SslOptions = new System.Net.Security.SslClientAuthenticationOptions
                      {
-                         RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
-                         {
-                             if (errors == System.Net.Security.SslPolicyErrors.None) return true;
-                             if (cert != null)
-                             {
-                                 var subject = cert.Subject;
-                                 if (subject.Contains("ryzukomik", StringComparison.OrdinalIgnoreCase) ||
-                                     subject.Contains("komikcast", StringComparison.OrdinalIgnoreCase) ||
-                                     subject.Contains("komiku", StringComparison.OrdinalIgnoreCase) ||
-                                     subject.Contains("shinigami", StringComparison.OrdinalIgnoreCase) ||
-                                     subject.Contains("kiryuu", StringComparison.OrdinalIgnoreCase) ||
-                                     subject.Contains("komikindo", StringComparison.OrdinalIgnoreCase) ||
-                                     subject.Contains("mangaku", StringComparison.OrdinalIgnoreCase))
-                                 {
-                                     return true;
-                                 }
-                             }
-                             return false;
-                         },
                          EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13
                      },
                      PooledConnectionLifetime = TimeSpan.FromMinutes(2),
                      MaxConnectionsPerServer = 32,
                      EnableMultipleHttp2Connections = true,
                      AutomaticDecompression = System.Net.DecompressionMethods.All,
-                     UseCookies = true
+                     UseCookies = useCookies
                  };
-             }
             
             var client = new System.Net.Http.HttpClient(handler);
             client.Timeout = TimeSpan.FromSeconds(60);
@@ -467,16 +472,21 @@ namespace Yomic.Core.Services
                 // Flush Windows DNS cache (requires cmd)
                 try
                 {
+                    var ipconfigPath = System.IO.Path.Combine(Environment.SystemDirectory, "ipconfig.exe");
                     var psi = new System.Diagnostics.ProcessStartInfo
                     {
-                        FileName = "ipconfig",
+                        FileName = System.IO.File.Exists(ipconfigPath) ? ipconfigPath : "ipconfig.exe",
                         Arguments = "/flushdns",
                         UseShellExecute = false,
                         CreateNoWindow = true,
-                        RedirectStandardOutput = true
+                        RedirectStandardOutput = false
                     };
                     using var process = System.Diagnostics.Process.Start(psi);
-                    process?.WaitForExit(3000);
+                    if (process != null)
+                    {
+                        using var flushCts = new CancellationTokenSource(3000);
+                        try { await process.WaitForExitAsync(flushCts.Token); } catch { }
+                    }
                     LogService.Info("Network", "DNS cache flushed");
                 }
                 catch (Exception ex)
@@ -510,6 +520,11 @@ namespace Yomic.Core.Services
         public event EventHandler? ConnectionReset;
         public void Dispose()
         {
+            if (_isDisposed) return;
+            _isDisposed = true;
+            try { NetworkChange.NetworkAvailabilityChanged -= _availabilityChangedHandler; } catch { }
+            try { NetworkChange.NetworkAddressChanged -= _addressChangedHandler; } catch { }
+            try { _settingsService.OfflineModeChanged -= _offlineModeChangedHandler; } catch { }
             _pollingTimer?.Dispose();
             _connectivityClient?.Dispose();
         }

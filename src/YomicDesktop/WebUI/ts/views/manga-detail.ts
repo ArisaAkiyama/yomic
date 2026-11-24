@@ -4,7 +4,8 @@ import {
   buildComicPageSvg,
   buildMangaCoverSvg,
   DEFAULT_APP_SETTINGS,
-  escapeXml
+  escapeXml,
+  sanitizeImageSrc
 } from '../mock-data.js';
 import {
   ActivityUpdateItem,
@@ -192,7 +193,7 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
     <div class="v1-detail-wrap">
       <!-- AMBIENT BACKGROUND -->
       <div class="v1-ambient-bg">
-        <img class="v1-ambient-img" src="${coverSrc}" alt="" onerror="this.onerror=null;this.src='${fallbackSvg}';" />
+        <img class="v1-ambient-img" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="" data-fallback-src="${escapeXml(fallbackSvg)}" />
         <div class="v1-ambient-black-overlay"></div>
         <div class="v1-ambient-fade-gradient"></div>
       </div>
@@ -209,32 +210,32 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
       <div class="v1-header-grid">
         <!-- Left Column: Sharp Cover Image -->
         <div class="v1-cover-border">
-          <img class="v1-cover-img" src="${coverSrc}" alt="${manga.title}" onerror="this.onerror=null;this.src='${fallbackSvg}';" />
+          <img class="v1-cover-img" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(manga.title)}" data-fallback-src="${escapeXml(fallbackSvg)}" />
         </div>
         <!-- Right Column: Title, Vertical Meta Stack, 5-Col Action Grid, Genres, Expandable Synopsis -->
         <div class="v1-info-col">
           <div class="v1-title-row">
-            <h2 class="v1-manga-title">${manga.title}</h2>
+            <h2 class="v1-manga-title">${escapeXml(manga.title)}</h2>
           </div>
           <!-- Author, Status, Source Vertical Stack -->
           <div class="v1-meta-stack">
             <!-- Author -->
             <div class="v1-meta-row">
               ${getIconSvg('user-line', { size: 15 })}
-              <span>${authorDisplay}</span>
+              <span>${escapeXml(authorDisplay)}</span>
             </div>
             <!-- Status with Timer Icon -->
             <div class="v1-meta-row" style="color:${statusColor};">
               ${getIconSvg('time-line', { size: 15, color: statusColor })}
-              <span>${statusText}</span>
+              <span>${escapeXml(statusText)}</span>
             </div>
             <!-- Source Info -->
             <div class="v1-meta-row">
               ${(() => {
                 const matched = this.extensions.find((e) => String(e.sourceId) === String(manga.sourceId) || e.name.toLowerCase() === manga.sourceName.toLowerCase());
-                return matched ? this.buildSourceLogoHtml(matched, 18) : `<span class="v1-source-badge">${manga.sourceName.slice(0, 2).toUpperCase()}</span>`;
+                return matched ? this.buildSourceLogoHtml(matched, 18) : `<span class="v1-source-badge">${escapeXml(manga.sourceName.slice(0, 2).toUpperCase())}</span>`;
               })()}
-              <span>${manga.sourceName}</span>
+              <span>${escapeXml(manga.sourceName)}</span>
             </div>
           </div>
           <!-- Action Buttons (5 Columns matching Mobile Image 2: Di Pustaka, Lacak, Browser, Unduh, Segarkan) -->
@@ -267,12 +268,12 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
           </div>
           <!-- GENRES WrapPanel (Below Action Grid, Above Synopsis matching Image 2) -->
           <div class="v1-genres-wrap">
-            ${manga.genres.map((g) => `<span class="v1-genre-pill">${g}</span>`).join('')}
+            ${manga.genres.map((g) => `<span class="v1-genre-pill">${escapeXml(g)}</span>`).join('')}
           </div>
           <!-- Description / Synopsis -->
           <div class="v1-synopsis-heading">${this.l('Sinopsis', 'Synopsis')}</div>
           <div class="v1-synopsis-body ${this.isSynopsisExpanded ? '' : 'collapsed'}">
-            ${manga.synopsis}
+            ${escapeXml(manga.synopsis)}
           </div>
           <button id="btnToggleSynopsis" class="v1-synopsis-toggle" title="${escapeXml(this.isSynopsisExpanded ? this.l('Ciutkan Sinopsis', 'Collapse Synopsis') : this.l('Perluas Sinopsis', 'Expand Synopsis'))}" aria-label="${escapeXml(this.l('Perluas atau ciutkan sinopsis', 'Expand or collapse synopsis'))}">
             ${getIconSvg(this.isSynopsisExpanded ? 'chevron-up' : 'chevron-down', { size: 20 })}
@@ -290,37 +291,6 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
           <button id="btnToggleFilterFlyout" class="v1-chapter-ctrl-btn ${this.detailChapterFilter !== 'all' ? 'has-filter' : ''}" title="${escapeXml(this.l('Filter Chapter', 'Filter Chapters'))}" aria-label="${escapeXml(this.l('Filter Chapter', 'Filter Chapters'))}">
             ${getIconSvg('filter', { size: 16 })}
           </button>
-          <!-- Chapter Filter Centered Modal -->
-          <div id="chapterFilterModalBackdrop" class="v1-mal-backdrop ${this.isChapterFilterFlyoutOpen ? 'open' : ''}">
-            <div class="v1-setting-select-modal v1-unified-filter-dialog" role="dialog" aria-modal="true" aria-label="${escapeXml(this.l('Filter Chapter', 'Filter Chapters'))}">
-              <div class="v1-unified-filter-head">
-                <h3 class="v1-setting-select-title">${this.l('Filter Chapter', 'Filter Chapters')}</h3>
-                <button type="button" id="btnCloseChapterFilterModal" class="v1-unified-filter-close" aria-label="${escapeXml(this.t('modal.close'))}">
-                  ${getIconSvg('close', { size: 18 })}
-                </button>
-              </div>
-              <div class="v1-setting-select-list" role="listbox">
-                <button type="button" class="v1-setting-select-option ${this.detailChapterFilter === 'all' ? 'selected' : ''}" data-ch-filter="all" role="option" aria-selected="${this.detailChapterFilter === 'all' ? 'true' : 'false'}">
-                  <span class="v1-setting-select-check">
-                    ${this.detailChapterFilter === 'all' ? getIconSvg('check', { size: 16, strokeWidth: 2.4 }) : ''}
-                  </span>
-                  <span class="v1-setting-select-label">${this.l('Semua Bab', 'All Chapters')}</span>
-                </button>
-                <button type="button" class="v1-setting-select-option ${this.detailChapterFilter === 'unread' ? 'selected' : ''}" data-ch-filter="unread" role="option" aria-selected="${this.detailChapterFilter === 'unread' ? 'true' : 'false'}">
-                  <span class="v1-setting-select-check">
-                    ${this.detailChapterFilter === 'unread' ? getIconSvg('check', { size: 16, strokeWidth: 2.4 }) : ''}
-                  </span>
-                  <span class="v1-setting-select-label">${this.libraryFilterMode ? this.t('library.filterUnread') : 'Belum Dibaca'}</span>
-                </button>
-                <button type="button" class="v1-setting-select-option ${this.detailChapterFilter === 'bookmarked' ? 'selected' : ''}" data-ch-filter="bookmarked" role="option" aria-selected="${this.detailChapterFilter === 'bookmarked' ? 'true' : 'false'}">
-                  <span class="v1-setting-select-check">
-                    ${this.detailChapterFilter === 'bookmarked' ? getIconSvg('check', { size: 16, strokeWidth: 2.4 }) : ''}
-                  </span>
-                  <span class="v1-setting-select-label">${this.l('Ditandai', 'Bookmarked')}</span>
-                </button>
-              </div>
-            </div>
-          </div>
           <!-- 2. Sort Button (Icon only with smooth animated flip) -->
           <button id="btnToggleChOrder" class="v1-chapter-ctrl-btn ${this.detailChapterAsc ? 'asc' : 'desc'}" title="${this.detailChapterAsc ? this.l('Urutan: Terlama Dahulu (Klik untuk Terbaru)', 'Order: Oldest First (Click for Latest)') : this.l('Urutan: Terbaru Dahulu (Klik untuk Terlama)', 'Order: Latest First (Click for Oldest)')}" aria-label="${this.detailChapterAsc ? this.l('Urutkan Terlama Dahulu', 'Sort Oldest First') : this.l('Urutkan Terbaru Dahulu', 'Sort Latest First')}">
             <span class="v1-ch-sort-icon">
@@ -395,14 +365,14 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
               <div class="v1-chapter-row ${ch.isRead ? 'is-read' : ''} ${isLastRead ? 'is-last-read' : ''}" data-read-ch="${ch.number}">
                 <div class="v1-chapter-main">
                   <div class="v1-chapter-title-row">
-                    <span class="v1-chapter-title">Chapter ${ch.number}${ch.title ? ` — ${ch.title}` : ''}</span>
+                    <span class="v1-chapter-title">Chapter ${ch.number}${ch.title ? ` — ${escapeXml(ch.title)}` : ''}</span>
                     ${isNewRelease ? `<span class="v1-ch-new-pill">${this.l('Baru', 'New')}</span>` : ''}
                   </div>
                   <div class="v1-chapter-meta-sub">
-                    <span>${ch.releaseDate}</span>
-                    ${pageProgressText ? `<span class="v1-chapter-meta-sep">•</span><span>${pageProgressText}</span>` : ''}
+                    <span>${escapeXml(ch.releaseDate)}</span>
+                    ${pageProgressText ? `<span class="v1-chapter-meta-sep">•</span><span>${escapeXml(pageProgressText)}</span>` : ''}
                     <span class="v1-ch-dl-status" data-ch-dl-status="${ch.number}">${dlStatusHtml}</span>
-                    ${ch.scanlator ? `<span class="v1-chapter-meta-sep">•</span><span>${ch.scanlator}</span>` : ''}
+                    ${ch.scanlator ? `<span class="v1-chapter-meta-sep">•</span><span>${escapeXml(ch.scanlator)}</span>` : ''}
                   </div>
                 </div>
                 <div class="v1-chapter-actions">
@@ -426,12 +396,44 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
       <!-- Floating Bottom-Right Resume Action Button (Matching Mobile Image 2) -->
       ${
         manga.chapters.length > 0
-          ? `<button type="button" class="v1-detail-resume-fab" data-quick-read="${manga.id}" data-ch="${resumeChapterNum}">
+          ? `<button type="button" class="v1-detail-resume-fab" data-quick-read="${escapeXml(manga.id)}" data-ch="${resumeChapterNum}">
                ${getIconSvg('play-linear', { size: 17 })}
                <span>${resumeFabLabel}</span>
              </button>`
           : ''
       }
+
+      <!-- Chapter Filter Centered Modal (rendered outside .v1-detail-foreground so it always stacks above Resume FAB) -->
+      <div id="chapterFilterModalBackdrop" class="v1-mal-backdrop ${this.isChapterFilterFlyoutOpen ? 'open' : ''}">
+        <div class="v1-setting-select-modal v1-unified-filter-dialog" role="dialog" aria-modal="true" aria-label="${escapeXml(this.l('Filter Chapter', 'Filter Chapters'))}">
+          <div class="v1-unified-filter-head">
+            <h3 class="v1-setting-select-title">${this.l('Filter Chapter', 'Filter Chapters')}</h3>
+            <button type="button" id="btnCloseChapterFilterModal" class="v1-unified-filter-close" aria-label="${escapeXml(this.t('modal.close'))}">
+              ${getIconSvg('close', { size: 18 })}
+            </button>
+          </div>
+          <div class="v1-setting-select-list" role="listbox">
+            <button type="button" class="v1-setting-select-option ${this.detailChapterFilter === 'all' ? 'selected' : ''}" data-ch-filter="all" role="option" aria-selected="${this.detailChapterFilter === 'all' ? 'true' : 'false'}">
+              <span class="v1-setting-select-check">
+                ${this.detailChapterFilter === 'all' ? getIconSvg('check', { size: 16, strokeWidth: 2.4 }) : ''}
+              </span>
+              <span class="v1-setting-select-label">${this.l('Semua Bab', 'All Chapters')}</span>
+            </button>
+            <button type="button" class="v1-setting-select-option ${this.detailChapterFilter === 'unread' ? 'selected' : ''}" data-ch-filter="unread" role="option" aria-selected="${this.detailChapterFilter === 'unread' ? 'true' : 'false'}">
+              <span class="v1-setting-select-check">
+                ${this.detailChapterFilter === 'unread' ? getIconSvg('check', { size: 16, strokeWidth: 2.4 }) : ''}
+              </span>
+              <span class="v1-setting-select-label">${this.libraryFilterMode ? this.t('library.filterUnread') : this.l('Belum Dibaca', 'Unread')}</span>
+            </button>
+            <button type="button" class="v1-setting-select-option ${this.detailChapterFilter === 'bookmarked' ? 'selected' : ''}" data-ch-filter="bookmarked" role="option" aria-selected="${this.detailChapterFilter === 'bookmarked' ? 'true' : 'false'}">
+              <span class="v1-setting-select-check">
+                ${this.detailChapterFilter === 'bookmarked' ? getIconSvg('check', { size: 16, strokeWidth: 2.4 }) : ''}
+              </span>
+              <span class="v1-setting-select-label">${this.l('Ditandai', 'Bookmarked')}</span>
+            </button>
+          </div>
+        </div>
+      </div>
 
       <!-- MyAnimeList Tracker Edit / Search Dialog — Clean & Deslopped -->
       <div id="malTrackerModalBackdrop" class="v1-mal-backdrop ${this.isMalTrackerPopupOpen ? 'open' : ''}">
@@ -590,7 +592,7 @@ function renderMalModalContent(this: YomicApp, manga: MangaItem): string {
               <div class="v1-mal-result-card" data-select-mal-id="${r.id}" data-select-mal-title="${escapeXml(r.title)}" data-select-mal-cover="${escapeXml(r.coverUrl || '')}">
                 <div class="v1-mal-result-thumb-wrap">
                   ${r.coverUrl
-                    ? `<img class="v1-mal-result-thumb" src="${escapeXml(r.coverUrl)}" alt="${escapeXml(r.title)}" loading="lazy" onerror="this.style.display='none';" />`
+                    ? `<img class="v1-mal-result-thumb" src="${sanitizeImageSrc(r.coverUrl)}" alt="${escapeXml(r.title)}" loading="lazy" data-fallback-hide="1" />`
                     : `<div class="v1-mal-result-no-thumb">📖</div>`
                   }
                 </div>
@@ -732,7 +734,9 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     this.renderCurrentWorkspace(true);
   });
   document.getElementById('btnToggleInLibrary')?.addEventListener('click', () => {
-    manga.inLibrary = !manga.inLibrary;
+    const prevId = manga.id;
+    const prevInLibrary = manga.inLibrary;
+    manga.inLibrary = !prevInLibrary;
     this.updateSidebarCounters();
     if (this.bridge.isWebViewHost) {
       void this.bridge
@@ -743,8 +747,25 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
           url: manga.url
         })
         .then((updated) => {
-          if (updated) this.upsertMangaItem(updated);
+          if (updated) {
+            const merged = this.upsertMangaItem(updated);
+            this.persistLocalCache();
+            this.updateSidebarCounters();
+            // Re-render detail cleanly (preserving scroll) when object identity/ID changed (e.g., ext-... -> db-42) so closures never go stale
+            if (this.activeDetailMangaId === merged.id && (merged.id !== prevId || merged.inLibrary !== manga.inLibrary)) {
+              this.renderCurrentWorkspace(true);
+            }
+          } else {
+            this.updateSidebarCounters();
+          }
+        })
+        .catch(() => {
+          manga.inLibrary = prevInLibrary;
           this.updateSidebarCounters();
+          this.showToast(this.l('Gagal memperbarui status pustaka.', 'Failed to update library status.'), 'warning');
+          if (this.activeDetailMangaId === manga.id) {
+            this.renderCurrentWorkspace(true);
+          }
         });
     }
     this.showToast(
@@ -753,7 +774,7 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         : this.l(`${manga.title} dihapus dari Pustaka.`, `${manga.title} removed from Library.`)
     );
 
-    // In-place update for library button: preserves scroll position completely
+    // Immediate optimistic button update while backend responds
     const libBtn = document.getElementById('btnToggleInLibrary');
     if (libBtn) {
       libBtn.classList.toggle('is-active', manga.inLibrary);
@@ -773,6 +794,8 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
   const executeMalSearch = async (query: string, autoBindMatched = false) => {
     const q = query.trim();
     if (!q) return;
+    const searchSeq = ++this.malSearchSeq;
+    const targetMangaId = manga.id;
     this.malSearchQuery = q;
     this.isMalSearching = true;
     this.malSearchError = '';
@@ -782,6 +805,9 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
       const res = await this.bridge.invoke<{ ok: boolean; results?: MalSearchResult[]; error?: string }>('mal:search', {
         query: q
       });
+      if (this.malSearchSeq !== searchSeq || this.activeDetailMangaId !== targetMangaId) {
+        return;
+      }
       this.isMalSearching = false;
       if (res && res.ok && Array.isArray(res.results)) {
         this.malSearchResults = res.results;
@@ -823,14 +849,21 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         this.malSearchError = res?.error || this.l('Gagal mencari manga di MyAnimeList.', 'Failed to search manga on MyAnimeList.');
       }
     } catch (err: any) {
+      if (this.malSearchSeq !== searchSeq || this.activeDetailMangaId !== targetMangaId) {
+        return;
+      }
       this.isMalSearching = false;
       this.malSearchResults = [];
       this.malSearchError = err?.message || this.l('Terjadi kesalahan saat menghubungi MyAnimeList.', 'An error occurred while contacting MyAnimeList.');
     }
-    this.renderCurrentWorkspace(true);
+    if (this.malSearchSeq === searchSeq && this.activeDetailMangaId === targetMangaId) {
+      this.renderCurrentWorkspace(true);
+    }
   };
 
   const handleSelectMalEntry = async (id: number, title: string, coverUrl?: string, autoBind = false) => {
+    const selectSeq = ++this.malSelectSeq;
+    const targetMangaId = manga.id;
     this.malSelectedEntry = { id, title, coverUrl };
     this.isMalSearchMode = false;
     this.renderCurrentWorkspace(true);
@@ -851,6 +884,10 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         remoteId: id,
         autoBind
       });
+
+      if (this.malSelectSeq !== selectSeq || this.activeDetailMangaId !== targetMangaId) {
+        return;
+      }
 
       if (res && res.ok && res.track) {
         if (autoBind) {
@@ -1066,15 +1103,19 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     this.isMalTrackerPopupOpen = false;
 
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke('mal:save-track', {
-        mangaId: manga.id,
-        dbId: manga.dbId,
-        remoteId: targetRemoteId,
-        malTitle: targetTitle,
-        status: statusVal,
-        chaptersRead: manga.lastReadChapter,
-        score: scoreVal
-      });
+      void this.bridge
+        .invoke('mal:save-track', {
+          mangaId: manga.id,
+          dbId: manga.dbId,
+          remoteId: targetRemoteId,
+          malTitle: targetTitle,
+          status: statusVal,
+          chaptersRead: manga.lastReadChapter,
+          score: scoreVal
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal menyimpan status pelacakan MyAnimeList.', 'Failed to save MyAnimeList tracking status.'), 'warning');
+        });
     }
 
     this.persistLocalCache();
@@ -1089,6 +1130,8 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
       return;
     }
 
+    const syncSeq = ++this.malSelectSeq;
+    const targetMangaId = manga.id;
     this.showToast(this.l('Menyinkronkan data dengan MyAnimeList...', 'Syncing data with MyAnimeList...'), 'refresh');
     try {
       const res = await this.bridge.invoke<{
@@ -1105,6 +1148,10 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         mangaId: manga.id,
         remoteId: targetRemoteId
       });
+
+      if (this.malSelectSeq !== syncSeq || this.activeDetailMangaId !== targetMangaId) {
+        return;
+      }
 
       if (res && res.ok && res.track) {
         if (res.track.status) {
@@ -1140,10 +1187,14 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     this.isMalTrackerPopupOpen = false;
 
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke('mal:unbind-track', {
-        mangaId: manga.id,
-        dbId: manga.dbId
-      });
+      void this.bridge
+        .invoke('mal:unbind-track', {
+          mangaId: manga.id,
+          dbId: manga.dbId
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal melepas tautan MyAnimeList.', 'Failed to unlink MyAnimeList.'), 'warning');
+        });
     }
 
     this.persistLocalCache();
@@ -1170,9 +1221,6 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     }
   });
   document.getElementById('btnDownloadAllChapters')?.addEventListener('click', () => {
-    manga.chapters.forEach((c) => {
-      c.isDownloaded = true;
-    });
     this.enqueueDownload(manga, manga.lastReadChapter, 'all');
     this.renderCurrentWorkspace(true);
   });
@@ -1218,7 +1266,11 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     }
     this.updateSidebarCounters();
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke('downloads:delete-manga', { mangaId: manga.id, dbId: manga.dbId });
+      void this.bridge
+        .invoke('downloads:delete-manga', { mangaId: manga.id, dbId: manga.dbId })
+        .catch(() => {
+          this.showToast(this.l('Gagal menghapus unduhan dari disk.', 'Failed to delete downloads from disk.'), 'warning');
+        });
     }
     this.showToast(this.l(`Seluruh unduhan chapter untuk ${manga.title} telah dihapus.`, `All chapter downloads for ${manga.title} deleted.`));
     this.renderCurrentWorkspace(true);
@@ -1246,12 +1298,18 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
       if (found) {
         found.isBookmarked = !found.isBookmarked;
         if (this.bridge.isWebViewHost) {
-          void this.bridge.invoke('manga:toggle-bookmark', {
-            mangaId: manga.id,
-            dbId: manga.dbId,
-            chapterId: found.dbId,
-            chapterNumber: chNum
-          });
+          void this.bridge
+            .invoke('manga:toggle-bookmark', {
+              mangaId: manga.id,
+              url: manga.url || '',
+              sourceId: manga.sourceId,
+              dbId: manga.dbId,
+              chapterId: found.dbId,
+              chapterUrl: found.url || '',
+              chapterNumber: chNum,
+              isBookmarked: found.isBookmarked
+            })
+            .catch(() => {});
         }
         if (this.detailChapterFilter === 'bookmarked') {
           this.renderCurrentWorkspace(true);
@@ -1281,14 +1339,17 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
       const chNum = Number(cancelBtn.dataset.dlChNum || '0');
       const chUrl = cancelBtn.dataset.dlChUrl || '';
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke<DownloadQueueItem[]>('downloads:cancel', { id: dlId, chapterUrl: chUrl }).then((queue) => {
-          if (Array.isArray(queue)) {
-            this.downloads.length = 0;
-            this.downloads.push(...queue);
-            this.updateSidebarCounters();
-            updateDetailChapterDownloadsInPlace(container, manga, this.downloads, isEn);
-          }
-        });
+        void this.bridge
+          .invoke<DownloadQueueItem[]>('downloads:cancel', { id: dlId, chapterUrl: chUrl })
+          .then((queue) => {
+            if (Array.isArray(queue)) {
+              this.downloads.length = 0;
+              this.downloads.push(...queue);
+              this.updateSidebarCounters();
+              updateDetailChapterDownloadsInPlace(container, manga, this.downloads, isEn);
+            }
+          })
+          .catch(() => {});
       } else {
         const idx = this.downloads.findIndex((d) => d.id === dlId);
         if (idx >= 0) this.downloads.splice(idx, 1);
@@ -1307,6 +1368,7 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
       const found = manga.chapters.find((c) => c.number === chNum);
       if (!found) return;
       found.isDownloaded = false;
+      manga.downloadedCount = manga.chapters.filter((c) => c.isDownloaded).length;
       // Remove stale completed entry from in-memory downloads so UI immediately flips back to download-2-line
       for (let i = this.downloads.length - 1; i >= 0; i--) {
         const d = this.downloads[i];
@@ -1320,12 +1382,16 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         }
       }
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke('downloads:delete-chapter', {
-          mangaId: manga.id,
-          dbId: manga.dbId,
-          chapterId: found.dbId,
-          chapterNumber: chNum
-        });
+        void this.bridge
+          .invoke('downloads:delete-chapter', {
+            mangaId: manga.id,
+            dbId: manga.dbId,
+            chapterId: found.dbId,
+            chapterNumber: chNum
+          })
+          .catch(() => {
+            this.showToast(this.l(`Gagal menghapus unduhan Chapter ${chNum}.`, `Failed to delete Chapter ${chNum} download.`), 'warning');
+          });
       }
       this.showToast(this.l(`Unduhan Chapter ${chNum} dihapus.`, `Chapter ${chNum} download deleted.`));
       this.updateSidebarCounters();
@@ -1428,14 +1494,16 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
           row?.classList.add('is-read');
           row?.querySelector('.v1-ch-new-pill')?.remove();
           if (this.bridge.isWebViewHost) {
-            void this.bridge.invoke('manga:mark-chapters', {
-              mangaId: manga.id,
-              mode: 'single-read',
-              chapterNumber: ch.number,
-              chapterUrl: ch.url,
-              mangaUrl: manga.url,
-              sourceId: manga.sourceId
-            });
+            void this.bridge
+              .invoke('manga:mark-chapters', {
+                mangaId: manga.id,
+                mode: 'single-read',
+                chapterNumber: ch.number,
+                chapterUrl: ch.url,
+                mangaUrl: manga.url,
+                sourceId: manga.sourceId
+              })
+              .catch(() => {});
           }
           this.showToast(this.l(`Chapter ${ch.number} ditandai sudah dibaca.`, `Chapter ${ch.number} marked as read.`));
           this.updateSidebarCounters();
@@ -1449,14 +1517,16 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
           const row = container.querySelector<HTMLElement>(`[data-read-ch="${ch.number}"]`);
           row?.classList.remove('is-read');
           if (this.bridge.isWebViewHost) {
-            void this.bridge.invoke('manga:mark-chapters', {
-              mangaId: manga.id,
-              mode: 'single-unread',
-              chapterNumber: ch.number,
-              chapterUrl: ch.url,
-              mangaUrl: manga.url,
-              sourceId: manga.sourceId
-            });
+            void this.bridge
+              .invoke('manga:mark-chapters', {
+                mangaId: manga.id,
+                mode: 'single-unread',
+                chapterNumber: ch.number,
+                chapterUrl: ch.url,
+                mangaUrl: manga.url,
+                sourceId: manga.sourceId
+              })
+              .catch(() => {});
           }
           this.showToast(this.l(`Chapter ${ch.number} ditandai belum dibaca.`, `Chapter ${ch.number} marked as unread.`));
           this.updateSidebarCounters();
@@ -1474,13 +1544,15 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
           }
           this.readingStatsData = null;
           if (this.bridge.isWebViewHost) {
-            void this.bridge.invoke('manga:mark-chapters', {
-              mangaId: manga.id,
-              mode: 'before-read',
-              chapterNumber: ch.number,
-              mangaUrl: manga.url,
-              sourceId: manga.sourceId
-            });
+            void this.bridge
+              .invoke('manga:mark-chapters', {
+                mangaId: manga.id,
+                mode: 'before-read',
+                chapterNumber: ch.number,
+                mangaUrl: manga.url,
+                sourceId: manga.sourceId
+              })
+              .catch(() => {});
           }
           this.showToast(this.l(`Seluruh bab sebelum Chapter ${ch.number} ditandai sudah dibaca.`, `All chapters before Chapter ${ch.number} marked as read.`));
           this.updateSidebarCounters();
@@ -1489,7 +1561,7 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     });
   };
 
-  // Close context menu on outside clicks / escape with single active listener
+  // Close context menu on outside clicks / escape with single active listener (capture phase prevents Escape from also closing Manga Detail)
   const onGlobalClick = (ev: MouseEvent) => {
     const menu = document.getElementById('chapterContextMenu');
     if (menu && !menu.contains(ev.target as Node)) {
@@ -1497,17 +1569,19 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     }
   };
   const onGlobalKeyDown = (ev: KeyboardEvent) => {
-    if (ev.key === 'Escape') {
+    if (ev.key === 'Escape' && document.getElementById('chapterContextMenu')) {
+      ev.preventDefault();
+      ev.stopPropagation();
       hideChapterMenu();
     }
   };
   const win = window as unknown as { _onChapterCtxClick?: (ev: MouseEvent) => void; _onChapterCtxKey?: (ev: KeyboardEvent) => void };
   if (win._onChapterCtxClick) window.removeEventListener('click', win._onChapterCtxClick);
-  if (win._onChapterCtxKey) window.removeEventListener('keydown', win._onChapterCtxKey);
+  if (win._onChapterCtxKey) window.removeEventListener('keydown', win._onChapterCtxKey, { capture: true });
   win._onChapterCtxClick = onGlobalClick;
   win._onChapterCtxKey = onGlobalKeyDown;
   window.addEventListener('click', onGlobalClick);
-  window.addEventListener('keydown', onGlobalKeyDown);
+  window.addEventListener('keydown', onGlobalKeyDown, { capture: true });
 
   // Chapter row click to open reader
   container.querySelectorAll<HTMLElement>('[data-read-ch]').forEach((el) => {

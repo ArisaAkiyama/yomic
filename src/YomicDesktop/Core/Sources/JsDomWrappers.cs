@@ -37,15 +37,31 @@ namespace Yomic.Core.Sources
 
         public JsElement? nextElementSibling => _element.NextElementSibling != null ? new JsElement(_element.NextElementSibling, _baseUri) : null;
 
-        public JsElement? querySelector(string selector)
+        public JsElement? querySelector(string? selector)
         {
-            var el = _element.QuerySelector(selector);
-            return el != null ? new JsElement(el, _baseUri) : null;
+            if (string.IsNullOrWhiteSpace(selector)) return null;
+            try
+            {
+                var el = _element.QuerySelector(selector);
+                return el != null ? new JsElement(el, _baseUri) : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
-        public JsElement[] querySelectorAll(string selector)
+        public JsElement[] querySelectorAll(string? selector)
         {
-            return _element.QuerySelectorAll(selector).Select(el => new JsElement(el, _baseUri)).ToArray();
+            if (string.IsNullOrWhiteSpace(selector)) return Array.Empty<JsElement>();
+            try
+            {
+                return _element.QuerySelectorAll(selector).Select(el => new JsElement(el, _baseUri)).ToArray();
+            }
+            catch
+            {
+                return Array.Empty<JsElement>();
+            }
         }
         
         public string absUrl(string attrName)
@@ -77,15 +93,31 @@ namespace Yomic.Core.Sources
             _baseUri = baseUri;
         }
 
-        public JsElement? querySelector(string selector)
+        public JsElement? querySelector(string? selector)
         {
-            var el = _document.QuerySelector(selector);
-            return el != null ? new JsElement(el, _baseUri) : null;
+            if (string.IsNullOrWhiteSpace(selector)) return null;
+            try
+            {
+                var el = _document.QuerySelector(selector);
+                return el != null ? new JsElement(el, _baseUri) : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
-        public JsElement[] querySelectorAll(string selector)
+        public JsElement[] querySelectorAll(string? selector)
         {
-            return _document.QuerySelectorAll(selector).Select(el => new JsElement(el, _baseUri)).ToArray();
+            if (string.IsNullOrWhiteSpace(selector)) return Array.Empty<JsElement>();
+            try
+            {
+                return _document.QuerySelectorAll(selector).Select(el => new JsElement(el, _baseUri)).ToArray();
+            }
+            catch
+            {
+                return Array.Empty<JsElement>();
+            }
         }
     }
 

@@ -4,7 +4,8 @@ import {
   buildComicPageSvg,
   buildMangaCoverSvg,
   DEFAULT_APP_SETTINGS,
-  escapeXml
+  escapeXml,
+  sanitizeImageSrc
 } from '../mock-data.js';
 import {
   ActivityUpdateItem,
@@ -219,17 +220,13 @@ export function openReader(this: YomicApp, mangaId: string, chapterNumber: numbe
   this.readerScrollPercent = initialSavedPercent;
   this.targetRestorePercent = initialSavedPercent;
   this.readerPages = [];
-  this.readerTotalPages = manga.lastReadTotalPages && manga.lastReadTotalPages > 1 ? manga.lastReadTotalPages : Math.max(initialSavedPage, 1);
+  this.readerTotalPages = 0;
   manga.lastReadChapter = chapterNumber;
   manga.lastReadPage = initialSavedPage;
   manga.lastReadTimeAgo = 'Baru saja';
   manga.lastViewedEpoch = Date.now();
   this.readerLastSaveEpoch = Date.now();
   this.readerChapterUrl = chObj?.url || '';
-  if (chObj && !chObj.isRead) {
-    chObj.isRead = true;
-    manga.unreadCount = Math.max(0, manga.unreadCount - 1);
-  }
   const overlay = document.getElementById('readerOverlay');
   overlay?.classList.add('open');
   overlay?.classList.remove('hud-hidden');
@@ -282,16 +279,20 @@ export function openReader(this: YomicApp, mangaId: string, chapterNumber: numbe
   const cacheKey = `${manga.id}_${chapterNumber}`;
   const cachedPages = !forceRefresh ? this.chapterPagesCache?.get(cacheKey) : undefined;
   if (cachedPages && cachedPages.length > 0) {
+    this.readerLoadSeq++;
     this.readerPages = cachedPages;
     this.readerTotalPages = cachedPages.length;
     this.isReaderLoadingPages = false;
     this.setReaderMode(this.readerMode);
-    this.updateReaderPageIndicator();
-    this.renderReaderPages();
+    if (this.targetRestorePercent <= 0 && this.readerCurrentPage <= 1) {
+      const scrollArea = document.getElementById('readerCanvasScroll');
+      if (scrollArea) scrollArea.scrollTop = 0;
+    }
     this.restoreReaderScrollPosition();
     return;
   }
   if (this.bridge.isWebViewHost) {
+    const reqSeq = ++this.readerLoadSeq;
     this.isReaderLoadingPages = true;
     this.readerRequiresVerification = false;
     this.setReaderMode(this.readerMode);
@@ -314,7 +315,7 @@ export function openReader(this: YomicApp, mangaId: string, chapterNumber: numbe
         120000
       )
       .then((res) => {
-        if (!this.isReaderOpen || this.readerMangaId !== manga.id || this.readerChapterNumber !== chapterNumber) {
+        if (this.readerLoadSeq !== reqSeq || !this.isReaderOpen || this.readerMangaId !== manga.id || this.readerChapterNumber !== chapterNumber) {
           return;
         }
         if (res && Array.isArray(res.pages) && res.pages.length > 0) {
@@ -327,36 +328,40 @@ export function openReader(this: YomicApp, mangaId: string, chapterNumber: numbe
             this.targetRestorePercent = backendPercent;
             this.readerScrollPercent = backendPercent;
           }
-          if (res.lastPageRead && res.lastPageRead > 0) {
-            this.readerCurrentPage = Math.max(1, Math.min(this.readerTotalPages, res.lastPageRead));
-          } else if (this.targetRestorePercent > 0) {
+          if (this.targetRestorePercent > 0 && (this.readerMode === 'webtoon' || !res.lastPageRead || res.lastPageRead <= 1)) {
             this.readerCurrentPage = Math.min(
               this.readerTotalPages,
               Math.max(1, Math.round(this.targetRestorePercent * (this.readerTotalPages - 1)) + 1)
             );
+          } else if (res.lastPageRead && res.lastPageRead > 0) {
+            this.readerCurrentPage = Math.max(1, Math.min(this.readerTotalPages, res.lastPageRead));
           } else {
             this.readerCurrentPage = Math.max(1, Math.min(this.readerTotalPages, initialSavedPage));
           }
         } else {
           this.readerRequiresVerification = Boolean(res?.requiresVerification);
           this.readerPages = [];
-          this.readerTotalPages = 1;
+          this.readerTotalPages = 0;
           this.readerCurrentPage = 1;
         }
       })
       .catch(() => {
+        if (this.readerLoadSeq !== reqSeq || !this.isReaderOpen || this.readerMangaId !== manga.id || this.readerChapterNumber !== chapterNumber) {
+          return;
+        }
         this.readerPages = [];
-        this.readerTotalPages = 1;
+        this.readerTotalPages = 0;
         this.readerCurrentPage = 1;
         this.showToast(this.l('Gagal mengambil halaman bab dari sumber.', 'Failed to fetch chapter pages from source.'));
       })
       .finally(() => {
-        this.isReaderLoadingPages = false;
-        if (this.isReaderOpen) {
-          this.renderReaderPages();
-          this.updateReaderPageIndicator();
-          this.restoreReaderScrollPosition();
+        if (this.readerLoadSeq !== reqSeq || !this.isReaderOpen || this.readerMangaId !== manga.id || this.readerChapterNumber !== chapterNumber) {
+          return;
         }
+        this.isReaderLoadingPages = false;
+        this.renderReaderPages();
+        this.updateReaderPageIndicator();
+        this.restoreReaderScrollPosition();
       });
     return;
   }
@@ -369,7 +374,7 @@ export function retryPageImg(this: YomicApp, pageNumber: number): void {
   const rawUrl = this.readerPages[pageNumber - 1];
   if (!wrap || !rawUrl) return;
   const baseWidth = Math.round((this.readerMode === 'dual' ? 480 : 740) * (this.readerZoomPercent / 100));
-  const freshUrl = rawUrl.includes('?') ? `${rawUrl}&force=1&t=${Date.now()}` : `${rawUrl}?force=1&t=${Date.now()}`;
+  const freshUrl = sanitizeImageSrc(rawUrl.includes('?') ? `${rawUrl}&force=1&t=${Date.now()}` : `${rawUrl}?force=1&t=${Date.now()}`);
   wrap.innerHTML = `
     <img id="reader-page-${pageNumber}" class="reader-page-art" style="width:${baseWidth}px;display:block;" src="${freshUrl}" alt="Halaman ${pageNumber}" loading="lazy" data-page-num="${pageNumber}" />
   `;
@@ -387,9 +392,22 @@ export function retryPageImg(this: YomicApp, pageNumber: number): void {
 }
 
 export function saveReaderProgressToBackend(this: YomicApp): void {
+  // Never save/complete unloaded or failed chapters (prevents accidental mass mark-as-read & auto-delete)
+  if (this.isReaderLoadingPages || this.readerPages.length === 0 || this.readerTotalPages <= 0) {
+    return;
+  }
+
   const manga = this.mangaList.find((m) => m.id === this.readerMangaId);
   const chObj = manga?.chapters.find((c) => Math.abs(c.number - this.readerChapterNumber) < 0.01);
-  const isCompleted = this.readerCurrentPage >= this.readerTotalPages && this.readerTotalPages > 0;
+  let isCompleted = false;
+  if (this.readerMode === 'dual') {
+    const { spreadPages } = getDualSpreadPages(this.readerCurrentPage, this.readerTotalPages);
+    isCompleted = spreadPages.includes(this.readerTotalPages);
+  } else if (this.readerMode === 'webtoon') {
+    isCompleted = this.readerScrollPercent >= 0.995 || this.readerCurrentPage >= this.readerTotalPages;
+  } else {
+    isCompleted = this.readerCurrentPage >= this.readerTotalPages;
+  }
 
   if (manga) {
     manga.lastReadChapter = this.readerChapterNumber;
@@ -400,13 +418,14 @@ export function saveReaderProgressToBackend(this: YomicApp): void {
   }
 
   // Update chapter in-memory state
+  const normalizedPagedPercent = this.readerTotalPages > 1 ? (this.readerCurrentPage - 1) / (this.readerTotalPages - 1) : 0;
   if (chObj) {
     if (this.readerMode === 'webtoon' && this.readerScrollPercent > 0) {
-      chObj.lastPageRead = Math.round(this.readerScrollPercent * 1_000_000);
+      chObj.lastPageRead = Math.max(1001, Math.round(this.readerScrollPercent * 1_000_000));
       chObj.scrollPercent = this.readerScrollPercent;
     } else {
       chObj.lastPageRead = this.readerCurrentPage;
-      chObj.scrollPercent = this.readerTotalPages > 1 ? (this.readerCurrentPage - 1) / (this.readerTotalPages - 1) : 0;
+      chObj.scrollPercent = normalizedPagedPercent;
     }
   }
 
@@ -414,7 +433,7 @@ export function saveReaderProgressToBackend(this: YomicApp): void {
   try {
     const posData = {
       page: this.readerCurrentPage,
-      scrollPercent: this.readerMode === 'webtoon' ? this.readerScrollPercent : (this.readerCurrentPage / Math.max(1, this.readerTotalPages)),
+      scrollPercent: this.readerMode === 'webtoon' ? this.readerScrollPercent : normalizedPagedPercent,
       mode: this.readerMode,
       totalPages: this.readerTotalPages,
       timestamp: Date.now()
@@ -432,25 +451,28 @@ export function saveReaderProgressToBackend(this: YomicApp): void {
     ? Math.min(180, Math.max(0, Math.round((nowMs - this.readerLastSaveEpoch) / 1000)))
     : 0;
   this.readerLastSaveEpoch = nowMs;
-  void this.bridge.invoke('reader:save-progress', {
-    mangaId: manga.id,
-    mangaUrl: manga.url || '',
-    sourceId: Number(manga.sourceId) || 0,
-    dbId: manga.dbId,
-    chapterId: chObj?.dbId,
-    chapterUrl: chObj?.url || '',
-    chapterNumber: this.readerChapterNumber,
-    currentPage: this.readerCurrentPage,
-    totalPages: this.readerTotalPages,
-    scrollPercent: this.readerMode === 'webtoon' ? this.readerScrollPercent : 0,
-    mode: this.readerMode,
-    completed: isCompleted,
-    isRead: isCompleted || (chObj?.isRead ?? false),
-    sessionReadSeconds: elapsedSec
-  });
+  void this.bridge
+    .invoke('reader:save-progress', {
+      mangaId: manga.id,
+      mangaUrl: manga.url || '',
+      sourceId: Number(manga.sourceId) || 0,
+      dbId: manga.dbId,
+      chapterId: chObj?.dbId,
+      chapterUrl: chObj?.url || '',
+      chapterNumber: this.readerChapterNumber,
+      currentPage: this.readerCurrentPage,
+      totalPages: this.readerTotalPages,
+      scrollPercent: this.readerMode === 'webtoon' ? this.readerScrollPercent : 0,
+      mode: this.readerMode,
+      completed: isCompleted,
+      isRead: isCompleted || (chObj?.isRead ?? false),
+      sessionReadSeconds: elapsedSec
+    })
+    .catch(() => {});
 }
 
 export function closeReader(this: YomicApp): void {
+  this.readerLoadSeq++;
   if (this.readerSaveProgressDebounceTimer) {
     clearTimeout(this.readerSaveProgressDebounceTimer);
     this.readerSaveProgressDebounceTimer = null;
@@ -461,11 +483,16 @@ export function closeReader(this: YomicApp): void {
   this.stopReaderAutoScroll();
   this.isRestoringReaderScroll = false;
   this.targetRestorePercent = -1;
+  this.readerPages = [];
+  this.readerTotalPages = 0;
   this.readerPageWrappers = [];
   this.readerPrefetchedUrls.clear();
   this.readerLastCompletedFlushKey = '';
-  const pagesContainer = document.getElementById('readerPagesContainer');
+  const pagesContainer = document.getElementById('readerPagesContainer') as (HTMLElement & { _cancelScrollRestore?: () => void }) | null;
   if (pagesContainer) {
+    pagesContainer._cancelScrollRestore?.();
+    pagesContainer._cancelScrollRestore = undefined;
+    pagesContainer.innerHTML = '';
     pagesContainer.style.opacity = '1';
     pagesContainer.style.transition = '';
   }
@@ -515,23 +542,30 @@ export function renderReaderPages(this: YomicApp): void {
   const scrollArea = document.getElementById('readerCanvasScroll');
   if (!pagesContainer || !scrollArea) return;
   const manga = this.mangaList.find((m) => m.id === this.readerMangaId) ?? this.mangaList[0];
-  pagesContainer.className = `reader-pages-container mode-${this.readerMode}`;
+  const isRtl = this.settings.readingDirection === 'rtl';
+  pagesContainer.className = `reader-pages-container mode-${this.readerMode}${isRtl ? ' dir-rtl' : ''}`;
   const baseWidth = Math.round(740 * (this.readerZoomPercent / 100));
 
   // Event delegation on container
   pagesContainer.onclick = (ev) => {
     const target = (ev.target as HTMLElement).closest<HTMLElement>('[data-retry-page]');
     if (target) {
+      ev.stopPropagation();
       const pageNum = Number(target.dataset.retryPage);
       if (!Number.isNaN(pageNum)) {
         this.retryPageImg(pageNum);
       }
+      return;
     }
     if ((ev.target as HTMLElement).closest('#btnRetryReaderPages')) {
+      ev.stopPropagation();
       this.openReader(this.readerMangaId, this.readerChapterNumber, true, false);
+      return;
     }
     if ((ev.target as HTMLElement).closest('#btnVerifyReaderPages')) {
+      ev.stopPropagation();
       this.openReader(this.readerMangaId, this.readerChapterNumber, true, true);
+      return;
     }
   };
   if (this.isReaderLoadingPages) {
@@ -568,7 +602,7 @@ export function renderReaderPages(this: YomicApp): void {
               ? `<button id="btnVerifyReaderPages" class="reader-action-btn" style="background:#EA580C;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;">${this.l('Verifikasi di WebView', 'Verify in WebView')}</button>`
               : ''
           }
-          <button id="btnRetryReaderPages" class="reader-action-btn" style="background:var(--ocean-primary);color:var(--ink-on-ocean);border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">${this.l('Muat Ulang', 'Reload')}</button>
+          <button id="btnRetryReaderPages" class="reader-action-btn" style="background:var(--reader-accent,#F4F4F5);color:#09090B;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">${this.l('Muat Ulang', 'Reload')}</button>
         </div>
       </div>
     `;
@@ -591,7 +625,7 @@ export function renderReaderPages(this: YomicApp): void {
   ]);
 
   if (this.readerMode === 'single') {
-    const realUrl = this.readerPages[this.readerCurrentPage - 1] || '';
+    const realUrl = sanitizeImageSrc(this.readerPages[this.readerCurrentPage - 1] || '');
     pagesContainer.innerHTML = `
       <div class="reader-page-item" id="reader-page-wrap-${this.readerCurrentPage}" style="position:relative;display:inline-block;margin:0 auto;">
         <img id="reader-page-${this.readerCurrentPage}" class="reader-page-art" style="${getImgStyle(baseWidth)}" src="${realUrl}" alt="Halaman ${this.readerCurrentPage}" decoding="async" fetchpriority="high" data-page-num="${this.readerCurrentPage}" />
@@ -606,7 +640,7 @@ export function renderReaderPages(this: YomicApp): void {
     const dualStyle = getDualPageImgStyle(this.readerZoomPercent);
     const pagesHtml: string[] = [];
     for (const p of spreadPages) {
-      const realUrl = this.readerPages[p - 1] || '';
+      const realUrl = sanitizeImageSrc(this.readerPages[p - 1] || '');
       pagesHtml.push(
         `<div class="reader-page-item reader-dual-spread-item" id="reader-page-wrap-${p}">
           <img id="reader-page-${p}" class="reader-page-art" style="${dualStyle}" src="${realUrl}" alt="Halaman ${p}" loading="eager" decoding="async" fetchpriority="high" data-page-num="${p}" />
@@ -622,8 +656,9 @@ export function renderReaderPages(this: YomicApp): void {
     const pagesHtml: string[] = [];
     const fallbackHeight = Math.round(baseWidth * 1.35);
     for (let p = 1; p <= this.readerTotalPages; p++) {
-      const realUrl = this.readerPages[p - 1] || '';
-      const cachedRatio = realUrl ? this.readerAspectRatioCache.get(realUrl) : undefined;
+      const rawPageUrl = this.readerPages[p - 1] || '';
+      const realUrl = sanitizeImageSrc(rawPageUrl);
+      const cachedRatio = rawPageUrl ? this.readerAspectRatioCache.get(rawPageUrl) : undefined;
       const estHeight = cachedRatio && cachedRatio > 0.05 ? Math.round(baseWidth / cachedRatio) : fallbackHeight;
       const isEager = eagerIndices.has(p - 1);
       pagesHtml.push(
@@ -883,32 +918,37 @@ export function stepReaderChapter(this: YomicApp, delta: number): void {
       : [...sorted].reverse().find((c) => c.number < this.readerChapterNumber);
   }
   if (targetCh) {
+    const willMarkCurrentCompleted = delta > 0 && !this.isReaderLoadingPages && this.readerPages.length > 0;
     if (this.readerSaveProgressDebounceTimer) {
       clearTimeout(this.readerSaveProgressDebounceTimer);
       this.readerSaveProgressDebounceTimer = null;
-      this.saveReaderProgressToBackend();
+      if (!willMarkCurrentCompleted) {
+        this.saveReaderProgressToBackend();
+      }
     }
-    if (delta > 0) {
-      // Mark current chapter as read and save progress before switching to next chapter
+    if (willMarkCurrentCompleted) {
+      // Mark current chapter as read and save progress before switching to next chapter (ONLY when pages actually loaded)
       const curCh = manga.chapters.find((c) => Math.abs(c.number - this.readerChapterNumber) < 0.01);
       if (curCh && !curCh.isRead) {
         curCh.isRead = true;
         manga.unreadCount = Math.max(0, manga.unreadCount - 1);
       }
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke('reader:save-progress', {
-          mangaId: manga.id,
-          mangaUrl: manga.url || '',
-          sourceId: Number(manga.sourceId) || 0,
-          dbId: manga.dbId,
-          chapterId: curCh?.dbId,
-          chapterUrl: curCh?.url || '',
-          chapterNumber: this.readerChapterNumber,
-          currentPage: Math.max(1, this.readerTotalPages),
-          totalPages: Math.max(1, this.readerTotalPages),
-          completed: true,
-          isRead: true
-        });
+        void this.bridge
+          .invoke('reader:save-progress', {
+            mangaId: manga.id,
+            mangaUrl: manga.url || '',
+            sourceId: Number(manga.sourceId) || 0,
+            dbId: manga.dbId,
+            chapterId: curCh?.dbId,
+            chapterUrl: curCh?.url || '',
+            chapterNumber: this.readerChapterNumber,
+            currentPage: Math.max(1, this.readerTotalPages),
+            totalPages: Math.max(1, this.readerTotalPages),
+            completed: true,
+            isRead: true
+          })
+          .catch(() => {});
       }
     }
     this.openReader(manga.id, targetCh.number);
@@ -1143,12 +1183,16 @@ export function bindReaderShellEvents(this: YomicApp): void {
         : this.l('Tandai Chapter', 'Bookmark Chapter');
     }
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke('chapter:toggle-bookmark', {
-        mangaId: manga.id,
-        chapterNumber: chObj.number,
-        chapterUrl: chObj.url || '',
-        bookmarked: chObj.isBookmarked
-      });
+      void this.bridge
+        .invoke('manga:toggle-bookmark', {
+          mangaId: manga.id,
+          url: manga.url || '',
+          sourceId: Number(manga.sourceId) || 0,
+          chapterNumber: chObj.number,
+          chapterUrl: chObj.url || '',
+          isBookmarked: chObj.isBookmarked
+        })
+        .catch(() => {});
     }
     this.showToast(
       chObj.isBookmarked
@@ -1186,10 +1230,23 @@ export function bindReaderShellEvents(this: YomicApp): void {
   const imgFlyoutMenu = document.getElementById('readerImageFlyoutMenu');
 
   const syncImageFlyoutToggles = () => {
-    document.getElementById('toggleReaderCrop')?.classList.toggle('on', Boolean(this.settings.enableAutoCropBorders));
-    document.getElementById('toggleReaderSharpen')?.classList.toggle('on', Boolean(this.settings.enableImageSharpening));
-    document.getElementById('toggleReaderOpt')?.classList.toggle('on', Boolean(this.settings.enableImageOptimization));
+    const cropVal = Boolean(this.settings.enableAutoCropBorders);
+    const sharpenVal = Boolean(this.settings.enableImageSharpening);
+    const optVal = Boolean(this.settings.enableImageOptimization);
+
+    const cropEl = document.getElementById('toggleReaderCrop');
+    cropEl?.classList.toggle('on', cropVal);
+    cropEl?.setAttribute('aria-checked', String(cropVal));
+
+    const sharpenEl = document.getElementById('toggleReaderSharpen');
+    sharpenEl?.classList.toggle('on', sharpenVal);
+    sharpenEl?.setAttribute('aria-checked', String(sharpenVal));
+
+    const optEl = document.getElementById('toggleReaderOpt');
+    optEl?.classList.toggle('on', optVal);
+    optEl?.setAttribute('aria-checked', String(optVal));
   };
+  syncImageFlyoutToggles();
 
   chDropdownBtn?.addEventListener('click', (ev) => {
     ev.stopPropagation();
@@ -1288,6 +1345,13 @@ export function bindReaderShellEvents(this: YomicApp): void {
   };
 
   document.querySelectorAll<HTMLElement>('[data-toggle-reader-opt]').forEach((row) => {
+    const sw = row.querySelector<HTMLElement>('.toggle-switch');
+    sw?.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        row.click();
+      }
+    });
     row.addEventListener('click', (ev) => {
       ev.stopPropagation();
       const optKey = row.dataset.toggleReaderOpt as 'enableAutoCropBorders' | 'enableImageSharpening' | 'enableImageOptimization' | undefined;
@@ -1296,20 +1360,31 @@ export function bindReaderShellEvents(this: YomicApp): void {
       const currentVal = Boolean(this.settings[optKey]);
       const newVal = !currentVal;
       this.settings[optKey] = newVal;
+      sw?.setAttribute('aria-checked', String(newVal));
       syncImageFlyoutToggles();
       this.persistLocalCache();
 
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke<AppSettingsState>('settings:update', { key: optKey, value: newVal }).then((updated) => {
-          if (updated) {
-            Object.assign(this.settings, updated);
+        void this.bridge
+          .invoke<AppSettingsState>('settings:update', { key: optKey, value: newVal })
+          .then((updated) => {
+            if (updated) {
+              Object.assign(this.settings, updated);
+              this.persistLocalCache();
+              syncImageFlyoutToggles();
+            }
+            // Refresh images AFTER backend persists the updated SkiaSharp processing setting
+            refreshReaderCanvasImages();
+          })
+          .catch(() => {
+            this.settings[optKey] = currentVal;
             this.persistLocalCache();
             syncImageFlyoutToggles();
-          }
-        });
+            this.showToast(this.l('Gagal memperbarui pengaturan tampilan gambar.', 'Failed to update image processing setting.'), 'warning');
+          });
+      } else {
+        refreshReaderCanvasImages();
       }
-
-      refreshReaderCanvasImages();
 
       const labelMap: Record<string, string> = {
         enableAutoCropBorders: this.t('reader.autoCropLabel'),
@@ -1362,10 +1437,12 @@ export function bindReaderShellEvents(this: YomicApp): void {
   });
   document.getElementById('btnAutoScroll')?.addEventListener('click', () => this.toggleReaderAutoScroll());
   document.getElementById('btnReaderPrevPageEdge')?.addEventListener('click', () => {
-    this.stepReaderPage(-1);
+    const isRtl = this.settings.readingDirection === 'rtl';
+    this.stepReaderPage(isRtl ? 1 : -1);
   });
   document.getElementById('btnReaderNextPageEdge')?.addEventListener('click', () => {
-    this.stepReaderPage(1);
+    const isRtl = this.settings.readingDirection === 'rtl';
+    this.stepReaderPage(isRtl ? -1 : 1);
   });
 
   // 3-Zone Click/Tap System & Auto-Hide on Scroll (Standard Mihon / Tachiyomi)
@@ -1589,12 +1666,20 @@ export function syncReaderPageFromScroll(this: YomicApp): void {
 
 export function restoreReaderScrollPosition(this: YomicApp): void {
   const scrollArea = document.getElementById('readerCanvasScroll');
-  const pagesContainer = document.getElementById('readerPagesContainer');
+  const pagesContainer = document.getElementById('readerPagesContainer') as (HTMLElement & { _cancelScrollRestore?: () => void }) | null;
   if (!scrollArea || !pagesContainer) return;
+
+  // Always cancel any prior ResizeObserver/timers BEFORE early returns (e.g. switching Webtoon -> Single/Dual)
+  if (pagesContainer._cancelScrollRestore) {
+    pagesContainer._cancelScrollRestore();
+    pagesContainer._cancelScrollRestore = undefined;
+  }
 
   scrollArea.style.scrollBehavior = 'auto';
 
   if (this.readerMode === 'single' || this.readerMode === 'dual') {
+    this.isRestoringReaderScroll = false;
+    this.targetRestorePercent = -1;
     scrollArea.scrollTop = 0;
     pagesContainer.style.opacity = '1';
     this.updateReaderPageIndicator();
@@ -1611,6 +1696,8 @@ export function restoreReaderScrollPosition(this: YomicApp): void {
             : 0));
 
   if (targetPercent <= 0) {
+    this.isRestoringReaderScroll = false;
+    this.targetRestorePercent = -1;
     if (this.readerCurrentPage > 1) {
       const targetEl = document.getElementById(`reader-page-wrap-${this.readerCurrentPage}`);
       targetEl?.scrollIntoView({ behavior: 'instant', block: 'start' });
@@ -1638,9 +1725,33 @@ export function restoreReaderScrollPosition(this: YomicApp): void {
 
   let resizeObserver: ResizeObserver | null = null;
   let fallbackTimer: number | null = null;
+  let postFadeTimer: number | null = null;
+  const restoreChapterNum = this.readerChapterNumber;
+  const restoreMangaId = this.readerMangaId;
+
+  const cancelRestore = () => {
+    restoreFinished = true;
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
+    if (fallbackTimer !== null) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+    if (postFadeTimer !== null) {
+      clearTimeout(postFadeTimer);
+      postFadeTimer = null;
+    }
+  };
+  (pagesContainer as HTMLElement & { _cancelScrollRestore?: () => void })._cancelScrollRestore = cancelRestore;
 
   const finishRestore = () => {
     if (restoreFinished) return;
+    if (!this.isReaderOpen || this.readerChapterNumber !== restoreChapterNum || this.readerMangaId !== restoreMangaId) {
+      cancelRestore();
+      return;
+    }
     restoreFinished = true;
     if (resizeObserver) {
       resizeObserver.disconnect();
@@ -1652,10 +1763,12 @@ export function restoreReaderScrollPosition(this: YomicApp): void {
     }
     applyPercentRestore();
     requestAnimationFrame(() => {
+      if (!this.isReaderOpen || this.readerChapterNumber !== restoreChapterNum || this.readerMangaId !== restoreMangaId) return;
       applyPercentRestore();
       pagesContainer.style.transition = 'opacity 0.08s ease-out';
       pagesContainer.style.opacity = '1';
-      window.setTimeout(() => {
+      postFadeTimer = window.setTimeout(() => {
+        if (!this.isReaderOpen || this.readerChapterNumber !== restoreChapterNum || this.readerMangaId !== restoreMangaId) return;
         this.isRestoringReaderScroll = false;
         this.targetRestorePercent = -1;
         this.syncReaderPageFromScroll();
@@ -1665,7 +1778,10 @@ export function restoreReaderScrollPosition(this: YomicApp): void {
 
   try {
     resizeObserver = new ResizeObserver(() => {
-      if (restoreFinished) return;
+      if (restoreFinished || !this.isReaderOpen) {
+        cancelRestore();
+        return;
+      }
       const curHeight = scrollArea.scrollHeight;
       if (curHeight !== lastHeight) {
         lastHeight = curHeight;

@@ -44,7 +44,7 @@ var source = {
     fetchAllMangas: function() {
         let res = this.requestUrl(this.apiUrl + "/api/mangas");
         if (!res || res.status !== 200 || !res.body) return [];
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let list = json.data || [];
         return list.filter(item => item.project && (item.available || "all") === "all");
     },
@@ -114,7 +114,7 @@ var source = {
         if (!res || res.status !== 200 || !res.body) {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
         }
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let d = json.data;
         if (!d) return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
 
@@ -148,7 +148,7 @@ var source = {
         let slug = url.replace("/detail/", "").replace(/^\/+|\/+$/g, "");
         let res = this.requestUrl(this.apiUrl + "/api/mangas/" + slug);
         if (!res || res.status !== 200 || !res.body) return [];
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let d = json.data;
         if (!d || !d.chapters) return [];
 
@@ -168,7 +168,7 @@ var source = {
         let number = parts[1];
         let res = this.requestUrl(this.apiUrl + "/api/mangas/" + slug + "/chapter/" + number);
         if (!res || res.status !== 200 || !res.body) return [];
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let pages = json.pages || [];
         return pages.map(p => this.normalizeUrl(p.image_url));
     }

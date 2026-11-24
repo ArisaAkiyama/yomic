@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Text.Json.Nodes;
@@ -12,13 +14,103 @@ namespace Yomic.Core.Services
     public class UpdateService : IDisposable
     {
         private const string GITHUB_API_URL = "https://api.github.com/repos/ArisaAkiyama/yomic/releases/latest";
+        private const string ALLOWED_RELEASE_PATH_PREFIX = "/ArisaAkiyama/yomic/releases/";
+        private volatile string? _verifiedReleaseDownloadUrl;
+        private volatile string? _verifiedExpectedSha256;
+
+        public static string? ExtractExpectedSha256(JsonNode? assetNode, string? releaseBody, string? assetName)
+        {
+            // 1. Prefer GitHub's native release asset `digest` field ("sha256:<64-hex>")
+            var digestField = assetNode?["digest"]?.ToString()?.Trim();
+            if (!string.IsNullOrEmpty(digestField))
+            {
+                const string prefix = "sha256:";
+                var hex = digestField.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    ? digestField.Substring(prefix.Length).Trim()
+                    : digestField;
+                if (IsValidSha256Hex(hex)) return hex.ToLowerInvariant();
+            }
+
+            // 2. Fallback: look for SHA-256 checksum published in the GitHub release notes
+            if (!string.IsNullOrWhiteSpace(releaseBody))
+            {
+                if (!string.IsNullOrWhiteSpace(assetName))
+                {
+                    var namedMatch = System.Text.RegularExpressions.Regex.Match(
+                        releaseBody,
+                        @"\b([a-fA-F0-9]{64})\b[^\r\n]*" + System.Text.RegularExpressions.Regex.Escape(assetName),
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (namedMatch.Success) return namedMatch.Groups[1].Value.ToLowerInvariant();
+                }
+
+                var labelMatch = System.Text.RegularExpressions.Regex.Match(
+                    releaseBody,
+                    @"SHA-?256\s*[:=]\s*`?([a-fA-F0-9]{64})`?",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (labelMatch.Success) return labelMatch.Groups[1].Value.ToLowerInvariant();
+            }
+
+            return null;
+        }
+
+        public static bool IsValidSha256Hex(string? hex)
+        {
+            if (string.IsNullOrWhiteSpace(hex) || hex.Length != 64) return false;
+            foreach (char c in hex)
+            {
+                bool isHex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+                if (!isHex) return false;
+            }
+            return true;
+        }
+
+        public static bool VerifyHashMatchesExpectedHex(byte[] actualHash, string? expectedHex)
+        {
+            if (actualHash == null || actualHash.Length != 32 || !IsValidSha256Hex(expectedHex)) return false;
+            try
+            {
+                byte[] expectedBytes = Convert.FromHexString(expectedHex!);
+                return CryptographicOperations.FixedTimeEquals(actualHash, expectedBytes);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static bool IsAllowedUpdateUrl(string? rawUrl, out Uri? parsedUri)
+        {
+            parsedUri = null;
+            if (string.IsNullOrWhiteSpace(rawUrl)) return false;
+            if (!Uri.TryCreate(rawUrl.Trim(), UriKind.Absolute, out var uri)) return false;
+            if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return false;
+            if (!uri.IsDefaultPort) return false;
+
+            string host = uri.IdnHost.TrimEnd('.');
+            // Only accept initial release URLs strictly scoped to the official Yomic repository.
+            // GitHub's download CDN (objects.githubusercontent.com / release-assets.githubusercontent.com)
+            // is only permitted as a redirect target AFTER starting from the official repo release URL.
+            if (string.Equals(host, "github.com", StringComparison.OrdinalIgnoreCase) &&
+                uri.AbsolutePath.StartsWith(ALLOWED_RELEASE_PATH_PREFIX, StringComparison.OrdinalIgnoreCase))
+            {
+                parsedUri = uri;
+                return true;
+            }
+
+            return false;
+        }
+
+        public bool IsTrustedInstallUrl(string? rawUrl, out Uri? parsedUri)
+        {
+            return IsAllowedUpdateUrl(rawUrl, out parsedUri);
+        }
         public static string CURRENT_VERSION
         {
             get
             {
                 var ver = Assembly.GetExecutingAssembly().GetName().Version;
                 if (ver == null || (ver.Major == 1 && ver.Minor == 0 && ver.Build == 0))
-                    return "2.2.1";
+                    return "2.3.0";
                 return ver.ToString(3);
             }
         }
@@ -29,6 +121,7 @@ namespace Yomic.Core.Services
             public string CurrentVersion { get; set; } = CURRENT_VERSION;
             public string LatestVersion { get; set; } = string.Empty;
             public string DownloadUrl { get; set; } = string.Empty;
+            public string ExpectedSha256 { get; set; } = string.Empty;
             public string ReleaseNotes { get; set; } = string.Empty;
             public string PublishedAt { get; set; } = string.Empty;
         }
@@ -37,16 +130,49 @@ namespace Yomic.Core.Services
 
         private System.Threading.Timer? _realtimeTimer;
         private string? _lastNotifiedTag;
-        private bool _isChecking;
+        private int _isChecking;
         private bool _disposed;
 
         public void StartRealtimeMonitoring(int intervalMinutes = 60)
         {
             if (_realtimeTimer != null) return;
 
+            CleanupStaleUpdateDirectories();
+
             var period = TimeSpan.FromMinutes(Math.Max(1, intervalMinutes));
-            // Trigger first check after 3 seconds, then periodically every period
-            _realtimeTimer = new System.Threading.Timer(async _ => await PerformPeriodicCheckAsync(), null, TimeSpan.FromSeconds(3), period);
+            // Trigger first check after 3 seconds, then periodically every period (avoid async void callback)
+            _realtimeTimer = new System.Threading.Timer(
+                _ => _ = Task.Run(PerformPeriodicCheckAsync),
+                null,
+                TimeSpan.FromSeconds(3),
+                period);
+        }
+
+        private static void CleanupStaleUpdateDirectories()
+        {
+            try
+            {
+                string updatesRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Yomic",
+                    "Updates");
+                if (!Directory.Exists(updatesRoot)) return;
+
+                var cutoffUtc = DateTime.UtcNow.AddHours(-1);
+                foreach (var dir in Directory.GetDirectories(updatesRoot))
+                {
+                    try
+                    {
+                        var info = new DirectoryInfo(dir);
+                        if (info.LastWriteTimeUtc < cutoffUtc)
+                        {
+                            info.Delete(recursive: true);
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
         }
 
         public void StopRealtimeMonitoring()
@@ -57,8 +183,7 @@ namespace Yomic.Core.Services
 
         private async Task PerformPeriodicCheckAsync()
         {
-            if (_isChecking || _disposed) return;
-            _isChecking = true;
+            if (_disposed || Interlocked.CompareExchange(ref _isChecking, 1, 0) != 0) return;
 
             try
             {
@@ -75,7 +200,7 @@ namespace Yomic.Core.Services
             }
             finally
             {
-                _isChecking = false;
+                Interlocked.Exchange(ref _isChecking, 0);
             }
         }
 
@@ -90,11 +215,13 @@ namespace Yomic.Core.Services
                 var json = JsonNode.Parse(response);
 
                 string latestVersionTag = json?["tag_name"]?.ToString() ?? string.Empty;
-                string downloadUrl = json?["html_url"]?.ToString() ?? string.Empty; // Fallback
+                string rawHtmlUrl = json?["html_url"]?.ToString() ?? string.Empty;
+                string downloadUrl = IsAllowedUpdateUrl(rawHtmlUrl, out _) ? rawHtmlUrl : string.Empty; // Verified fallback
                 string body = json?["body"]?.ToString() ?? string.Empty;
                 string publishedAt = json?["published_at"]?.ToString() ?? string.Empty;
 
-                // Parse exe assets
+                string? expectedSha256 = null;
+                // Parse exe assets and extract GitHub asset SHA-256 digest if published
                 if (json?["assets"] is JsonArray assets)
                 {
                     foreach (var asset in assets)
@@ -103,9 +230,11 @@ namespace Yomic.Core.Services
                         var name = asset?["name"]?.ToString();
                         if (!string.IsNullOrEmpty(url) &&
                             !string.IsNullOrEmpty(name) &&
-                            name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                            name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+                            IsAllowedUpdateUrl(url, out _))
                         {
                             downloadUrl = url;
+                            expectedSha256 = ExtractExpectedSha256(asset, body, name);
                             break;
                         }
                     }
@@ -119,12 +248,18 @@ namespace Yomic.Core.Services
                 {
                     if (latest > current)
                     {
+                        if (IsAllowedUpdateUrl(downloadUrl, out _))
+                        {
+                            _verifiedReleaseDownloadUrl = downloadUrl;
+                            _verifiedExpectedSha256 = expectedSha256;
+                        }
                         return new UpdateInfo
                         {
                             IsUpdateAvailable = true,
                             CurrentVersion = CURRENT_VERSION,
                             LatestVersion = latestVersionTag,
                             DownloadUrl = downloadUrl,
+                            ExpectedSha256 = expectedSha256 ?? string.Empty,
                             ReleaseNotes = body,
                             PublishedAt = publishedAt
                         };
@@ -158,53 +293,122 @@ namespace Yomic.Core.Services
             Action<double>? onProgress = null,
             Action<double, long, long, string>? onDetailedProgress = null)
         {
-            if (string.IsNullOrWhiteSpace(downloadUrl))
-                return false;
-
-            if (!downloadUrl.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            if (!IsTrustedInstallUrl(downloadUrl, out var parsedUri) || parsedUri == null)
             {
+                LogService.Warning("UpdateService", $"Blocked untrusted update URL: {downloadUrl}");
+                onDetailedProgress?.Invoke(0.0, 0L, 0L, "error");
+                return false;
+            }
+
+            if (!parsedUri.AbsolutePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                // Only allow opening verified GitHub release web pages in the browser
+                if (!string.Equals(parsedUri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    onDetailedProgress?.Invoke(0.0, 0L, 0L, "error");
+                    return false;
+                }
                 try
                 {
-                    Process.Start(new ProcessStartInfo { FileName = downloadUrl, UseShellExecute = true });
+                    using var browserProc = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = parsedUri.AbsoluteUri,
+                        UseShellExecute = true
+                    });
                     return true;
                 }
                 catch
                 {
+                    onDetailedProgress?.Invoke(0.0, 0L, 0L, "error");
                     return false;
                 }
             }
 
+            string updateDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Yomic",
+                "Updates",
+                Guid.NewGuid().ToString("N"));
+            string tempPath = Path.Combine(updateDir, "Yomic_Update.exe");
+
+            bool mutexReleased = false;
             try
             {
-                var tempPath = Path.Combine(Path.GetTempPath(), "Yomic_Update.exe");
-                if (File.Exists(tempPath))
-                {
-                    try { File.Delete(tempPath); } catch { }
-                }
+                Directory.CreateDirectory(updateDir);
 
                 long finalTotalBytes = 0;
                 long finalTotalRead = 0;
-                using (var client = new HttpClient())
+                byte[] streamedHash;
+
+                using var overallCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+                using (var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan })
                 {
                     client.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
-                    using var response = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+                    using var response = await client.GetAsync(parsedUri, HttpCompletionOption.ResponseHeadersRead, overallCts.Token);
                     response.EnsureSuccessStatusCode();
+
+                    // Re-verify final redirected URL is strictly HTTPS on official GitHub release asset CDN (fail-closed if null)
+                    var finalUri = response.RequestMessage?.RequestUri
+                        ?? throw new InvalidOperationException("Blocked update response with missing final request URI.");
+
+                    string finalHost = finalUri.IdnHost.TrimEnd('.');
+                    bool isAllowedFinalHost =
+                        (finalHost.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
+                         finalUri.AbsolutePath.StartsWith(ALLOWED_RELEASE_PATH_PREFIX, StringComparison.OrdinalIgnoreCase)) ||
+                        finalHost.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+                        finalHost.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
+
+                    if (!string.Equals(finalUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                        !finalUri.IsDefaultPort ||
+                        !isAllowedFinalHost)
+                    {
+                        throw new InvalidOperationException($"Blocked untrusted update redirect host: {finalUri.Host}");
+                    }
+
                     var totalBytes = response.Content.Headers.ContentLength ?? -1L;
                     finalTotalBytes = totalBytes > 0 ? totalBytes : 0;
                     var canValidProgress = totalBytes > 0;
                     onDetailedProgress?.Invoke(0.0, 0L, finalTotalBytes, "downloading");
 
-                    using var contentStream = await response.Content.ReadAsStreamAsync();
-                    using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
+                    using var contentStream = await response.Content.ReadAsStreamAsync(overallCts.Token);
+                    using var fileStream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 8192, useAsync: true);
+                    using var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+
                     var totalRead = 0L;
                     var buffer = new byte[8192];
-                    int read;
                     var lastReportTicks = Environment.TickCount64;
-                    while ((read = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                    var magicBytes = new byte[2];
+                    int magicCollected = 0;
+                    bool checkedMagic = false;
+
+                    while (true)
                     {
-                        await fileStream.WriteAsync(buffer, 0, read);
+                        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(overallCts.Token);
+                        readCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+                        int read = await contentStream.ReadAsync(buffer, 0, buffer.Length, readCts.Token);
+                        if (read <= 0) break;
+
+                        if (!checkedMagic)
+                        {
+                            int toCopy = Math.Min(2 - magicCollected, read);
+                            Buffer.BlockCopy(buffer, 0, magicBytes, magicCollected, toCopy);
+                            magicCollected += toCopy;
+                            if (magicCollected == 2)
+                            {
+                                if (magicBytes[0] != 0x4D || magicBytes[1] != 0x5A) // 'MZ' PE header
+                                {
+                                    throw new InvalidDataException("Downloaded update file is not a valid Windows executable.");
+                                }
+                                checkedMagic = true;
+                            }
+                        }
+
+                        sha256.AppendData(buffer, 0, read);
+                        await fileStream.WriteAsync(buffer, 0, read, overallCts.Token);
                         totalRead += read;
                         finalTotalRead = totalRead;
+
                         var nowTicks = Environment.TickCount64;
                         if (nowTicks - lastReportTicks >= 120 || (canValidProgress && totalRead >= totalBytes))
                         {
@@ -214,37 +418,89 @@ namespace Yomic.Core.Services
                             onDetailedProgress?.Invoke(pct, totalRead, finalTotalBytes, "downloading");
                         }
                     }
+
+                    if (!checkedMagic || totalRead < 65536 || (canValidProgress && totalRead != totalBytes))
+                    {
+                        throw new InvalidDataException("Downloaded update file is incomplete or corrupted.");
+                    }
+
+                    await fileStream.FlushAsync(overallCts.Token);
+                    streamedHash = sha256.GetHashAndReset();
+                }
+
+                // Verify file integrity right before launching (mitigates TOCTOU tampering)
+                byte[] diskHash;
+                using (var verifyStream = new FileStream(tempPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    diskHash = await SHA256.HashDataAsync(verifyStream);
+                }
+
+                if (!CryptographicOperations.FixedTimeEquals(streamedHash, diskHash))
+                {
+                    throw new InvalidOperationException("Update installer integrity verification failed before launch.");
+                }
+
+                // Verify downloaded installer against GitHub-published SHA-256 digest (case-insensitive URL match)
+                var pinnedSha = string.Equals(downloadUrl.Trim(), _verifiedReleaseDownloadUrl, StringComparison.OrdinalIgnoreCase)
+                    ? _verifiedExpectedSha256
+                    : null;
+                if (!string.IsNullOrWhiteSpace(pinnedSha))
+                {
+                    if (!VerifyHashMatchesExpectedHex(diskHash, pinnedSha))
+                    {
+                        throw new InvalidOperationException("Update installer SHA-256 digest does not match official GitHub release checksum.");
+                    }
+                    LogService.Info("UpdateService", $"Verified official release SHA-256 digest: {pinnedSha}");
+                }
+                else
+                {
+                    LogService.Warning("UpdateService", "Official GitHub release did not publish an asset SHA-256 digest; relying on pinned HTTPS origin and PE verification.");
                 }
 
                 onProgress?.Invoke(100.0);
                 onDetailedProgress?.Invoke(100.0, finalTotalRead, finalTotalBytes > 0 ? finalTotalBytes : finalTotalRead, "installing");
-                await Task.Delay(500);
+
+                // Release the single-instance mutex on the owning UI thread right before starting the installer
+                YomicDesktop.App.ReleaseSingleInstanceMutexForRestart();
+                mutexReleased = true;
 
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = tempPath,
                     UseShellExecute = true,
-                    Arguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART"
+                    Arguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART /RELAUNCH=1"
                 };
 
-                var process = Process.Start(startInfo);
+                using var process = Process.Start(startInfo);
                 if (process != null)
                 {
-                    Application.Current?.Dispatcher.Invoke(() => Application.Current.Shutdown());
+                    mutexReleased = false; // App is shutting down intentionally
+                    _ = Application.Current?.Dispatcher.InvokeAsync(() => Application.Current.Shutdown());
                     return true;
                 }
+
+                // Process failed to start: re-acquire single-instance mutex so app isn't left unguarded
+                YomicDesktop.App.TryReacquireSingleInstanceMutex();
+                mutexReleased = false;
                 onDetailedProgress?.Invoke(0.0, 0L, 0L, "error");
                 return false;
             }
             catch (Exception ex)
             {
+                if (mutexReleased)
+                {
+                    YomicDesktop.App.TryReacquireSingleInstanceMutex();
+                }
                 LogService.Error("UpdateService", $"Download and install update failed: {ex.Message}", ex);
-                onDetailedProgress?.Invoke(0.0, 0L, 0L, "error");
                 try
                 {
-                    Process.Start(new ProcessStartInfo { FileName = downloadUrl, UseShellExecute = true });
+                    if (Directory.Exists(updateDir))
+                    {
+                        Directory.Delete(updateDir, recursive: true);
+                    }
                 }
                 catch { }
+                onDetailedProgress?.Invoke(0.0, 0L, 0L, "error");
                 return false;
             }
         }

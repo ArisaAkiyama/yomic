@@ -79,7 +79,7 @@ var source = {
         let res = this.requestUrl(url, { "Accept": "application/json" });
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: page || 1 };
 
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let items = [];
         let data = json.data || [];
         for (let obj of data) {
@@ -106,7 +106,7 @@ var source = {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
         }
 
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let d = json.data || {};
         let author = "";
         let genreList = [];
@@ -150,7 +150,7 @@ var source = {
         let res = this.requestUrl(apiUrl, { "Accept": "application/json" });
         if (!res || res.status !== 200 || !res.body) return [];
 
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let list = json.data || json.chapterList || [];
         let chapters = [];
         for (let obj of list) {
@@ -173,7 +173,7 @@ var source = {
         let res = this.requestUrl(apiUrl, { "Accept": "application/json" });
         if (!res || res.status !== 200 || !res.body) return [];
 
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let pages = [];
         let pl = (json.data && json.data.pageList) ? json.data.pageList : null;
         if (pl && pl.chapterPage && pl.chapterPage.pages) {

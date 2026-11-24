@@ -4,7 +4,8 @@ import {
   buildComicPageSvg,
   buildMangaCoverSvg,
   DEFAULT_APP_SETTINGS,
-  escapeXml
+  escapeXml,
+  sanitizeImageSrc
 } from '../mock-data.js';
 import {
   ActivityUpdateItem,
@@ -315,7 +316,7 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
                 ${installedSources
                   .map(
                     (src) => `
-                  <button class="v1-filter-modal-item ${this.librarySourceFilter === src.id ? 'selected' : ''}" data-lib-src="${src.id}">
+                  <button class="v1-filter-modal-item ${this.librarySourceFilter === src.id ? 'selected' : ''}" data-lib-src="${escapeXml(src.id)}">
                     <span class="v1-filter-modal-check">${this.librarySourceFilter === src.id ? checkSvg : ''}</span>
                     <span class="v1-filter-source-logo-wrap">${this.buildSourceLogoHtml(src)}</span>
                     <span>${escapeXml(src.name)}</span>
@@ -477,7 +478,9 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
         this.searchQuery = '';
         if (input) input.value = '';
         window.setTimeout(() => {
-          this.renderLibraryView(container);
+          if (this.currentTab === 'library' && !this.activeDetailMangaId && !this.isLibraryStatsOpen) {
+            this.renderLibraryView(container);
+          }
         }, 220);
       }
     }
@@ -488,6 +491,8 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
     window.clearTimeout(libSearchTimeout);
     this.searchQuery = libSearchInput.value;
     libSearchTimeout = window.setTimeout(() => {
+      // Never clobber another tab or Manga Detail if user navigated away during debounce
+      if (this.currentTab !== 'library' || this.activeDetailMangaId || this.isLibraryStatsOpen) return;
       const contentArea = document.getElementById('libContentArea');
       if (contentArea) {
         const currentFiltered = getFilteredAndSortedManga();
@@ -529,7 +534,9 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
       libSearchInput?.blur();
       if (hadQuery) {
         window.setTimeout(() => {
-          this.renderLibraryView(container);
+          if (this.currentTab === 'library' && !this.activeDetailMangaId && !this.isLibraryStatsOpen) {
+            this.renderLibraryView(container);
+          }
         }, 220);
       }
     }
@@ -546,7 +553,9 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
     input?.blur();
     if (hadQuery) {
       window.setTimeout(() => {
-        this.renderLibraryView(container);
+        if (this.currentTab === 'library' && !this.activeDetailMangaId && !this.isLibraryStatsOpen) {
+          this.renderLibraryView(container);
+        }
       }, 220);
     }
   });
@@ -711,15 +720,20 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
       });
       this.readingStatsData = null;
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke<MangaItem>('manga:mark-chapters', { mangaId: ctxManga.id, mode: 'all-read' }).then((res) => {
-          if (res) {
-            res.unreadCount = 0;
-            res.lastViewedEpoch = res.lastViewedEpoch && res.lastViewedEpoch > 0 ? res.lastViewedEpoch : nowEpoch;
-            this.upsertMangaItem(res);
-          }
-          this.readingStatsData = null;
-          if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
-        });
+        void this.bridge
+          .invoke<MangaItem>('manga:mark-chapters', { mangaId: ctxManga.id, mode: 'all-read' })
+          .then((res) => {
+            if (res) {
+              res.unreadCount = 0;
+              res.lastViewedEpoch = res.lastViewedEpoch && res.lastViewedEpoch > 0 ? res.lastViewedEpoch : nowEpoch;
+              this.upsertMangaItem(res);
+            }
+            this.readingStatsData = null;
+            if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
+          })
+          .catch(() => {
+            this.showToast(this.l('Gagal menyinkronkan status baca ke database.', 'Failed to sync read status to database.'), 'warning');
+          });
       }
       this.showToast(this.l(`Seluruh bab ${ctxManga.title} ditandai sudah dibaca.`, `All chapters of ${ctxManga.title} marked as read.`));
     }
@@ -735,15 +749,20 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
       });
       this.readingStatsData = null;
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke<MangaItem>('manga:mark-chapters', { mangaId: ctxManga.id, mode: 'all-unread' }).then((res) => {
-          if (res) {
-            res.unreadCount = res.totalChapters;
-            res.lastViewedEpoch = 0;
-            this.upsertMangaItem(res);
-          }
-          this.readingStatsData = null;
-          if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
-        });
+        void this.bridge
+          .invoke<MangaItem>('manga:mark-chapters', { mangaId: ctxManga.id, mode: 'all-unread' })
+          .then((res) => {
+            if (res) {
+              res.unreadCount = res.totalChapters;
+              res.lastViewedEpoch = 0;
+              this.upsertMangaItem(res);
+            }
+            this.readingStatsData = null;
+            if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
+          })
+          .catch(() => {
+            this.showToast(this.l('Gagal menyinkronkan status belum dibaca ke database.', 'Failed to sync unread status to database.'), 'warning');
+          });
       }
       this.showToast(this.l(`${ctxManga.title} ditandai belum dibaca.`, `${ctxManga.title} marked as unread.`));
     }
@@ -757,7 +776,9 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
         c.isDownloaded = false;
       });
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke('downloads:delete-manga', { mangaId: ctxManga.id });
+        void this.bridge.invoke('downloads:delete-manga', { mangaId: ctxManga.id }).catch(() => {
+          this.showToast(this.l('Gagal menghapus unduhan dari disk.', 'Failed to delete downloads from disk.'), 'warning');
+        });
       }
       this.showToast(this.l(`Unduhan untuk ${ctxManga.title} telah dihapus.`, `Downloads for ${ctxManga.title} deleted.`));
     }
@@ -768,7 +789,9 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
     if (ctxManga) {
       ctxManga.inLibrary = false;
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke<MangaItem>('manga:toggle-library', { mangaId: ctxManga.id });
+        void this.bridge.invoke<MangaItem>('manga:toggle-library', { mangaId: ctxManga.id }).catch(() => {
+          this.showToast(this.l('Gagal menghapus komik dari pustaka.', 'Failed to remove comic from library.'), 'warning');
+        });
       }
       this.showToast(this.l(`${ctxManga.title} dihapus dari Pustaka.`, `${ctxManga.title} removed from Library.`));
       this.persistLocalCache();
@@ -860,7 +883,7 @@ export async function triggerLibrarySyncProgress(this: YomicApp, forceRefresh = 
     } catch {
       this.syncProgress.active = false;
       this.renderCurrentWorkspace(true);
-      this.showToast(this.l('Pustaka selesai diperbarui.', 'Library update complete.'));
+      this.showToast(this.l('Gagal memperbarui pustaka. Periksa koneksi internet Anda.', 'Failed to update library. Check your internet connection.'));
     }
     return;
   }
@@ -906,17 +929,17 @@ export function buildMangaGridCardHtml(this: YomicApp, manga: MangaItem): string
     ? `<span class="v1-mal-card-favicon" title="${escapeXml(this.l('Tertaut ke MyAnimeList', 'Linked to MyAnimeList'))}" style="display:inline-flex;align-items:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect width="16" height="16" rx="3.5" fill="#2E51A2"/><text x="8" y="10.3" text-anchor="middle" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="6" font-weight="800" letter-spacing="-0.3">MAL</text></svg></span>`
     : '';
   return `
-    <article class="manga-card" data-open-detail="${manga.id}">
+    <article class="manga-card" data-open-detail="${escapeXml(manga.id)}">
       <div class="manga-cover-wrap">
-        <img class="manga-cover-img"${blurStyle} src="${coverSrc}" alt="${escapeXml(manga.title)}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackSvg}';" />
+        <img class="manga-cover-img"${blurStyle} src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(manga.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
         ${unreadBadge ? `<div class="card-badges-top">${unreadBadge}</div>` : ''}
       </div>
       <div class="manga-card-body">
-        <div class="manga-card-title" title="${escapeXml(manga.title)}">${manga.title}</div>
+        <div class="manga-card-title" title="${escapeXml(manga.title)}">${escapeXml(manga.title)}</div>
         <div class="manga-card-meta">
           ${this.buildSourceFaviconHtml(manga.sourceName, manga.sourceId, 14)}
           ${malFavicon}
-          <span class="manga-card-time">${manga.lastReadTimeAgo}</span>
+          <span class="manga-card-time">${escapeXml(manga.lastReadTimeAgo)}</span>
         </div>
       </div>
     </article>
@@ -932,15 +955,15 @@ export function buildMangaListRowHtml(this: YomicApp, manga: MangaItem): string 
     ? `<span class="v1-mal-card-favicon" title="${escapeXml(this.l('Tertaut ke MyAnimeList', 'Linked to MyAnimeList'))}" style="display:inline-flex;align-items:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect width="16" height="16" rx="3.5" fill="#2E51A2"/><text x="8" y="10.3" text-anchor="middle" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="6" font-weight="800" letter-spacing="-0.3">MAL</text></svg></span>`
     : '';
   return `
-    <div class="v1-lib-list-row" data-open-detail="${manga.id}">
+    <div class="v1-lib-list-row" data-open-detail="${escapeXml(manga.id)}">
       <div class="v1-lib-list-left">
-        <img class="v1-lib-list-thumb"${blurStyle} src="${coverSrc}" alt="${escapeXml(manga.title)}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackSvg}';" />
+        <img class="v1-lib-list-thumb"${blurStyle} src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(manga.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
         <div class="v1-lib-list-info">
-          <div class="v1-lib-list-title">${manga.title}</div>
+          <div class="v1-lib-list-title">${escapeXml(manga.title)}</div>
           <div class="manga-card-meta">
             ${this.buildSourceFaviconHtml(manga.sourceName, manga.sourceId, 14)}
             ${malFavicon}
-            <span class="manga-card-time">${manga.lastReadTimeAgo}</span>
+            <span class="manga-card-time">${escapeXml(manga.lastReadTimeAgo)}</span>
           </div>
         </div>
       </div>

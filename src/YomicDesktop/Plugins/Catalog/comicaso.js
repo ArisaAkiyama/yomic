@@ -60,7 +60,7 @@ var source = {
         let url = this.baseUrl + "/api/home.php?source=all&q=&mode=update&type=all&limit=60&offset=" + offset;
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: p };
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let list = json.data || [];
         let items = list.map(item => ({
             title: item.title,
@@ -77,7 +77,7 @@ var source = {
         let url = this.baseUrl + "/api/home.php?source=all&q=" + encodeURIComponent(query || "") + "&mode=update&type=all&limit=60&offset=" + offset;
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: p };
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let list = json.data || [];
         let items = list.map(item => ({
             title: item.title,
@@ -105,7 +105,7 @@ var source = {
         if (!res || res.status !== 200 || !res.body) {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
         }
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let d = json.data;
         if (!d) return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
 
@@ -136,7 +136,7 @@ var source = {
         let apiUrl = this.baseUrl + "/api/manga.php?source=" + source + "&slug=" + slug + "&platform=web";
         let res = this.requestUrl(apiUrl);
         if (!res || res.status !== 200 || !res.body) return [];
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let d = json.data;
         if (!d || !d.chapters) return [];
 
@@ -158,7 +158,7 @@ var source = {
         let apiUrl = this.baseUrl + "/api/chapter.php?source=" + source + "&manga=" + manga + "&chapter=" + chapter + "&token=" + token;
         let res = this.requestUrl(apiUrl);
         if (!res || res.status !== 200 || !res.body) return [];
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let images = (json.data && json.data.images) ? json.data.images : [];
         return images;
     }

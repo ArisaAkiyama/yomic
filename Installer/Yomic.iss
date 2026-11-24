@@ -5,7 +5,7 @@
 
 #define MyAppName "Yomic"
 #define MyAppPublisher "ArisaAkiyama"
-#define MyAppVersion "2.2.1"
+#define MyAppVersion "2.3.0"
 #ifndef MySourceDir
   #define MySourceDir "..\dist\Yomic_v2"
 #endif
@@ -55,9 +55,20 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startupicon"; Description: "{cm:CreateStartupIcon}"; GroupDescription: "{cm:GroupAdditionalTasks}"; Flags: unchecked
 
 [InstallDelete]
-; Clean up legacy Yomic v1 binaries/DLLs (e.g. Avalonia) in {app} before installing v2.
+; Clean up ONLY known Yomic v1/v2 binaries and subdirectories in {app} (never wipe unrelated files if user picks a shared folder).
 ; User data (%LOCALAPPDATA%\Yomic and %APPDATA%\Yomic) is untouched.
-Type: filesandordirs; Name: "{app}\*"
+Type: filesandordirs; Name: "{app}\WebUI"
+Type: filesandordirs; Name: "{app}\Plugins"
+Type: filesandordirs; Name: "{app}\Assets"
+Type: filesandordirs; Name: "{app}\runtimes"
+Type: files; Name: "{app}\Yomic*.exe"
+Type: files; Name: "{app}\Yomic*.dll"
+Type: files; Name: "{app}\Avalonia*.dll"
+Type: files; Name: "{app}\SkiaSharp*.dll"
+Type: files; Name: "{app}\Microsoft.Web.WebView2*.dll"
+Type: files; Name: "{app}\*.deps.json"
+Type: files; Name: "{app}\*.runtimeconfig.json"
+Type: files; Name: "{app}\*.pdb"
 
 [Files]
 Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -76,6 +87,11 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait postinstall runasoriginaluser; Check: ShouldRelaunchAfterSilentUpdate
+
+[UninstallRun]
+; Remove Yomic background auto-update scheduled task on uninstall so no orphaned task remains
+Filename: "{sys}\schtasks.exe"; Parameters: "/delete /tn Yomic_Background_AutoUpdate /f"; Flags: runhidden; RunOnceId: "DeleteYomicAutoUpdateTask"
 
 [Code]
 var
@@ -150,8 +166,8 @@ begin
         DisplayVer := '';
         RegQueryStringValue(RootKey, EntryKey, 'DisplayVersion', DisplayVer);
 
-        // Only uninstall older 1.x versions or mismatched AppId entries
-        if (DisplayVer = '') or (Pos('1.', DisplayVer) = 1) or (Pos('2.', DisplayVer) <> 1) then
+        // Only uninstall older 1.x versions (never uninstall future 3.x+ installations)
+        if (Pos('1.', DisplayVer) = 1) or (Pos('Yomic v1', DisplayName) > 0) then
         begin
           if RegQueryStringValue(RootKey, EntryKey, 'UninstallString', UninstCmd) then
           begin
@@ -172,13 +188,20 @@ begin
   DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing), SetupMessage(msgPreparingDesc), nil);
 end;
 
+function ShouldRelaunchAfterSilentUpdate(): Boolean;
+begin
+  Result := WizardSilent() and (ExpandConstant('{param:RELAUNCH|0}') = '1');
+end;
+
 // Automatically stop any running Yomic v1/v2 instance, clean legacy v1 entries, & install WebView2 if missing
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
   BootstrapperPath: String;
 begin
-  // 1. Force close any running Yomic v1 or v2 process
+  // 1. Gracefully request close first so App.OnExit (Puppeteer 2s + WAL/log flush) completes cleanly before force close
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(2500);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Yomic.Desktop.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 

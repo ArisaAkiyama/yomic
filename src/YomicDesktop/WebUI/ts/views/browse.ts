@@ -4,7 +4,8 @@ import {
   buildComicPageSvg,
   buildMangaCoverSvg,
   DEFAULT_APP_SETTINGS,
-  escapeXml
+  escapeXml,
+  sanitizeImageSrc
 } from '../mock-data.js';
 import {
   ActivityUpdateItem,
@@ -78,14 +79,18 @@ export function buildLangFlagsHtml(this: YomicApp, lang: 'ID' | 'EN' | 'ALL'): s
   return this.buildLangBadgeHtml(lang);
 }
 
+let activeSourceFeedObserver: IntersectionObserver | null = null;
+let activeSourceSearchTimer: number | undefined;
+
 export function updateSourceStatusInPlace(
   container: HTMLElement,
   sourceId: number | string,
   status: 'online' | 'warning' | 'offline' | 'checking',
   tooltip?: string
 ): void {
+  const escapedSourceId = CSS.escape(String(sourceId));
   const row = container.querySelector<HTMLElement>(
-    `.v1-source-row[data-source-id="${sourceId}"], .v1-source-row[data-open-source="${sourceId}"]`
+    `.v1-source-row[data-source-id="${escapedSourceId}"], .v1-source-row[data-open-source="${escapedSourceId}"]`
   );
   if (!row) return;
 
@@ -654,10 +659,6 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
     });
   });
 
-  document.getElementById('btnGoExtensionsFromBrowse')?.addEventListener('click', () => {
-    this.navigateToTab('extensions');
-  });
-
   const sourcesListY = this.viewScrollPositions.get('browse_sources_list') ?? this.savedBrowseScrollTop;
   if (sourcesListY > 0) {
     container.scrollTop = sourcesListY;
@@ -923,7 +924,7 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
           ${getIconSvg('arrow-left-line', { size: 16 })}
         </button>
         ${this.buildSourceLogoHtml(source, 30)}
-        <span class="v1-lib-title-text" style="font-size:18px;">${source.name}</span>
+        <span class="v1-lib-title-text" style="font-size:18px;">${escapeXml(source.name)}</span>
         ${
           !this.isSourceFeedLoading && isOffline
             ? `<span class="v1-status-badge offline" style="margin-left: 6px;" title="${this.l('Status Server: Offline / Tidak Dapat Dijangkau', 'Server Status: Offline / Unreachable')}"><span class="v1-status-dot offline"></span><span>Offline</span></span>`
@@ -970,7 +971,7 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
                 return `
                   <article class="manga-card" data-open-detail="${escapeXml(m.id)}">
                     <div class="manga-cover-wrap">
-                      <img class="manga-cover-img" src="${coverSrc}" alt="${escapeXml(m.title)}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackSvg}';" />
+                      <img class="manga-cover-img" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(m.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
                       ${bookmarkCornerHtml}
                     </div>
                     <div class="manga-card-body">
@@ -1114,6 +1115,11 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
   `;
   document.getElementById('btnBackToSourcesList')?.addEventListener('click', () => {
     container.onscroll = null;
+    if (activeSourceFeedObserver) {
+      activeSourceFeedObserver.disconnect();
+      activeSourceFeedObserver = null;
+    }
+    window.clearTimeout(activeSourceSearchTimer);
     if (this.activeBrowseSourceId) {
       this.viewScrollPositions.delete(`browse_source_${this.activeBrowseSourceId}`);
     }
@@ -1179,7 +1185,9 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
           if (res?.verified) {
             source.status = 'online';
             this.showToast(this.l(`Sesi Cloudflare untuk ${source.name} berhasil diverifikasi. Menyegarkan katalog...`, `Cloudflare session for ${source.name} verified. Refreshing catalog...`));
-            void this.fetchSourceCatalogFeed(source, true);
+            if (this.currentTab === 'browse' && this.activeBrowseSourceId === source.id) {
+              void this.fetchSourceCatalogFeed(source, true);
+            }
           } else {
             this.showToast(this.l(`Verifikasi Cloudflare untuk ${source.name} belum selesai.`, `Cloudflare verification for ${source.name} is not finished.`));
           }
@@ -1225,12 +1233,13 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
     }
   });
 
-  // Inline Search Input (Source Catalog)
+  // Inline Search Input (Source Catalog) — shared timer canceled across re-renders/switches
   const sourceSearchInput = document.getElementById('sourceCatalogSearchInput') as HTMLInputElement | null;
-  let sourceSearchTimeout: number | undefined;
+  window.clearTimeout(activeSourceSearchTimer);
 
   const triggerSourceSearch = () => {
-    window.clearTimeout(sourceSearchTimeout);
+    window.clearTimeout(activeSourceSearchTimer);
+    if (this.currentTab !== 'browse' || this.activeBrowseSourceId !== source.id || this.activeDetailMangaId) return;
     const val = (sourceSearchInput?.value ?? '').trim();
     if (this.sourceFeedSearchQuery === val) return;
     this.sourceFeedSearchQuery = val;
@@ -1250,20 +1259,21 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
   });
 
   sourceSearchInput?.addEventListener('input', () => {
-    window.clearTimeout(sourceSearchTimeout);
+    window.clearTimeout(activeSourceSearchTimer);
     const val = (sourceSearchInput?.value ?? '').trim();
     if (val === '' && this.sourceFeedSearchQuery !== '') {
       triggerSourceSearch();
       return;
     }
     // Debounce for 600ms on typing without destroying grid
-    sourceSearchTimeout = window.setTimeout(() => {
+    activeSourceSearchTimer = window.setTimeout(() => {
       triggerSourceSearch();
     }, 600);
   });
 
   document.getElementById('btnClearSourceSearch')?.addEventListener('click', (ev) => {
     ev.stopPropagation();
+    window.clearTimeout(activeSourceSearchTimer);
     this.sourceFeedSearchQuery = '';
     this.sourceFeedPage = 1;
     if (sourceSearchInput) sourceSearchInput.value = '';
@@ -1394,9 +1404,21 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
   };
   document.getElementById('btnResetSourceFilter')?.addEventListener('click', resetSourceFilterFn);
 
-  // Infinite Scroll: Auto-load next page on scroll down
+  // Infinite Scroll: Auto-load next page on scroll down (always clean up prior observer first)
+  if (activeSourceFeedObserver) {
+    activeSourceFeedObserver.disconnect();
+    activeSourceFeedObserver = null;
+  }
   if (this.bridge.isWebViewHost && this.sourceFeedHasMore) {
     const triggerLoadMore = () => {
+      if (this.currentTab !== 'browse' || this.activeBrowseSourceId !== source.id || this.activeDetailMangaId) {
+        container.onscroll = null;
+        if (activeSourceFeedObserver) {
+          activeSourceFeedObserver.disconnect();
+          activeSourceFeedObserver = null;
+        }
+        return;
+      }
       if (this.isSourceFeedLoading || !this.sourceFeedHasMore || this.isRestoringWorkspaceScroll) return;
       const scrollBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
       if (scrollBottom <= 400) {
@@ -1418,6 +1440,7 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
         { root: container, rootMargin: '300px' }
       );
       observer.observe(sentinel);
+      activeSourceFeedObserver = observer;
     }
   } else {
     container.onscroll = null;

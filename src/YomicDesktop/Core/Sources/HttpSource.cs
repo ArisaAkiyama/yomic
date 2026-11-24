@@ -13,7 +13,7 @@ using System.Text.Json.Nodes;
 
 namespace Yomic.Core.Sources
 {
-    public abstract class HttpSource : IMangaSource
+    public abstract class HttpSource : IMangaSource, IDisposable
     {
         public static bool SilenceLogs { get; set; } = false;
 
@@ -61,23 +61,28 @@ namespace Yomic.Core.Sources
         /// Default is false, meaning most sources use direct connection with DoH.
         /// </summary>
         public virtual bool RequiresProxy => false;
-        
-        // Property that gets/creates HttpClient
+        public virtual bool IsNsfw => false;
+
+        private readonly object _clientLock = new object();
+
+        // Property that gets/creates HttpClient safely across concurrent threads
         protected HttpClient Client
         {
             get
             {
-                if (_client == null)
+                if (_client != null) return _client;
+                lock (_clientLock)
                 {
-                    _client = CreateHttpClient();
-                    
-                    // Re-apply extension-specific configuration (headers, etc.)
-                    ConfigureClient(_client);
-                    
-                    if (!SilenceLogs) Console.WriteLine("[HttpSource] HttpClient created");
+                    if (_client == null)
+                    {
+                        var created = CreateHttpClient();
+                        // Configure headers BEFORE publishing _client to other threads
+                        ConfigureClient(created);
+                        _client = created;
+                        if (!SilenceLogs) Console.WriteLine("[HttpSource] HttpClient created");
+                    }
+                    return _client;
                 }
-                
-                return _client;
             }
         }
 
@@ -90,6 +95,9 @@ namespace Yomic.Core.Sources
             // Base implementation - extensions can override to add Origin, Referer, etc.
         }
 
+        public static Func<bool>? IsOfflineModeProvider { get; set; }
+        public static Func<int>? DnsOverHttpsProviderGetter { get; set; }
+
         protected HttpSource()
         {
             // Client will be created lazily on first access via the Client property
@@ -98,123 +106,136 @@ namespace Yomic.Core.Sources
         private HttpClient CreateHttpClient()
         {
             SocketsHttpHandler handler = new SocketsHttpHandler
-            {
-                ConnectCallback = async (context, token) =>
-                {
-                    var host = context.DnsEndPoint.Host;
-                    var candidateIps = new List<System.Net.IPAddress>();
-                    var logBuilder = new System.Text.StringBuilder();
-
-                    // List of DoH providers (IPv4)
-                    var dohQueries = new[]
-                    {
-                        (Provider: "https://8.8.8.8/resolve?name={0}&type=A", Type: "IPv4"), // Direct IP
-                        (Provider: "https://cloudflare-dns.com/dns-query?name={0}&type=A", Type: "IPv4"),
-                        (Provider: "https://dns.google/resolve?name={0}&type=A", Type: "IPv4"),
-                    };
-
-                    foreach (var (template, type) in dohQueries)
-                    {
-                        try
-                        {
-                            string dohUrl = string.Format(template, host);
-                            var request = new HttpRequestMessage(HttpMethod.Get, dohUrl);
-                            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-json"));
-                            
-                            var response = await _dohClient.SendAsync(request, token);
-                            if (response.IsSuccessStatusCode)
-                            {
-                                var json = await response.Content.ReadAsStringAsync(token);
-                                var obj = JsonNode.Parse(json);
-                                var answers = obj?["Answer"] as JsonArray;
-                                
-                                if (answers != null)
-                                {
-                                    foreach (var ans in answers)
-                                    {
-                                        var ipStr = ans?["data"]?.ToString();
-                                        if (System.Net.IPAddress.TryParse(ipStr, out var parsedIp) && !candidateIps.Contains(parsedIp))
-                                        {
-                                            candidateIps.Add(parsedIp);
-                                            logBuilder.AppendLine($"[DoH] Resolved {host} ({type}) via {dohUrl} -> {parsedIp}");
-                                        }
-                                    }
-                                    
-                                    if (candidateIps.Count > 0) break;
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            logBuilder.AppendLine($"[DoH] Failed {template}: {ex.Message}");
-                        }
-                    }
-
-                    // Append System DNS as fallback
-                    try
-                    {
-                        var hostAddresses = await System.Net.Dns.GetHostAddressesAsync(host, token);
-                        foreach (var ip in hostAddresses)
-                        {
-                            if (!candidateIps.Contains(ip))
-                            {
-                                candidateIps.Add(ip);
-                            }
-                        }
-                    }
-                    catch { }
-                    
-                    if (!SilenceLogs) System.Diagnostics.Debug.WriteLine(logBuilder.ToString());
-                    if (candidateIps.Count == 0) 
-                    {
-                        if (!SilenceLogs) Console.WriteLine($"[DoH] FAILED resolving {host}!");
-                        throw new Exception($"Could not resolve host: {host}\nLogs:\n{logBuilder}");
-                    }
-
-                    Exception? lastConnectEx = null;
-                    foreach (var ip in candidateIps)
-                    {
-                        var socket = new System.Net.Sockets.Socket(ip.AddressFamily, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
-                        try
-                        {
-                            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-                            attemptCts.CancelAfter(TimeSpan.FromSeconds(3)); // 3s cap per IP attempt to quickly bypass unresponsive routes
-
-                            await socket.ConnectAsync(ip, context.DnsEndPoint.Port, attemptCts.Token);
-                            var networkStream = new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
-                            return new DpiBypassStream(networkStream);
-                        }
-                        catch (Exception ex)
-                        {
-                            socket.Dispose();
-                            lastConnectEx = ex;
-                            if (token.IsCancellationRequested) throw;
-                        }
-                    }
-
-                    throw lastConnectEx ?? new Exception($"Failed to connect to any resolved IP for {host}");
+            {
+                ConnectCallback = async (context, token) =>
+                {
+                    if (IsOfflineModeProvider?.Invoke() == true)
+                    {
+                        throw new HttpRequestException("Offline Mode is enabled.");
+                    }
+
+                    var host = context.DnsEndPoint.Host;
+                    var candidateIps = new List<System.Net.IPAddress>();
+                    var logBuilder = new System.Text.StringBuilder();
+
+                    int dohProvider = DnsOverHttpsProviderGetter?.Invoke() ?? 2;
+                    if (dohProvider != 0)
+                    {
+                        var dohQueries = dohProvider switch
+                        {
+                            1 => new[]
+                            {
+                                (Provider: "https://1.1.1.1/dns-query?name={0}&type=A", Type: "IPv4"),
+                                (Provider: "https://cloudflare-dns.com/dns-query?name={0}&type=A", Type: "IPv4")
+                            },
+                            3 => new[]
+                            {
+                                (Provider: "https://dns.adguard-dns.com/resolve?name={0}&type=A", Type: "IPv4"),
+                                (Provider: "https://94.140.14.14/resolve?name={0}&type=A", Type: "IPv4")
+                            },
+                            _ => new[]
+                            {
+                                (Provider: "https://8.8.8.8/resolve?name={0}&type=A", Type: "IPv4"),
+                                (Provider: "https://dns.google/resolve?name={0}&type=A", Type: "IPv4"),
+                                (Provider: "https://cloudflare-dns.com/dns-query?name={0}&type=A", Type: "IPv4")
+                            }
+                        };
+
+                        foreach (var (template, type) in dohQueries)
+                        {
+                            try
+                            {
+                                string dohUrl = string.Format(template, Uri.EscapeDataString(host));
+                                using var request = new HttpRequestMessage(HttpMethod.Get, dohUrl);
+                                request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-json"));
+
+                                using var response = await _dohClient.SendAsync(request, token);
+                                if (response.IsSuccessStatusCode)
+                                {
+                                    var jsonBytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(response.Content, 256 * 1024, token);
+                                    var json = System.Text.Encoding.UTF8.GetString(jsonBytes);
+                                    var obj = JsonNode.Parse(json);
+                                    var answers = obj?["Answer"] as JsonArray;
+
+                                    if (answers != null)
+                                    {
+                                        foreach (var ans in answers)
+                                        {
+                                            var ipStr = ans?["data"]?.ToString();
+                                            if (System.Net.IPAddress.TryParse(ipStr, out var parsedIp) && !candidateIps.Contains(parsedIp))
+                                            {
+                                                candidateIps.Add(parsedIp);
+                                                logBuilder.AppendLine($"[DoH] Resolved {host} ({type}) via {dohUrl} -> {parsedIp}");
+                                            }
+                                        }
+
+                                        if (candidateIps.Count > 0) break;
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                logBuilder.AppendLine($"[DoH] Failed {template}: {ex.Message}");
+                            }
+                        }
+                    }
+
+                    // Fall back to System DNS ONLY when DoH yielded 0 IPs (prevents leaking DNS queries to ISP)
+                    if (candidateIps.Count == 0)
+                    {
+                        try
+                        {
+                            var hostAddresses = await System.Net.Dns.GetHostAddressesAsync(host, token);
+                            foreach (var ip in hostAddresses)
+                            {
+                                if (!candidateIps.Contains(ip))
+                                {
+                                    candidateIps.Add(ip);
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                    
+                    if (!SilenceLogs) System.Diagnostics.Debug.WriteLine(logBuilder.ToString());
+                    if (candidateIps.Count == 0) 
+                    {
+                        if (!SilenceLogs) Console.WriteLine($"[DoH] FAILED resolving {host}!");
+                        throw new Exception($"Could not resolve host: {host}\nLogs:\n{logBuilder}");
+                    }
+
+                    // SSRF socket guard: refuse connecting to loopback/private/link-local/metadata IPs
+                    var publicIps = candidateIps.Where(ip => !Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp(ip)).ToList();
+                    if (publicIps.Count == 0)
+                    {
+                        throw new HttpRequestException($"Blocked connection to private/loopback IP for host: {host}");
+                    }
+
+                    Exception? lastConnectEx = null;
+                    foreach (var ip in publicIps)
+                    {
+                        var socket = new System.Net.Sockets.Socket(ip.AddressFamily, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+                        try
+                        {
+                            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                            attemptCts.CancelAfter(TimeSpan.FromSeconds(3)); // 3s cap per IP attempt to quickly bypass unresponsive routes
+
+                            await socket.ConnectAsync(ip, context.DnsEndPoint.Port, attemptCts.Token);
+                            var networkStream = new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                            return new DpiBypassStream(networkStream);
+                        }
+                        catch (Exception ex)
+                        {
+                            socket.Dispose();
+                            lastConnectEx = ex;
+                            if (token.IsCancellationRequested) throw;
+                        }
+                    }
+
+                    throw lastConnectEx ?? new Exception($"Failed to connect to any resolved IP for {host}");
                 },
                 SslOptions = new System.Net.Security.SslClientAuthenticationOptions
                 {
-                    RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
-                    {
-                        if (errors == System.Net.Security.SslPolicyErrors.None) return true;
-                        if (cert != null)
-                        {
-                            var subject = cert.Subject;
-                            if (subject.Contains("ryzukomik", StringComparison.OrdinalIgnoreCase) ||
-                                subject.Contains("komikcast", StringComparison.OrdinalIgnoreCase) ||
-                                subject.Contains("komiku", StringComparison.OrdinalIgnoreCase) ||
-                                subject.Contains("shinigami", StringComparison.OrdinalIgnoreCase) ||
-                                subject.Contains("kiryuu", StringComparison.OrdinalIgnoreCase) ||
-                                subject.Contains("komikindo", StringComparison.OrdinalIgnoreCase) ||
-                                subject.Contains("mangaku", StringComparison.OrdinalIgnoreCase))
-                            {
-                                return true;
-                            }
-                        }
-                        return false;
-                    },
                     EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13
                 },
                 PooledConnectionLifetime = TimeSpan.FromMinutes(2),
@@ -252,6 +273,11 @@ namespace Yomic.Core.Sources
 
         protected async Task<string> GetStringAsync(string url)
         {
+            if (IsOfflineModeProvider?.Invoke() == true)
+            {
+                throw new HttpRequestException("Offline Mode is enabled.");
+            }
+
             try
             {
                 return await GetStringAsyncInternal(url);
@@ -259,10 +285,22 @@ namespace Yomic.Core.Sources
             catch (Exception ex)
             {
                 WriteToLog($"Request Error ({ex.GetType().Name}): {ex.Message}");
-                if (ex is HttpRequestException httpEx && httpEx.StatusCode == System.Net.HttpStatusCode.NotFound)
+                if (IsOfflineModeProvider?.Invoke() == true)
                 {
-                    WriteToLog("404 Not Found. Skipping Cloudflare Fallback.");
-                    throw; // Don't try to bypass cloudflare for 404s, it will just time out
+                    throw;
+                }
+                if (ex is HttpRequestException httpEx)
+                {
+                    var code = httpEx.StatusCode;
+                    bool isCloudflareLike =
+                        code == System.Net.HttpStatusCode.Forbidden ||
+                        code == System.Net.HttpStatusCode.ServiceUnavailable ||
+                        code == System.Net.HttpStatusCode.TooManyRequests;
+                    if (code.HasValue && !isCloudflareLike)
+                    {
+                        WriteToLog($"HTTP {(int)code.Value} ({code.Value}). Skipping Cloudflare Fallback.");
+                        throw;
+                    }
                 }
                 WriteToLog("Attempting Cloudflare/Puppeteer Fallback...");
                 
@@ -278,11 +316,8 @@ namespace Yomic.Core.Sources
                     // Strategy 1: Update Tokens and Retry HTTP
                     WriteToLog($"Step 1: Fetching Tokens via Headless Browser from {BaseUrl}...");
                     var (ua, cookies) = await CloudflareBypassService.Instance.GetTokensAsync(BaseUrl);
-                    
-                    if (!string.IsNullOrEmpty(ua)) Client.DefaultRequestHeaders.UserAgent.ParseAdd(ua);
                     if (cookies != null && cookies.Count > 0)
                     {
-                         // _cookieContainer = new CookieContainer(); // Cannot reassign readonly
                          var targetHost = new Uri(BaseUrl).Host;
                          foreach (var kv in cookies)
                          {
@@ -290,9 +325,9 @@ namespace Yomic.Core.Sources
                          }
                     }
 
-                    // Retry Internal
+                    // Retry Internal (passing UA per-request without mutating shared DefaultRequestHeaders)
                     WriteToLog("Step 2: Retrying HTTP Request with new tokens...");
-                    return await GetStringAsyncInternal(url);
+                    return await GetStringAsyncInternal(url, ua);
                 }
                 catch (Exception retryEx)
                 {
@@ -323,29 +358,44 @@ namespace Yomic.Core.Sources
             })
             .Build();
 
-        private async Task<string> GetStringAsyncInternal(string url)
+        private async Task<string> GetStringAsyncInternal(string url, string? overrideUserAgent = null)
         {
+            if (IsOfflineModeProvider?.Invoke() == true)
+            {
+                throw new HttpRequestException("Offline Mode is enabled.");
+            }
+            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out var validatedUri) || validatedUri == null)
+            {
+                throw new HttpRequestException($"Blocked unsafe outbound URL: {url}");
+            }
+
             return await _httpRetryPipeline.ExecuteAsync(async (context) =>
             {
-                // Ensure Referer is set to BaseUrl (Important for hotlink protection/anti-bot)
-                if (Client.DefaultRequestHeaders.Referrer == null)
+                using var req = new HttpRequestMessage(HttpMethod.Get, validatedUri);
+                if (!string.IsNullOrWhiteSpace(BaseUrl) && Uri.TryCreate(BaseUrl, UriKind.Absolute, out var refUri))
                 {
-                    try { Client.DefaultRequestHeaders.Referrer = new Uri(BaseUrl); } catch { }
+                    req.Headers.Referrer = refUri;
+                }
+                if (!string.IsNullOrWhiteSpace(overrideUserAgent))
+                {
+                    req.Headers.TryAddWithoutValidation("User-Agent", overrideUserAgent);
                 }
 
                 WriteToLog($"Downloading: {url}");
-                var response = await Client.GetAsync(url);
+                using var response = await Client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
                 
                 if (!response.IsSuccessStatusCode)
                 {
-                    var errorContent = await response.Content.ReadAsStringAsync();
+                    var errBytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(response.Content, 256 * 1024);
+                    var errorContent = System.Text.Encoding.UTF8.GetString(errBytes);
                     var preview = new string(errorContent.Take(200).ToArray());
                     WriteToLog($"Failed: {response.StatusCode}. Content: {preview}..."); 
                     throw new HttpRequestException($"Request failed with {response.StatusCode}", null, response.StatusCode); 
                 }
                 
                 WriteToLog($"Success! ({response.Content.Headers.ContentLength} bytes)");
-                return await response.Content.ReadAsStringAsync();
+                var bodyBytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(response.Content, 15L * 1024 * 1024);
+                return System.Text.Encoding.UTF8.GetString(bodyBytes);
             });
         }
 
@@ -365,7 +415,31 @@ namespace Yomic.Core.Sources
         {
               WriteToLog($"FORCING HEADLESS BROWSER FETCH for: {url} (Wait: {waitForSelector ?? "None"})");
               return await CloudflareBypassService.Instance.GetContentAsync(url, waitForSelector);
-         }
+        }
+
+        private bool _isDisposed;
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_isDisposed) return;
+            _isDisposed = true;
+            if (disposing)
+            {
+                HttpClient? clientToDispose;
+                lock (_clientLock)
+                {
+                    clientToDispose = _client;
+                    _client = null;
+                }
+                try { clientToDispose?.Dispose(); } catch { }
+            }
+        }
     }
 
     public class DpiBypassStream : Stream

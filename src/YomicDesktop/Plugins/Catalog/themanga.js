@@ -111,15 +111,55 @@ var source = {
         return { items: items, totalPages: items.length >= 10 ? p + 1 : p };
     },
 
-        getMangaList: function(page, status, genre, type, sort) {
+    parseGrid: function(url, page) {
+        let p = page || 1;
+        let res = this.requestUrl(url);
+        if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: p };
+        let doc = Html.parse(res.body, url);
+        let cards = doc.querySelectorAll("a.card, a.manga-card");
+        let items = [];
+        for (let card of cards) {
+            let titleEl = card.querySelector(".card-title");
+            let img = card.querySelector("img");
+            let href = card.attr("href") || "";
+            if (titleEl && href) {
+                let rel = href.startsWith(this.baseUrl) ? href.substring(this.baseUrl.length) : href;
+                items.push({
+                    title: titleEl.text().trim(),
+                    url: rel,
+                    thumbnailUrl: img ? img.absUrl("src") : "",
+                    status: 0
+                });
+            }
+        }
+        return { items: items, totalPages: items.length >= 10 ? p + 1 : p };
+    },
+
+    getMangaList: function(page, status, genre, type, sort) {
         let p = page || 1;
         let order = (sort === "latest") ? "latest" : "popular";
         let url = `${this.baseUrl}/explore?order=${order}&page=${p}`;
+        if (status === 1) url += "&status=ongoing";
+        else if (status === 2) url += "&status=completed";
+        if (genre) {
+            let gStr = Array.isArray(genre) ? genre.join(",") : String(genre);
+            if (gStr.trim()) url += "&genre=" + encodeURIComponent(gStr.trim().toLowerCase());
+        }
+        if (type) {
+            let tStr = Array.isArray(type) ? type[0] : String(type);
+            if (tStr.trim()) url += "&type=" + encodeURIComponent(tStr.trim().toLowerCase());
+        }
         return this.parseGrid(url, p);
     },
 
+    appendAllParam: function(rawUrl) {
+        let base = rawUrl.startsWith("http") ? rawUrl : (this.baseUrl + (rawUrl.startsWith("/") ? rawUrl : "/" + rawUrl));
+        if (/[?&]all=1(&|$)/.test(base)) return base;
+        return base + (base.includes("?") ? "&all=1" : "?all=1");
+    },
+
     getMangaDetails: function(url) {
-        let fullUrl = (url.startsWith("http") ? url : this.baseUrl + url) + "?all=1";
+        let fullUrl = this.appendAllParam(url);
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
@@ -165,7 +205,7 @@ var source = {
     },
 
     getChapterList: function(url) {
-        let fullUrl = (url.startsWith("http") ? url : this.baseUrl + url) + "?all=1";
+        let fullUrl = this.appendAllParam(url);
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) return [];
         let doc = Html.parse(res.body, fullUrl);
@@ -188,7 +228,7 @@ var source = {
     },
 
     getPageList: function(url) {
-        let fullUrl = url.startsWith("http") ? url : this.baseUrl + url;
+        let fullUrl = !url ? this.baseUrl : (url.startsWith("http") ? url : (url.startsWith("//") ? "https:" + url : (this.baseUrl + (url.startsWith("/") ? url : "/" + url))));
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) return [];
         let doc = Html.parse(res.body, fullUrl);

@@ -43,9 +43,9 @@ var source = {
 
         let url = this.apiUrl + "/ki-browse?ajax=1&s=" + encodeURIComponent(query) + "&page=" + currentPage;
         let response = fetch(url);
-        if (response.status !== 200) return { items: [], totalPages: currentPage };
+        if (!response || response.status !== 200) return { items: [], totalPages: currentPage };
 
-        let json = JSON.parse(response.body);
+        let json = (() => { try { return JSON.parse(response.body) || {}; } catch (e) { return {}; } })();
         return this.parseKiBrowseResponse(json, currentPage);
     },
 
@@ -88,9 +88,9 @@ var source = {
         }
 
         let response = fetch(url);
-        if (response.status !== 200) return { items: [], totalPages: currentPage };
+        if (!response || response.status !== 200) return { items: [], totalPages: currentPage };
 
-        let json = JSON.parse(response.body);
+        let json = (() => { try { return JSON.parse(response.body) || {}; } catch (e) { return {}; } })();
         return this.parseKiBrowseResponse(json, currentPage);
     },
 
@@ -135,7 +135,7 @@ var source = {
         }
         let fullUrl = this.baseUrl + cleanUrl;
         let response = fetch(fullUrl);
-        if (response.status !== 200) return {};
+        if (!response || response.status !== 200) return {};
 
         let html = response.body;
 
@@ -208,7 +208,7 @@ var source = {
         }
         let fullUrl = this.baseUrl + cleanUrl;
         let response = fetch(fullUrl);
-        if (response.status !== 200) return [];
+        if (!response || response.status !== 200) return [];
 
         let html = response.body;
 
@@ -275,7 +275,7 @@ var source = {
         }
 
         let response = fetch(chUrl);
-        if (response.status !== 200) return [];
+        if (!response || response.status !== 200) return [];
 
         let pages = [];
 

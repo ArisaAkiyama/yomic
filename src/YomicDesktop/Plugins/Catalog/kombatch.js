@@ -122,7 +122,7 @@ var source = {
         }
 
         let response = this.requestUrl(url);
-        if (response.status !== 200 || !response.body) return { items: [], totalPages: page };
+        if (!response || response.status !== 200 || !response.body) return { items: [], totalPages: page };
 
         let doc = Html.parse(response.body, url);
         let cards = doc.querySelectorAll("div.bsx, div.utao, div.animposx, div.manga-item");
@@ -203,9 +203,9 @@ var source = {
     },
 
     getMangaDetails: function(url) {
-        let fullUrl = this.baseUrl + url;
+        let fullUrl = !url ? this.baseUrl : (url.startsWith("http") ? url : (url.startsWith("//") ? "https:" + url : (this.baseUrl + (url.startsWith("/") ? url : "/" + url))));
         let response = this.requestUrl(fullUrl);
-        if (response.status !== 200 || !response.body) return {};
+        if (!response || response.status !== 200 || !response.body) return {};
 
         let doc = Html.parse(response.body, fullUrl);
 
@@ -269,9 +269,9 @@ var source = {
     },
 
     getChapterList: function(mangaUrl) {
-        let fullUrl = this.baseUrl + mangaUrl;
+        let fullUrl = !mangaUrl ? this.baseUrl : (mangaUrl.startsWith("http") ? mangaUrl : (mangaUrl.startsWith("//") ? "https:" + mangaUrl : (this.baseUrl + (mangaUrl.startsWith("/") ? mangaUrl : "/" + mangaUrl))));
         let response = this.requestUrl(fullUrl);
-        if (response.status !== 200 || !response.body) return [];
+        if (!response || response.status !== 200 || !response.body) return [];
 
         let doc = Html.parse(response.body, fullUrl);
         let items = doc.querySelectorAll("#chapterlist ul li, .eplister ul li, ul.cl-ul li, div.bxcl li, div.cl li");
@@ -316,9 +316,9 @@ var source = {
     },
 
     getPageList: function(chapterUrl) {
-        let fullUrl = this.baseUrl + chapterUrl;
+        let fullUrl = !chapterUrl ? this.baseUrl : (chapterUrl.startsWith("http") ? chapterUrl : (chapterUrl.startsWith("//") ? "https:" + chapterUrl : (this.baseUrl + (chapterUrl.startsWith("/") ? chapterUrl : "/" + chapterUrl))));
         let response = this.requestUrl(fullUrl);
-        if (response.status !== 200 || !response.body) return [];
+        if (!response || response.status !== 200 || !response.body) return [];
 
         let pages = [];
 

@@ -29,12 +29,13 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
     const isDownloading = dlPct !== undefined;
     let rightActionsHtml = '';
     if (isDownloading) {
+      const safePct = Math.max(0, Math.min(100, Number(dlPct) || 0));
       rightActionsHtml = `
         <div class="v1-ext-dl-progress">
           <div class="v1-ext-dl-bar">
-            <div class="v1-ext-dl-fill" style="width:${dlPct}%;"></div>
+            <div class="v1-ext-dl-fill" style="width:${safePct}%;"></div>
           </div>
-          <span class="tabular-nums" style="font-size:11.5px;font-weight:700;color:var(--ocean-primary);">${dlPct}%</span>
+          <span class="tabular-nums" style="font-size:11.5px;font-weight:700;color:var(--ocean-primary);">${safePct}%</span>
         </div>`;
     } else if (ext.installed) {
       rightActionsHtml = `
@@ -348,7 +349,7 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
     this.extVerificationProgress = { active: true, current: 0, total: 1 };
     this.renderExtensionsView(container);
 
-    const finishRefresh = (list?: ExtensionItem[]) => {
+    const finishRefresh = (list?: ExtensionItem[], hadError = false) => {
       if (Array.isArray(list) && list.length > 0) {
         this.extensions.length = 0;
         this.extensions.push(...list);
@@ -358,7 +359,11 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
         if (this.currentTab === 'extensions') {
           this.renderExtensionsView(container);
         }
-        this.showToast(this.l('Daftar repositori ekstensi berhasil diperbarui.', 'Extension repository list updated.'));
+        this.showToast(
+          hadError
+            ? this.l('Gagal memperbarui daftar repositori ekstensi.', 'Failed to update extension repository list.')
+            : this.l('Daftar repositori ekstensi berhasil diperbarui.', 'Extension repository list updated.')
+        );
       }, 300);
     };
 
@@ -366,10 +371,10 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
       void this.bridge
         .invoke<ExtensionItem[]>('ext:list', { refreshRemote: true }, 30000)
         .then((list) => {
-          finishRefresh(list);
+          finishRefresh(list, false);
         })
         .catch(() => {
-          finishRefresh();
+          finishRefresh(undefined, true);
         });
     } else {
       setTimeout(() => {
@@ -419,8 +424,10 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
   container.querySelectorAll<HTMLButtonElement>('[data-update-ext]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const ext = this.extensions.find((e) => e.id === btn.dataset.updateExt);
-      if (!ext) return;
+      if (!ext || this.busyExtOps.has(ext.id)) return;
       if (this.bridge.isWebViewHost) {
+        this.busyExtOps.add(ext.id);
+        btn.disabled = true;
         void this.bridge
           .invoke<ExtensionItem[]>('ext:update', { id: ext.id, pkg: ext.pkg || ext.id }, 30000)
           .then((list) => {
@@ -432,6 +439,13 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
             }
             if (this.currentTab === 'extensions') this.renderExtensionsView(container);
             this.showToast(this.l(`Ekstensi ${ext.name} berhasil diperbarui.`, `Extension ${ext.name} updated.`));
+          })
+          .catch(() => {
+            this.showToast(this.l(`Gagal memperbarui ekstensi ${ext.name}.`, `Failed to update extension ${ext.name}.`));
+          })
+          .finally(() => {
+            this.busyExtOps.delete(ext.id);
+            btn.disabled = false;
           });
         return;
       }
@@ -446,7 +460,7 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
   container.querySelectorAll<HTMLButtonElement>('[data-toggle-ext]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const ext = this.extensions.find((e) => e.id === btn.dataset.toggleExt);
-      if (!ext) return;
+      if (!ext || this.busyExtOps.has(ext.id)) return;
 
       const confirmed = await this.showConfirmModal({
         title: this.l('Copot Ekstensi', 'Uninstall Extension'),
@@ -460,9 +474,11 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
         icon: 'danger-triangle-linear',
         confirmIcon: 'trash-bin-trash-linear'
       });
-      if (!confirmed) return;
+      if (!confirmed || this.busyExtOps.has(ext.id)) return;
 
       if (this.bridge.isWebViewHost) {
+        this.busyExtOps.add(ext.id);
+        btn.disabled = true;
         void this.bridge
           .invoke<ExtensionItem[]>('ext:uninstall', { id: ext.id, pkg: ext.pkg || ext.id }, 30000)
           .then((list) => {
@@ -474,6 +490,13 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
             }
             if (this.currentTab === 'extensions') this.renderExtensionsView(container);
             this.showToast(this.l(`Ekstensi ${ext.name} telah dicopot.`, `Extension ${ext.name} uninstalled.`));
+          })
+          .catch(() => {
+            this.showToast(this.l(`Gagal mencopot ekstensi ${ext.name}.`, `Failed to uninstall extension ${ext.name}.`));
+          })
+          .finally(() => {
+            this.busyExtOps.delete(ext.id);
+            btn.disabled = false;
           });
         return;
       }
@@ -506,6 +529,11 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
             } else {
               this.showToast(this.l(`Gagal memasang ekstensi ${ext.name}.`, `Failed to install extension ${ext.name}.`));
             }
+            if (this.currentTab === 'extensions') this.renderExtensionsView(container);
+          })
+          .catch(() => {
+            this.downloadingExtProgress.delete(ext.id);
+            this.showToast(this.l(`Gagal memasang ekstensi ${ext.name}. Periksa koneksi lalu coba lagi.`, `Failed to install extension ${ext.name}. Check your connection and try again.`));
             if (this.currentTab === 'extensions') this.renderExtensionsView(container);
           });
         return;

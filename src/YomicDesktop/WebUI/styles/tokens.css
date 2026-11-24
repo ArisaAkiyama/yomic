@@ -9,6 +9,7 @@
   --bg-surface: #F4F4F5;
   --bg-surface-alt: #ECECEE;
   --bg-elevated: #E4E4E7;
+  --bg-surface-elevated: #E4E4E7;
 
   /* Carbon Monochrome Primary Accent */
   --ocean-primary: #18181B;
@@ -16,26 +17,30 @@
   --ocean-vivid: #09090B;
   --ocean-tint: #F4F4F5;
   --ocean-tint-strong: #E4E4E7;
+  --ocean-subtle: #D4D4D8;
 
-  /* Crisp Charcoal Ink Typography */
+  /* Crisp Charcoal Ink Typography (WCAG AA compliant on light surfaces) */
   --ink-primary: #09090B;
-  --ink-secondary: #52525B;
-  --ink-muted: #71717A;
+  --ink-secondary: #3F3F46;
+  --ink-tertiary: #52525B;
+  --ink-muted: #52525B;
   --ink-on-ocean: #FFFFFF;
   --text-primary: var(--ink-primary);
   --text-secondary: var(--ink-secondary);
 
   /* Hairline Borders */
   --border-subtle: #E4E4E7;
+  --border-soft: #E4E4E7;
+  --border-hover: #D4D4D8;
   --border-strong: #D4D4D8;
   --border-focus: #52525B;
 
-  /* Semantic Status Colors (Restrained Exception-Only) */
+  /* Semantic Status Colors (WCAG AA compliant >= 4.5:1) */
   --status-emerald: #52525B;
   --status-emerald-bg: #F4F4F5;
-  --status-amber: #D97706;
+  --status-amber: #B45309;
   --status-amber-bg: #FEF3C7;
-  --status-rose: #E11D48;
+  --status-rose: #BE123C;
   --status-rose-bg: #FFE4E6;
 
   /* Auto Carbon Dark Reader Palette (Neutral Carbon Black) */
@@ -62,12 +67,16 @@
   --radius-md: 8px;
   --radius-lg: 10px;
 
+  /* Motion Timing */
+  --duration-fast: 140ms;
+  --ease-snappy: cubic-bezier(0.2, 0, 0, 1);
+
   /* Fixed Z-Index Scale (Baseline UI Compliant) */
   --z-topbar: 10;
   --z-reader: 100;
   --z-hud: 110;
   --z-modal: 200;
-  --z-toast: 300;
+  --z-toast: 100000;
 }
 
 /* =========================================================================
@@ -91,19 +100,23 @@ body.dark-mode {
   --ocean-vivid: #FFFFFF;
   --ocean-tint: rgba(255, 255, 255, 0.08);
   --ocean-tint-strong: rgba(255, 255, 255, 0.14);
+  --ocean-subtle: rgba(255, 255, 255, 0.14);
 
-  /* Crisp Carbon Ink Typography */
+  /* Crisp Carbon Ink Typography (WCAG AA >= 4.5:1 even on --bg-elevated #2C2C2C) */
   --ink-primary: #F4F4F5;
   --ink-secondary: #A1A1AA;
-  --ink-muted: #71717A;
+  --ink-tertiary: #9E9EA8;
+  --ink-muted: #9E9EA8;
   --ink-on-ocean: #09090B;
   --text-primary: var(--ink-primary);
   --text-secondary: var(--ink-secondary);
 
   /* Hairline Dark Borders */
   --border-subtle: #222222;
+  --border-soft: #262626;
+  --border-hover: #3A3A3A;
   --border-strong: #303030;
-  --border-focus: #52525B;
+  --border-focus: #71717A;
 
   /* Semantic Status Colors (Restrained Exception-Only) */
   --status-emerald: #A1A1AA;

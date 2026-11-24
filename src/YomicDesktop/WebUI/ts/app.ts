@@ -5,7 +5,7 @@
 import { HostBridge } from './bridge.js';
 import { getIconSvg } from './icons.js';
 import { applyStaticDomTranslations, translate, TranslationKey } from './i18n.js';
-import { DEFAULT_APP_SETTINGS, DEFAULT_HOTKEYS, HOTKEY_DEFINITIONS } from './mock-data.js';
+import { DEFAULT_APP_SETTINGS, DEFAULT_HOTKEYS, HOTKEY_DEFINITIONS, escapeXml, sanitizeCssColor } from './mock-data.js';
 import {
   ActivityUpdateItem,
   AnnouncementItem,
@@ -126,6 +126,10 @@ export class YomicApp {
   public libraryViewMode: 'grid' | 'list' = 'grid';
   public historyViewMode: 'grid' | 'list' = 'list';
   public readonly removedHistoryIds = new Set<string>();
+  public readerLoadSeq = 0;
+  public malSearchSeq = 0;
+  public malSelectSeq = 0;
+  public readonly busyExtOps = new Set<string>();
   public isLibraryFlyoutOpen = false;
   public isLibraryStatsOpen = false;
   public readingStatsData: ReadingStatisticsPayload | null = null;
@@ -229,6 +233,7 @@ export class YomicApp {
 
   public init(): void {
     (window as any).yomicApp = this;
+    this.bindGlobalImageFallbacks();
     this.hydrateInitialState();
     applyStaticDomTranslations(this.settings.appLanguage);
     this.applyTheme(this.settings.isDarkMode);
@@ -364,10 +369,14 @@ export class YomicApp {
     this.settings.customHotkeys[actionId] = hotkey;
     this.persistLocalCache();
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke('settings:update', {
-        key: 'customHotkeys',
-        value: this.settings.customHotkeys
-      });
+      void this.bridge
+        .invoke('settings:update', {
+          key: 'customHotkeys',
+          value: this.settings.customHotkeys
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal menyimpan pintasan keyboard.', 'Failed to save keyboard shortcut.'), 'warning');
+        });
     }
   }
 
@@ -376,10 +385,12 @@ export class YomicApp {
       delete this.settings.customHotkeys[actionId];
       this.persistLocalCache();
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke('settings:update', {
-          key: 'customHotkeys',
-          value: this.settings.customHotkeys
-        });
+        void this.bridge
+          .invoke('settings:update', {
+            key: 'customHotkeys',
+            value: this.settings.customHotkeys
+          })
+          .catch(() => {});
       }
     }
   }
@@ -388,10 +399,12 @@ export class YomicApp {
     this.settings.customHotkeys = {};
     this.persistLocalCache();
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke('settings:update', {
-        key: 'customHotkeys',
-        value: this.settings.customHotkeys
-      });
+      void this.bridge
+        .invoke('settings:update', {
+          key: 'customHotkeys',
+          value: this.settings.customHotkeys
+        })
+        .catch(() => {});
     }
   }
 
@@ -422,21 +435,73 @@ export class YomicApp {
   }
 
   public handleGlobalKeyDown(ev: KeyboardEvent): void {
-    // Check if user is typing in an editable input element
+    // 0. Detect topmost visible aria-modal dialog (for focus trap & blocking background shell hotkeys)
+    const openDialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]')).filter((dlg) => {
+      const style = window.getComputedStyle(dlg);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+      const backdrop = dlg.closest<HTMLElement>('.modal-backdrop, .v1-mal-backdrop, .app-update-overlay, .v1-modal-backdrop');
+      if (backdrop) {
+        const bStyle = window.getComputedStyle(backdrop);
+        if (bStyle.display === 'none' || bStyle.visibility === 'hidden' || bStyle.opacity === '0') return false;
+      }
+      return dlg.getBoundingClientRect().width > 0 && dlg.getBoundingClientRect().height > 0;
+    });
+    const topDialog = openDialogs[openDialogs.length - 1];
+
+    if (topDialog) {
+      if (ev.key === 'Tab') {
+        const focusables = Array.from(
+          topDialog.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => {
+          const s = window.getComputedStyle(el);
+          return s.display !== 'none' && s.visibility !== 'hidden' && el.getBoundingClientRect().width > 0;
+        });
+        if (focusables.length > 0) {
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          const active = document.activeElement as HTMLElement | null;
+          if (ev.shiftKey) {
+            if (!active || !topDialog.contains(active) || active === first) {
+              ev.preventDefault();
+              last.focus();
+            }
+          } else {
+            if (!active || !topDialog.contains(active) || active === last) {
+              ev.preventDefault();
+              first.focus();
+            }
+          }
+          return;
+        }
+      }
+      // Block background shell navigation/reader hotkeys while a modal dialog is open
+      if (ev.key !== 'Escape') {
+        return;
+      }
+    }
+
+    // Check if user is typing in an editable text element (do NOT block hotkeys when focus is on <input type="range|checkbox|radio|button">)
     const activeEl = document.activeElement as HTMLElement | null;
-    const isEditingText = activeEl && (
-      activeEl.tagName === 'INPUT' ||
-      activeEl.tagName === 'TEXTAREA' ||
-      activeEl.tagName === 'SELECT' ||
-      activeEl.isContentEditable
+    const isTextInput =
+      activeEl instanceof HTMLInputElement &&
+      !['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'file'].includes((activeEl.type || '').toLowerCase());
+    const isEditingText = Boolean(
+      activeEl && (
+        isTextInput ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.tagName === 'SELECT' ||
+        activeEl.isContentEditable
+      )
     );
 
-    if (isEditingText) {
+    if (isEditingText && activeEl) {
       if (ev.key === 'Escape') {
         activeEl.blur();
         return;
       }
-      if (this.isHotmatched(ev, this.getEffectiveHotkey('globalSearch'))) {
+      if (this.isHotmatched(ev, this.getEffectiveHotkey('globalSearch')) && !this.isReaderOpen) {
         ev.preventDefault();
         this.focusActiveSearchInput();
         return;
@@ -445,7 +510,7 @@ export class YomicApp {
     }
 
     // 1. Global / Shell Hotkeys
-    if (this.isHotmatched(ev, this.getEffectiveHotkey('globalSearch'))) {
+    if (this.isHotmatched(ev, this.getEffectiveHotkey('globalSearch')) && !this.isReaderOpen) {
       ev.preventDefault();
       this.focusActiveSearchInput();
       return;
@@ -586,6 +651,7 @@ export class YomicApp {
       const fbBackdrop = document.getElementById('feedbackModalBackdrop');
       const malBackdrop = document.getElementById('malTrackerModalBackdrop');
       const libFilterBackdrop = document.getElementById('libFilterModalBackdrop');
+      const libCategoryBackdrop = document.getElementById('libCategoryModalBackdrop');
       const sourceFilterBackdrop = document.getElementById('sourceFilterModalBackdrop');
       const browseLangBackdrop = document.getElementById('browseLangModalBackdrop');
       const extLangBackdrop = document.getElementById('extLangModalBackdrop');
@@ -594,6 +660,9 @@ export class YomicApp {
         this.closeAnnouncementsModal();
       } else if (fbBackdrop?.classList.contains('open')) {
         this.closeFeedbackModal();
+      } else if (libCategoryBackdrop?.classList.contains('open')) {
+        this.categoryManageMangaId = null;
+        libCategoryBackdrop.classList.remove('open');
       } else if (libFilterBackdrop?.classList.contains('open')) {
         this.isLibraryFlyoutOpen = false;
         const container = document.getElementById('viewContainer');
@@ -789,6 +858,18 @@ export class YomicApp {
         return;
       }
     }
+    // Clean up any Manga Detail window context-menu listeners when leaving detail view
+    const win = window as unknown as { _onChapterCtxClick?: (ev: MouseEvent) => void; _onChapterCtxKey?: (ev: KeyboardEvent) => void };
+    if (win._onChapterCtxClick) {
+      window.removeEventListener('click', win._onChapterCtxClick);
+      win._onChapterCtxClick = undefined;
+    }
+    if (win._onChapterCtxKey) {
+      window.removeEventListener('keydown', win._onChapterCtxKey, { capture: true });
+      win._onChapterCtxKey = undefined;
+    }
+    document.getElementById('chapterContextMenu')?.remove();
+
     switch (this.currentTab) {
       case 'library':
         this.renderLibraryView(container);
@@ -839,6 +920,10 @@ export class YomicApp {
   }
 
   public focusActiveSearchInput(): void {
+    // Do not clobber Manga Detail or Reading Insights view when pressing Ctrl+K
+    if (this.isReaderOpen || this.activeDetailMangaId || this.isLibraryStatsOpen) {
+      return;
+    }
     if (this.currentTab === 'library' && !this.isLibrarySearchOpen) {
       this.isLibrarySearchOpen = true;
       const box = document.getElementById('libraryExpandSearch');
@@ -902,6 +987,43 @@ export class YomicApp {
     }, 120);
   }
 
+  private bindGlobalImageFallbacks(): void {
+    document.addEventListener(
+      'error',
+      (ev) => {
+        const target = ev.target;
+        if (!(target instanceof HTMLImageElement)) return;
+
+        const fallbackSrc = target.getAttribute('data-fallback-src');
+        if (fallbackSrc) {
+          target.removeAttribute('data-fallback-src');
+          if (target.src !== fallbackSrc) {
+            target.src = fallbackSrc;
+          }
+          return;
+        }
+
+        if (target.getAttribute('data-fallback-hide') === '1') {
+          target.removeAttribute('data-fallback-hide');
+          target.style.display = 'none';
+          return;
+        }
+
+        const fallbackInitials = target.getAttribute('data-fallback-initials');
+        if (fallbackInitials !== null) {
+          target.removeAttribute('data-fallback-initials');
+          const parent = target.parentElement;
+          if (parent) {
+            parent.style.background = sanitizeCssColor(target.getAttribute('data-fallback-bg'));
+            parent.style.color = '#FFFFFF';
+            parent.textContent = fallbackInitials;
+          }
+        }
+      },
+      true
+    );
+  }
+
   public showToast(message: string, iconName?: string): void {
     const container = document.getElementById('toastContainer');
     if (!container) return;
@@ -910,15 +1032,20 @@ export class YomicApp {
     }
     const pill = document.createElement('div');
     pill.className = 'toast-pill';
-    const lower = message.toLowerCase();
+    const lower = String(message ?? '').toLowerCase();
     const isAlert =
       lower.includes('dihapus') ||
       lower.includes('terlepas') ||
       lower.includes('diputuskan') ||
-      lower.includes('gagal');
+      lower.includes('gagal') ||
+      lower.includes('failed') ||
+      lower.includes('error') ||
+      lower.includes('deleted') ||
+      lower.includes('removed') ||
+      lower.includes('disconnected');
     const icon = iconName || (isAlert ? 'info-circle-linear' : 'check-circle-linear');
     const iconSvg = getIconSvg(icon, { size: 15, color: 'currentColor' });
-    pill.innerHTML = `<span class="toast-icon">${iconSvg}</span><span class="toast-text">${message}</span>`;
+    pill.innerHTML = `<span class="toast-icon">${iconSvg}</span><span class="toast-text">${escapeXml(message)}</span>`;
     container.appendChild(pill);
     window.setTimeout(() => {
       pill.style.opacity = '0';
@@ -928,8 +1055,16 @@ export class YomicApp {
     }, 3000);
   }
 
+  private activeConfirmCleanup: ((result: boolean) => void) | null = null;
+
   public showConfirmModal(options: ConfirmModalOptions): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
+      // Properly clean up any previous open confirmation modal so its listener & promise never leak
+      if (this.activeConfirmCleanup) {
+        const prevCleanup = this.activeConfirmCleanup;
+        this.activeConfirmCleanup = null;
+        prevCleanup(false);
+      }
       const existing = document.getElementById('yomicConfirmModalOverlay');
       if (existing) existing.remove();
 
@@ -945,15 +1080,15 @@ export class YomicApp {
       overlay.innerHTML = `
         <div class="yomic-confirm-modal ${isDanger ? 'danger' : 'info'}" role="dialog" aria-modal="true" aria-labelledby="yomicConfirmTitle">
           <div class="yomic-confirm-header">
-            <h3 id="yomicConfirmTitle" class="yomic-confirm-title ${isDanger ? 'danger' : 'info'}">${title}</h3>
+            <h3 id="yomicConfirmTitle" class="yomic-confirm-title ${isDanger ? 'danger' : 'info'}">${escapeXml(title)}</h3>
           </div>
-          <p class="yomic-confirm-message">${options.message}</p>
+          <p class="yomic-confirm-message">${escapeXml(options.message)}</p>
           <div class="yomic-confirm-actions">
             <button id="btnYomicConfirmCancel" type="button" class="yomic-confirm-btn cancel">
-              ${cancelText}
+              ${escapeXml(cancelText)}
             </button>
             <button id="btnYomicConfirmOk" type="button" class="yomic-confirm-btn confirm ${isDanger ? 'danger' : 'primary'}">
-              <span>${confirmText}</span>
+              <span>${escapeXml(confirmText)}</span>
             </button>
           </div>
         </div>
@@ -961,26 +1096,45 @@ export class YomicApp {
 
       document.body.appendChild(overlay);
 
+      let settled = false;
       const cleanup = (result: boolean): void => {
-        document.removeEventListener('keydown', handleKeyDown);
+        if (settled) return;
+        settled = true;
+        if (this.activeConfirmCleanup === cleanup) {
+          this.activeConfirmCleanup = null;
+        }
+        document.removeEventListener('keydown', handleKeyDown, { capture: true });
         overlay.classList.add('closing');
         window.setTimeout(() => {
           overlay.remove();
         }, 160);
         resolve(result);
       };
+      this.activeConfirmCleanup = cleanup;
 
       const handleKeyDown = (ev: KeyboardEvent): void => {
         if (ev.key === 'Escape') {
           ev.preventDefault();
+          ev.stopPropagation();
           cleanup(false);
         } else if (ev.key === 'Enter') {
           ev.preventDefault();
+          ev.stopPropagation();
+          const cancelBtn = document.getElementById('btnYomicConfirmCancel');
+          const okBtn = document.getElementById('btnYomicConfirmOk');
+          if (document.activeElement === cancelBtn) {
+            cleanup(false);
+            return;
+          }
+          // Never blindly confirm destructive danger modals via Enter unless the confirm button has explicit focus
+          if (isDanger && document.activeElement !== okBtn) {
+            return;
+          }
           cleanup(true);
         }
       };
 
-      document.addEventListener('keydown', handleKeyDown);
+      document.addEventListener('keydown', handleKeyDown, { capture: true });
 
       overlay.addEventListener('click', (ev) => {
         if (ev.target === overlay) {
@@ -996,9 +1150,12 @@ export class YomicApp {
         cleanup(true);
       });
 
-      const okBtn = document.getElementById('btnYomicConfirmOk') as HTMLButtonElement | null;
-      if (okBtn) {
-        window.setTimeout(() => okBtn.focus(), 50);
+      // Focus Cancel on destructive modals so accidental Enter never deletes data; focus OK on safe confirm modals
+      const initialFocusBtn = document.getElementById(
+        isDanger ? 'btnYomicConfirmCancel' : 'btnYomicConfirmOk'
+      ) as HTMLButtonElement | null;
+      if (initialFocusBtn) {
+        window.setTimeout(() => initialFocusBtn.focus(), 50);
       }
     });
   }

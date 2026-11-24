@@ -2,6 +2,25 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [2.3.0] - 2026-11-24
+
+Update Details：
+◆ Add centralized URL, SSRF, Cookie, and Filesystem security helper (UrlSecurityHelper.cs) enforcing public HTTP/HTTPS validation, IPv4/IPv6 private/loopback/CGNAT/metadata IP blocking, bounded HTTP stream reading (ReadContentBoundedAsync) against OOM DoS, strict RFC 6265 cookie domain matching, Google Apps Script webhook allowlisting, and directory containment checks.
+◆ Add fail-closed SHA-256 cryptographic integrity verification in UpdateService (ExtractExpectedSha256 & VerifyHashMatchesExpectedHex using constant-time CryptographicOperations.FixedTimeEquals), strict official repository URL/redirect scoping, stale update directory cleanup, single-instance mutex handoff (ReleaseSingleInstanceMutexForRestart), and silent auto-relaunch support in Installer/Yomic.iss.
+◆ Add SHA-256 release checksum generator script (scripts/generate-release-sha256.ps1) to emit verified .sha256 files and release-note integrity blocks.
+◆ Add strict WebView2 security boundaries in MainWindow.xaml.cs and index.html: Content-Security-Policy (CSP) meta header, external script preload-theme.js, strict app.yomic.local IPC origin validation, blocked external navigation/frames, and prevented unrestricted popup windows.
+◆ Add comprehensive XSS & injection hardening across all WebUI views (app.ts, library.ts, manga-detail.ts, reader.ts, downloads.ts, browse.ts, extensions.ts, settings.ts, modals.ts, updates-history.ts) with escapeXml, sanitizeImageSrc, sanitizeCssColor, modal keyboard focus trapping, and safe Cancel-first focus on destructive confirmation dialogs.
+◆ Add DownloadSpeedMode presets (Safe, Fast, Max) in SettingsService, DownloadService, BackendIpcController, and Settings UI for configurable concurrent chapter/page download throughput.
+◆ Add automatic installed extension updating on startup (AutoUpdateInstalledExtensionsAsync & event:extensions-updated) plus fail-closed SHA-256 verification on third-party CDN mirrors, staged plugin validation before replacing working scripts, and path traversal protection in ExtensionRepositoryService.
+◆ Add DoH-first SSRF request interception guard (InstallSsrfRequestGuardAsync) and thread-safe host-scoped cookie merging in CloudflareBypassService so ISP DNS poisoning never causes false blocks while blocking private/loopback targets.
+◆ Add pooled reusable HttpClient with DoH-change reset, atomic disk cache writes (WriteFileAtomicAsync), curl --resolve public-IP pinning without unsafe auto-redirects, HTML/Cloudflare error payload rejection (LooksLikeHtmlPayload), and remote SVG script neutralization in WebResourceImageProxy.
+◆ Add online live SQLite backup (CopyLiveSqliteDatabaseOnline), zip-bomb bounded extraction caps (512 MB DB / 5 MB settings), isolated staging validation with SQLite integrity check before restore, and OAuth/webhook credential sanitization in BackupService.
+◆ Add relational SQLite foreign keys with cascade deletes, legacy orphan cleanup on upgrade, performance composite indexes (Source+Url, Favorite, MangaId+Url, DateFetch, MangaId+LastRead), and tuned WAL/busy_timeout/memory-temp PRAGMAs in MangaDbContext.
+◆ Add full BackendIpcController modularization into 7 focused partial handler files (BootstrapAndMapping, Downloads, LibraryAndHistory, MangaDetail, Reader, SettingsAndSystem, SourcesAndExtensions) and CSS modularization of main.css into 7 ordered stylesheets under WebUI/styles/modules/.
+◆ Add automated CI & Test Infrastructure: GitHub Actions workflow (.github/workflows/ci-desktop.yml), C# xUnit test suite (SecurityTests, CoreServicesTests, BackupAndDatabaseTests, IntegrityAndCatalogTests covering 102-plugin Jint loading & SQLite FK/indexes), and Node.js WebUI automated tests (tests/WebUI.Tests/webui.test.mjs).
+◆ Improve 90+ bundled JavaScript extensions in Plugins/Catalog (including VoraToon v1.2.2 fast disjoint regex RSC parser & MangaDex v1.0.4 translated chapter feed) with null-safe response guards and try/catch JSON parsing to prevent plugin crashes on transient network errors.
+◆ Improve reliability across MyAnimeListService (serialized SemaphoreSlim token refresh & cryptographically unbiased PKCE state), AutoUpdateTaskService (schtasks DAILY fallback for 24h+ & concurrent stdout/stderr drain), WebViewPageExtractorWindow (deadlock-free watchdog before init/polling), MainWindow (adaptive MinWidth/MinHeight on compact high-DPI laptops), and Google Sheets feedback webhook (atomic rate limiting, 6 MB magic-byte screenshot validation, private Drive storage & formula injection sanitization).
+
 ## [2.2.1] - 2026-11-22
 
 Update Details：

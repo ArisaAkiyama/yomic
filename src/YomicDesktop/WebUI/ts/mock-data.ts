@@ -12,8 +12,9 @@ import {
   MangaItem
 } from './types.js';
 
-export function escapeXml(str: string): string {
-  return str
+export function escapeXml(str: string | null | undefined): string {
+  if (str == null) return '';
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -21,16 +22,49 @@ export function escapeXml(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
+export function sanitizeImageSrc(url: string | null | undefined): string {
+  if (url == null) return '';
+  const trimmed = String(url).trim();
+  if (!trimmed) return '';
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith('https://') ||
+    lower.startsWith('http://') ||
+    lower.startsWith('data:image/') ||
+    lower.startsWith('blob:') ||
+    lower.startsWith('./') ||
+    lower.startsWith('assets/') ||
+    lower === 'app-logo.png'
+  ) {
+    return escapeXml(trimmed);
+  }
+  return '';
+}
+
+export function sanitizeCssColor(color: string | null | undefined, fallback: string = '#0066CC'): string {
+  if (color == null) return fallback;
+  const trimmed = String(color).trim();
+  if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed) || /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/.test(trimmed)) {
+    return trimmed;
+  }
+  return fallback;
+}
+
 /**
  * Generates an elegant, dynamic SVG placeholder cover card for manga without cover art.
  * Adapts to the manga's palette and title initials with clean modern typography.
  */
 export function buildMangaCoverSvg(manga: MangaItem): string {
-  const [c1, c2, c3] = manga.coverPalette && manga.coverPalette.length >= 3
+  const palette = manga.coverPalette && manga.coverPalette.length >= 3
     ? manga.coverPalette
     : ['#071426', '#0066CC', '#38BDF8'];
+  const c1 = sanitizeCssColor(palette[0], '#071426');
+  const c2 = sanitizeCssColor(palette[1], '#0066CC');
+  const c3 = sanitizeCssColor(palette[2], '#38BDF8');
 
-  const safeTitle = escapeXml(manga.title || 'Komik');
+  const rawTitleChars = Array.from((manga.title || 'Komik').trim() || 'Komik');
+  const truncatedTitle = rawTitleChars.length > 24 ? rawTitleChars.slice(0, 22).join('') + '...' : rawTitleChars.join('');
+  const safeTitle = escapeXml(truncatedTitle);
   const safeSource = escapeXml(manga.sourceName || 'Yomic');
 
   const initials = manga.title
@@ -38,9 +72,9 @@ export function buildMangaCoverSvg(manga: MangaItem): string {
         .trim()
         .split(/\s+/)
         .slice(0, 2)
-        .map((w) => w[0])
+        .map((w) => Array.from(w)[0] || '')
         .join('')
-        .toUpperCase()
+        .toUpperCase() || 'Y'
     : 'Y';
 
   const svg = `
@@ -64,14 +98,14 @@ export function buildMangaCoverSvg(manga: MangaItem): string {
       <circle cx="200" cy="220" r="85" fill="${c1}" fill-opacity="0.6" stroke="${c3}" stroke-width="1" stroke-opacity="0.4"/>
       
       <!-- Initials Icon Badge -->
-      <text x="200" y="235" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="44" font-weight="700" fill="#FFFFFF" text-anchor="middle" letter-spacing="2">${escapeXml(initials)}</text>
+      <text x="200" y="235" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="44" font-weight="700" fill="#FFFFFF" text-anchor="middle" letter-spacing="2">${escapeXml(initials)}</text>
       
       <!-- Bottom Title Card -->
       <rect x="24" y="440" width="352" height="136" rx="14" fill="#07111E" fill-opacity="0.85" stroke="${c3}" stroke-width="1" stroke-opacity="0.2"/>
-      <text x="44" y="495" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="20" font-weight="600" fill="#F8FAFC">
-        ${safeTitle.length > 24 ? safeTitle.slice(0, 22) + '...' : safeTitle}
+      <text x="44" y="495" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="20" font-weight="600" fill="#F8FAFC">
+        ${safeTitle}
       </text>
-      <text x="44" y="530" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="500" fill="${c3}">
+      <text x="44" y="530" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="13" font-weight="500" fill="${c3}">
         ${safeSource}
       </text>
     </svg>

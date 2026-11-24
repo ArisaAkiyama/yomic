@@ -8,14 +8,13 @@
     <UseWPF>true</UseWPF>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <RollForward>Major</RollForward>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>Yomic</AssemblyName>
     <RootNamespace>YomicDesktop</RootNamespace>
-    <Version>2.2.1</Version>
-    <FileVersion>2.2.1.0</FileVersion>
-    <AssemblyVersion>2.2.1.0</AssemblyVersion>
+    <Version>2.3.0</Version>
+    <FileVersion>2.3.0.0</FileVersion>
+    <AssemblyVersion>2.3.0.0</AssemblyVersion>
     <Title>Yomic v2</Title>
     <Company>ArisaAkiyama</Company>
     <Product>Yomic Desktop v2</Product>
@@ -32,10 +31,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="YomicDesktop.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
     <PackageReference Include="System.IO.Hashing" Version="9.0.2" />
-    <PackageReference Include="System.Net.Http.WinHttpHandler" Version="8.0.0" />
     <PackageReference Include="Jint" Version="4.5.0" />
     <PackageReference Include="AngleSharp" Version="1.10.1" />
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
@@ -63,11 +65,14 @@
 
   <ItemGroup>
     <Resource Include="Assets\app.ico" />
-    <Content Include="WebUI\tsconfig.json" />
+    <None Include="WebUI\tsconfig.json" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="WebUI\index.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="WebUI\preload-theme.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="WebUI\app-logo.png">
@@ -108,9 +113,9 @@
           SkipUnchangedFiles="true" />
   </Target>
 
-  <Target Name="SyncToDistYomicV2" AfterTargets="CopyCompiledTypeScriptToOutput" Condition="Exists('$(MSBuildProjectDirectory)\..\..\dist\Yomic_v2')">
+  <Target Name="SyncToDistYomicV2" AfterTargets="CopyCompiledTypeScriptToOutput" Condition="'$(Configuration)' == 'Release' And Exists('$(MSBuildProjectDirectory)\..\..\dist\Yomic_v2')">
     <ItemGroup>
-      <DistWebUiFiles Include="$(MSBuildProjectDirectory)\WebUI\**\*.*" Exclude="$(MSBuildProjectDirectory)\WebUI\ts\**\*.*" />
+      <DistWebUiFiles Include="$(MSBuildProjectDirectory)\WebUI\**\*.*" Exclude="$(MSBuildProjectDirectory)\WebUI\ts\**\*.*;$(MSBuildProjectDirectory)\WebUI\tsconfig.json" />
       <AllOutputFiles Include="$(TargetDir)**\*.*" Exclude="$(TargetDir)WebUI\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(DistWebUiFiles)"
@@ -119,7 +124,6 @@
     <Copy SourceFiles="@(AllOutputFiles)"
           DestinationFiles="@(AllOutputFiles->'$(MSBuildProjectDirectory)\..\..\dist\Yomic_v2\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"
-          ContinueOnError="true"
-          Retries="0" />
+          Retries="2" />
   </Target>
 </Project>

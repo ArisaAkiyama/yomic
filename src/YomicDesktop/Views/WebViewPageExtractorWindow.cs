@@ -165,7 +165,8 @@ namespace YomicDesktop.Views
             Func<string, string, string> localize,
             bool startHidden = true)
         {
-            if (string.IsNullOrWhiteSpace(chapterUrl) || dispatcher == null)
+            if (string.IsNullOrWhiteSpace(chapterUrl) || dispatcher == null ||
+                !Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(chapterUrl, out _))
             {
                 return new List<string>();
             }
@@ -267,16 +268,31 @@ namespace YomicDesktop.Views
 
         private async void OnWindowLoaded(object sender, RoutedEventArgs e)
         {
+            // Start timeout watchdog BEFORE WebView2 init so hung runtime init can never deadlock _modalLock
+            _pollTimer.Start();
             try
             {
                 var env = await GetOrCreateEnvironmentAsync();
-                await _webView.EnsureCoreWebView2Async(env);
                 if (_isCompleted) return;
+                await _webView.EnsureCoreWebView2Async(env);
+                if (_isCompleted || _webView.CoreWebView2 == null) return;
 
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+                _webView.CoreWebView2.IsMuted = !_isRevealed;
+                _webView.CoreWebView2.NewWindowRequested += (_, args) => args.Handled = true;
+                _webView.CoreWebView2.DownloadStarting += (_, args) => args.Cancel = true;
+                _webView.CoreWebView2.NavigationStarting += (_sender, args) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(args.Uri) &&
+                        !string.Equals(args.Uri, "about:blank", StringComparison.OrdinalIgnoreCase) &&
+                        !Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(args.Uri, out _))
+                    {
+                        args.Cancel = true;
+                    }
+                };
+                _webView.CoreWebView2.ProcessFailed += (_, _) => FinishAndClose(new List<string>());
                 _webView.CoreWebView2.Navigate(_targetUrl);
-                _pollTimer.Start();
             }
             catch (Exception ex)
             {
@@ -287,20 +303,28 @@ namespace YomicDesktop.Views
 
         private async void OnPollTimerTick(object? sender, EventArgs e)
         {
-            if (_isCompleted || _isPollingTick) return;
+            if (_isCompleted) return;
 
+            // Check timeout BEFORE _isPollingTick guard so hung page JS can never deadlock _modalLock!
             TimeSpan elapsed = DateTime.UtcNow - _startedAtUtc;
             if (elapsed > _timeout)
             {
                 FinishAndClose(new List<string>());
                 return;
             }
-            if (_webView.CoreWebView2 == null) return;
+            if (_isPollingTick || _webView.CoreWebView2 == null) return;
 
             _isPollingTick = true;
             try
             {
-                string raw = await _webView.CoreWebView2.ExecuteScriptAsync(_extractScript);
+                var core = _webView.CoreWebView2;
+                if (core == null) return;
+
+                var extractTask = core.ExecuteScriptAsync(_extractScript);
+                var finishedExtract = await Task.WhenAny(extractTask, Task.Delay(5000));
+                if (finishedExtract != extractTask || _isCompleted) return;
+
+                string raw = await extractTask;
                 var pages = ParseScriptImageResult(raw);
                 if (pages.Count > 0)
                 {
@@ -308,19 +332,24 @@ namespace YomicDesktop.Views
                     return;
                 }
 
-                if (!_isRevealed)
+                if (!_isRevealed && !_isCompleted && _webView.CoreWebView2 != null)
                 {
                     bool shouldReveal = elapsed >= BackgroundGracePeriod;
                     if (!shouldReveal)
                     {
-                        string promptRaw = await _webView.CoreWebView2.ExecuteScriptAsync(InteractivePromptCheckScript);
-                        if (string.Equals(promptRaw?.Trim(), "true", StringComparison.OrdinalIgnoreCase))
+                        var promptTask = _webView.CoreWebView2.ExecuteScriptAsync(InteractivePromptCheckScript);
+                        var finishedPrompt = await Task.WhenAny(promptTask, Task.Delay(3000));
+                        if (finishedPrompt == promptTask && !_isCompleted)
                         {
-                            shouldReveal = true;
+                            string promptRaw = await promptTask;
+                            if (string.Equals(promptRaw?.Trim(), "true", StringComparison.OrdinalIgnoreCase))
+                            {
+                                shouldReveal = true;
+                            }
                         }
                     }
 
-                    if (shouldReveal)
+                    if (shouldReveal && !_isCompleted)
                     {
                         RevealToUser();
                     }
@@ -384,14 +413,18 @@ namespace YomicDesktop.Views
             if (_isCompleted) return;
             _isCompleted = true;
             _pollTimer.Stop();
+            if (_hostOwner != null)
+            {
+                _hostOwner.Closing -= OnOwnerClosing;
+            }
             _tcs.TrySetResult(pages);
             try
             {
-                if (IsVisible) Close();
+                Close();
             }
             catch
             {
-                // Ignore if already closing
+                try { _webView.Dispose(); } catch { }
             }
         }
 

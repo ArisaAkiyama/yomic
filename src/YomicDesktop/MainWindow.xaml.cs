@@ -72,8 +72,15 @@ public partial class MainWindow : Window
     private void AdaptWindowToMonitorWorkArea()
     {
         Rect workArea = SystemParameters.WorkArea;
-        double targetWidth = Math.Round(Math.Clamp(workArea.Width * 0.88, MinWidth, workArea.Width - 24));
-        double targetHeight = Math.Round(Math.Clamp(workArea.Height * 0.88, MinHeight, workArea.Height - 24));
+        double maxAllowedWidth = Math.Max(640, workArea.Width - 24);
+        double maxAllowedHeight = Math.Max(480, workArea.Height - 24);
+
+        // Adapt MinWidth/MinHeight on compact/high-DPI laptops (e.g. 1366x768 @ 125% = 582 DIPs tall) so Math.Clamp never throws ArgumentException
+        if (MinWidth > maxAllowedWidth) MinWidth = maxAllowedWidth;
+        if (MinHeight > maxAllowedHeight) MinHeight = maxAllowedHeight;
+
+        double targetWidth = Math.Round(Math.Clamp(workArea.Width * 0.88, MinWidth, maxAllowedWidth));
+        double targetHeight = Math.Round(Math.Clamp(workArea.Height * 0.88, MinHeight, maxAllowedHeight));
 
         Width = targetWidth;
         Height = targetHeight;
@@ -299,6 +306,9 @@ public partial class MainWindow : Window
         coreWv.Settings.IsStatusBarEnabled = false;
         coreWv.Settings.IsZoomControlEnabled = false;
         coreWv.Settings.IsWebMessageEnabled = true;
+#if !DEBUG
+        coreWv.Settings.AreDevToolsEnabled = false;
+#endif
 
         string webUiFolder = ResolveWebUiDirectory();
         coreWv.SetVirtualHostNameToFolderMapping(
@@ -307,6 +317,9 @@ public partial class MainWindow : Window
             CoreWebView2HostResourceAccessKind.Allow);
 
         _backendController?.ImageProxy.Attach(coreWv);
+        coreWv.NavigationStarting += OnWebViewNavigationStarting;
+        coreWv.FrameNavigationStarting += OnWebViewNavigationStarting;
+        coreWv.NewWindowRequested += OnWebViewNewWindowRequested;
         coreWv.WebMessageReceived += OnWebMessageReceived;
         coreWv.NavigationCompleted += OnWebViewNavigationCompleted;
                 // Build and inject preload bootstrap state BEFORE document runs its scripts!
@@ -330,8 +343,41 @@ public partial class MainWindow : Window
         coreWv.Navigate($"https://{VirtualHostName}/index.html");
     }
 
+    private void OnWebViewNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Uri)) return;
+        if (string.Equals(e.Uri, "about:blank", StringComparison.OrdinalIgnoreCase)) return;
+
+        if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var navUri) ||
+            !string.Equals(navUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(navUri.Host, VirtualHostName, StringComparison.OrdinalIgnoreCase))
+        {
+            e.Cancel = true;
+            System.Diagnostics.Debug.WriteLine($"[WebView2] Blocked external navigation: {e.Uri}");
+        }
+    }
+
+    private void OnWebViewNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+    {
+        // Always prevent WebView2 from spawning an unrestricted popup window
+        e.Handled = true;
+        if (!string.IsNullOrWhiteSpace(e.Uri) &&
+            Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(e.Uri, out var safeUri) &&
+            safeUri != null)
+        {
+            try
+            {
+                using var proc = Process.Start(new ProcessStartInfo(safeUri.AbsoluteUri) { UseShellExecute = true });
+            }
+            catch { }
+        }
+    }
+
     private async void OnWebViewNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
+#if DEBUG
+        try
+        {
         string[] args = Environment.GetCommandLineArgs();
         int darkIdx = Array.FindIndex(args, a => string.Equals(a, "--capture-dark-ui", StringComparison.OrdinalIgnoreCase));
         if (darkIdx >= 0 && darkIdx + 1 < args.Length && YomicWebView.CoreWebView2 is not null)
@@ -579,6 +625,14 @@ public partial class MainWindow : Window
 
             Close();
         }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[WebView2] Capture error: {ex.Message}");
+        }
+#else
+        await Task.CompletedTask;
+#endif
     }
 
     private static async Task CaptureWebViewPngAsync(CoreWebView2 wv, string filePath)
@@ -591,23 +645,33 @@ public partial class MainWindow : Window
     {
         try
         {
+            // Enforce strict WebView2 origin boundary: only accept IPC messages from our local app virtual host
+            if (string.IsNullOrWhiteSpace(e.Source) ||
+                !Uri.TryCreate(e.Source, UriKind.Absolute, out var sourceUri) ||
+                !string.Equals(sourceUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(sourceUri.Host, VirtualHostName, StringComparison.OrdinalIgnoreCase))
+            {
+                System.Diagnostics.Debug.WriteLine($"[WebView2] Rejected IPC message from untrusted origin: {e.Source}");
+                return;
+            }
+
             string rawJson = e.TryGetWebMessageAsString();
             if (string.IsNullOrWhiteSpace(rawJson))
             {
                 return;
             }
 
-            if (_backendController is not null && !rawJson.Contains("\"ui:", StringComparison.Ordinal))
+            using JsonDocument doc = JsonDocument.Parse(rawJson);
+            JsonElement root = doc.RootElement;
+            string? type = root.TryGetProperty("type", out JsonElement typeProp) && typeProp.ValueKind == JsonValueKind.String
+                ? typeProp.GetString()
+                : null;
+
+            if (_backendController is not null && (type is null || !type.StartsWith("ui:", StringComparison.Ordinal)))
             {
                 _ = _backendController.TryHandleMessageAsync(rawJson);
                 return;
             }
-
-            using JsonDocument doc = JsonDocument.Parse(rawJson);
-            JsonElement root = doc.RootElement;
-            string? type = root.TryGetProperty("type", out JsonElement typeProp)
-                ? typeProp.GetString()
-                : null;
 
             switch (type)
             {
@@ -642,10 +706,10 @@ public partial class MainWindow : Window
                         ? urlProp.GetString()
                         : null;
                     if (!string.IsNullOrWhiteSpace(url) &&
-                        Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) &&
-                        (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+                        Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out Uri? uri) &&
+                        uri != null)
                     {
-                        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+                        using var proc = Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
                     }
                     break;
                 }
@@ -656,18 +720,22 @@ public partial class MainWindow : Window
                         ? pathProp.GetString()
                         : null;
 
-                    string targetDir;
-                    if (!string.IsNullOrWhiteSpace(folderPath) && Directory.Exists(folderPath))
+                    string defaultDownloadsDir = Yomic.Core.Services.DownloadPathService.BaseDirectory;
+                    string localAppYomicDir = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "Yomic");
+                    string roamingAppYomicDir = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "Yomic");
+
+                    string targetDir = defaultDownloadsDir;
+                    if (!string.IsNullOrWhiteSpace(folderPath) &&
+                        Directory.Exists(folderPath) &&
+                        (Yomic.Core.Helpers.UrlSecurityHelper.IsPathInsideDirectory(folderPath, defaultDownloadsDir) ||
+                         Yomic.Core.Helpers.UrlSecurityHelper.IsPathInsideDirectory(folderPath, localAppYomicDir) ||
+                         Yomic.Core.Helpers.UrlSecurityHelper.IsPathInsideDirectory(folderPath, roamingAppYomicDir)))
                     {
-                        targetDir = folderPath;
-                    }
-                    else
-                    {
-                        targetDir = Yomic.Core.Services.DownloadPathService.BaseDirectory; // default downloads dir
-                            // Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                            // "Yomic",
-                            // "Downloads"
-                        // );
+                        targetDir = Path.GetFullPath(folderPath);
                     }
 
                     if (!Directory.Exists(targetDir))
@@ -675,12 +743,13 @@ public partial class MainWindow : Window
                         Directory.CreateDirectory(targetDir);
                     }
 
-                    Process.Start(new ProcessStartInfo
+                    var explorerPsi = new ProcessStartInfo
                     {
-                        FileName = "explorer.exe",
-                        Arguments = $"\"{targetDir}\"",
-                        UseShellExecute = true
-                    });
+                        FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"),
+                        UseShellExecute = false
+                    };
+                    explorerPsi.ArgumentList.Add(targetDir);
+                    using var explorerProc = Process.Start(explorerPsi);
                     break;
                 }
             }

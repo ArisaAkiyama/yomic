@@ -82,7 +82,7 @@ public partial class App : Application
             MangaDbContext.EnsureMangaColumnsExist(initDb);
         }
 
-        var settingsService = new SettingsService();
+        using var settingsService = new SettingsService();
         if (settingsService.IsOfflineMode)
         {
             LogService.Info("BackgroundUpdate", "Skipped headless sync because Offline Mode is enabled.");
@@ -90,9 +90,8 @@ public partial class App : Application
         }
 
         using var networkService = new NetworkService(settingsService);
-        var sourceManager = new SourceManager();
+        using var sourceManager = new SourceManager();
         using var statusService = new SourceStatusService(sourceManager, settingsService, networkService);
-        _ = new ExtensionRepositoryService(sourceManager, settingsService, statusService);
 
         var libraryService = new LibraryService();
         int updated = await libraryService.UpdateAllLibraryMangaAsync(sourceManager, forceRefresh: false);
@@ -122,6 +121,48 @@ public partial class App : Application
         }
     }
 
+    public static void ReleaseSingleInstanceMutexForRestart()
+    {
+        try
+        {
+            if (Current is App app)
+            {
+                if (app.Dispatcher.CheckAccess())
+                {
+                    app.ReleaseSingleInstanceMutex();
+                }
+                else
+                {
+                    app.Dispatcher.Invoke(app.ReleaseSingleInstanceMutex);
+                }
+            }
+        }
+        catch { }
+    }
+
+    public static bool TryReacquireSingleInstanceMutex()
+    {
+        try
+        {
+            if (Current is App app)
+            {
+                bool Reacquire()
+                {
+                    if (app._singleInstanceMutex == null)
+                    {
+                        app._singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out app._ownsMutex);
+                        return app._ownsMutex;
+                    }
+                    return app._ownsMutex;
+                }
+
+                return app.Dispatcher.CheckAccess() ? Reacquire() : app.Dispatcher.Invoke(Reacquire);
+            }
+        }
+        catch { }
+        return false;
+    }
+
     private void ReleaseSingleInstanceMutex()
     {
         if (_singleInstanceMutex != null)
@@ -147,6 +188,14 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        if (CloudflareBypassService.IsInstanceCreated)
+        {
+            try
+            {
+                Task.Run(() => CloudflareBypassService.Instance.DisposeAsync()).Wait(TimeSpan.FromSeconds(2));
+            }
+            catch { }
+        }
         ReleaseSingleInstanceMutex();
         base.OnExit(e);
     }

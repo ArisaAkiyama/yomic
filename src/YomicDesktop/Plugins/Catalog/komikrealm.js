@@ -37,14 +37,25 @@ var source = {
     },
 
     decodeQwik: function(qwik) {
+        if (!qwik || !Array.isArray(qwik._objs)) return {};
         let objs = qwik._objs;
-        function resolve(idx) {
-            let val = objs[parseInt(String(idx), 36)];
+        let activePath = new Set();
+        function resolve(idx, depth) {
+            if (depth > 64) return null;
+            let numIdx = parseInt(String(idx), 36);
+            if (isNaN(numIdx) || numIdx < 0 || numIdx >= objs.length) return null;
+            if (activePath.has(numIdx)) return null;
+            let val = objs[numIdx];
             if (Array.isArray(val)) {
-                return val.map(resolve);
+                activePath.add(numIdx);
+                let arr = val.map((item) => resolve(item, depth + 1));
+                activePath.delete(numIdx);
+                return arr;
             } else if (val !== null && typeof val === "object") {
+                activePath.add(numIdx);
                 let res = {};
-                for (let k in val) res[k] = resolve(val[k]);
+                for (let k in val) res[k] = resolve(val[k], depth + 1);
+                activePath.delete(numIdx);
                 return res;
             } else if (typeof val === "string") {
                 if (!val || val.charCodeAt(0) >= 32) return val;
@@ -53,7 +64,7 @@ var source = {
             }
             return val;
         }
-        return resolve(qwik._entry);
+        return resolve(qwik._entry, 0) || {};
     },
 
     normalizeCover: function(url) {
@@ -77,7 +88,7 @@ var source = {
         let url = this.baseUrl + "/popular/q-data.json";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let raw = JSON.parse(res.body);
+        let raw = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let decoded = this.decodeQwik(raw);
         let list = this.extractSeriesList(decoded);
         let items = list.map(item => {
@@ -97,7 +108,7 @@ var source = {
         let url = this.baseUrl + "/q-data.json";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let raw = JSON.parse(res.body);
+        let raw = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let decoded = this.decodeQwik(raw);
         let list = this.extractSeriesList(decoded);
         let items = list.map(item => {
@@ -119,7 +130,7 @@ var source = {
         let url = this.baseUrl + "/search/" + encodeURIComponent(cleanQ) + "/q-data.json";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let raw = JSON.parse(res.body);
+        let raw = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let decoded = this.decodeQwik(raw);
         let list = this.extractSeriesList(decoded);
         let items = list.map(item => {
@@ -149,7 +160,7 @@ var source = {
         if (!res || res.status !== 200 || !res.body) {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
         }
-        let raw = JSON.parse(res.body);
+        let raw = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let decoded = this.decodeQwik(raw);
         let loaders = decoded.loaders || {};
         let series = null;
@@ -196,7 +207,7 @@ var source = {
         let dataUrl = this.baseUrl + cleanUrl + "q-data.json";
         let res = this.requestUrl(dataUrl);
         if (!res || res.status !== 200 || !res.body) return [];
-        let raw = JSON.parse(res.body);
+        let raw = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let decoded = this.decodeQwik(raw);
         let loaders = decoded.loaders || {};
         let series = null;
@@ -223,7 +234,7 @@ var source = {
         let dataUrl = this.baseUrl + cleanUrl + "q-data.json";
         let res = this.requestUrl(dataUrl);
         if (!res || res.status !== 200 || !res.body) return [];
-        let raw = JSON.parse(res.body);
+        let raw = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let decoded = this.decodeQwik(raw);
         let loaders = decoded.loaders || {};
         let chapterData = null;

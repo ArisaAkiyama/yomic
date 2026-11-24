@@ -25,6 +25,12 @@ namespace Yomic.Core.Services
         {
             try
             {
+                // One-time v1 -> v2 migration: skip once completed so uninstalled/disabled extensions are never hijacked!
+                if (File.Exists(MigrationFlagFile))
+                {
+                    return;
+                }
+
                 var sources = sourceManager.GetSources();
                 if (sources.Count == 0)
                 {
@@ -36,6 +42,8 @@ namespace Yomic.Core.Services
 
                 using var db = new MangaDbContext();
                 var allManga = await db.Mangas.ToListAsync();
+                var existingPairs = new HashSet<(string Url, long Source)>(
+                    allManga.Select(m => ((m.Url ?? string.Empty).Trim().ToLowerInvariant(), m.Source)));
 
                 var orphanedManga = allManga.Where(m => !validSourceIds.Contains(m.Source)).ToList();
 
@@ -54,7 +62,7 @@ namespace Yomic.Core.Services
                     if (!string.IsNullOrEmpty(src.BaseUrl) && Uri.TryCreate(src.BaseUrl, UriKind.Absolute, out var baseUri))
                     {
                         var host = NormalizeDomain(baseUri.Host);
-                        domainMap[host] = src.Id;
+                        domainMap.TryAdd(host, src.Id);
                     }
                 }
 
@@ -86,35 +94,36 @@ namespace Yomic.Core.Services
                     // 1. Direct legacy v1 ID mapping
                     if (manga.Source == 3639673976007021568L)
                     {
-                        var kiryuuSrc = sources.FirstOrDefault(s => s.Name.Contains("Kiryuu", StringComparison.OrdinalIgnoreCase));
+                        var kiryuuSrc = sources.FirstOrDefault(s => s.Name != null && s.Name.Contains("Kiryuu", StringComparison.OrdinalIgnoreCase));
                         if (kiryuuSrc != null) matchedSourceId = kiryuuSrc.Id;
                     }
                     else if (manga.Source == -3406828676302900168L)
                     {
-                        var komikuSrc = sources.FirstOrDefault(s => s.Name.Contains("Komiku", StringComparison.OrdinalIgnoreCase));
+                        var komikuSrc = sources.FirstOrDefault(s => s.Name != null && s.Name.Contains("Komiku", StringComparison.OrdinalIgnoreCase));
                         if (komikuSrc != null) matchedSourceId = komikuSrc.Id;
                     }
 
-                    // 2. Domain matching
-                    if (matchedSourceId == null && !string.IsNullOrEmpty(manga.Url) && Uri.TryCreate(manga.Url, UriKind.Absolute, out var mangaUri))
+                    // 2. Exact host domain matching
+                    string? mangaHost = null;
+                    if (!string.IsNullOrEmpty(manga.Url) && Uri.TryCreate(manga.Url, UriKind.Absolute, out var mangaUri))
                     {
-                        var mangaHost = NormalizeDomain(mangaUri.Host);
-                        if (domainMap.TryGetValue(mangaHost, out var idByDomain))
+                        mangaHost = NormalizeDomain(mangaUri.Host);
+                        if (matchedSourceId == null && domainMap.TryGetValue(mangaHost, out var idByDomain))
                         {
                             matchedSourceId = idByDomain;
                         }
                     }
 
-                    // 3. Keyword / URL pattern matching
-                    if (matchedSourceId == null && !string.IsNullOrEmpty(manga.Url))
+                    // 3. Host-only keyword matching (NEVER match URL path slugs or generic "/manga/"!)
+                    if (matchedSourceId == null && !string.IsNullOrEmpty(mangaHost))
                     {
                         foreach (var kv in keywordFallbacks)
                         {
-                            if (manga.Url.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
+                            if (mangaHost.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
                             {
                                 var matchingSrc = sources.FirstOrDefault(s =>
-                                    s.Name.Contains(kv.Value, StringComparison.OrdinalIgnoreCase) ||
-                                    s.BaseUrl.Contains(kv.Value, StringComparison.OrdinalIgnoreCase));
+                                    (s.Name != null && s.Name.Contains(kv.Value, StringComparison.OrdinalIgnoreCase)) ||
+                                    (s.BaseUrl != null && s.BaseUrl.Contains(kv.Value, StringComparison.OrdinalIgnoreCase)));
 
                                 if (matchingSrc != null)
                                 {
@@ -123,21 +132,20 @@ namespace Yomic.Core.Services
                                 }
                             }
                         }
-
-                        if (matchedSourceId == null)
-                        {
-                            if (manga.Url.Contains("/manga/", StringComparison.OrdinalIgnoreCase))
-                            {
-                                var fallbackKiryuu = sources.FirstOrDefault(s => s.Name.Contains("Kiryuu", StringComparison.OrdinalIgnoreCase));
-                                if (fallbackKiryuu != null) matchedSourceId = fallbackKiryuu.Id;
-                            }
-                        }
                     }
 
                     if (matchedSourceId.HasValue)
                     {
+                        var normalizedUrl = (manga.Url ?? string.Empty).Trim().ToLowerInvariant();
+                        if (existingPairs.Contains((normalizedUrl, matchedSourceId.Value)))
+                        {
+                            LogService.Warning("SourceIdMigration", $"Skipping remap for '{manga.Title}' -> {matchedSourceId.Value} (duplicate already exists).");
+                            continue;
+                        }
+
                         long oldId = manga.Source;
                         manga.Source = matchedSourceId.Value;
+                        existingPairs.Add((normalizedUrl, matchedSourceId.Value));
                         fixedCount++;
                         LogService.Info("SourceIdMigration", $"Remapped '{manga.Title}': {oldId} -> {matchedSourceId.Value}");
                     }

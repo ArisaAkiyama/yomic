@@ -92,7 +92,7 @@ var source = {
                         }
                     });
                     if (res.status === 200) {
-                        return JSON.parse(res.body);
+                        try { return JSON.parse(res.body); } catch (e) { return null; }
                     }
                 }
 

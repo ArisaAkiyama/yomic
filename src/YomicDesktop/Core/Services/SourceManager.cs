@@ -15,7 +15,7 @@ namespace Yomic.Core.Services
         public DateTime Timestamp { get; set; }
     }
 
-    public class SourceManager
+    public class SourceManager : IDisposable
     {
         private readonly List<IMangaSource> _sources;
         private readonly object _sourcesLock = new();
@@ -73,7 +73,12 @@ namespace Yomic.Core.Services
             {
                 var exact = _sources.FirstOrDefault(s => s.Id == id);
                 if (exact != null) return exact;
-                return _sources.FirstOrDefault(s => Math.Abs(s.Id - id) < 2048);
+                // Safe unsigned distance check (prevents signed Int64 OverflowException near MinValue/MaxValue)
+                return _sources.FirstOrDefault(s =>
+                {
+                    ulong dist = s.Id >= id ? (ulong)(s.Id - id) : (ulong)(id - s.Id);
+                    return dist < 2048UL;
+                });
             }
         }
 
@@ -91,22 +96,27 @@ namespace Yomic.Core.Services
 
         public void AddSource(IMangaSource source)
         {
+            IDisposable? replacedDisposable = null;
             lock (_sourcesLock)
             {
                 var existing = _sources.FirstOrDefault(s => s.Id == source.Id);
                 if (existing == null)
                 {
                     _sources.Add(source);
-                    OnSourcesChanged?.Invoke();
                 }
                 else
                 {
-                    // Bug Fix: Replace old instance on update/reinstall so new code is active in memory
                     var idx = _sources.IndexOf(existing);
                     _sources[idx] = source;
-                    OnSourcesChanged?.Invoke();
+                    if (!ReferenceEquals(existing, source) && existing is IDisposable d)
+                    {
+                        replacedDisposable = d;
+                    }
                 }
             }
+            try { replacedDisposable?.Dispose(); } catch { }
+            // Invoke event strictly outside _sourcesLock to prevent AB-BA deadlocks
+            OnSourcesChanged?.Invoke();
         }
 
         private void SafeDeleteFile(string path)
@@ -137,73 +147,93 @@ namespace Yomic.Core.Services
 
         public void RemoveSource(long id)
         {
+            bool removed = false;
+            IDisposable? disposableToRelease = null;
+            string? fileToDelete = null;
+
             lock (_sourcesLock)
             {
                 var source = _sources.FirstOrDefault(s => s.Id == id);
                 if (source != null)
                 {
                     _sources.Remove(source);
-
-                    // Bug Fix: Dispose source to release any background resources (e.g., headless browsers)
+                    removed = true;
                     if (source is IDisposable disposable)
                     {
-                        try { disposable.Dispose(); } catch { }
+                        disposableToRelease = disposable;
                     }
 
-                    string? trackedPath = null;
-
-                    // 1. Delete the path currently tracked
                     if (_sourceIdToPath.TryGetValue(id, out var path))
                     {
-                        trackedPath = path;
-                        SafeDeleteFile(System.IO.Path.GetFullPath(path));
                         _sourceIdToPath.Remove(id);
+                        // NEVER delete bundled system plugins inside _localPluginsDir — only delete user plugins
+                        if (Yomic.Core.Helpers.UrlSecurityHelper.IsPathInsideDirectory(path, _userPluginsDir))
+                        {
+                            fileToDelete = System.IO.Path.GetFullPath(path);
+                        }
+                        else
+                        {
+                            string? jsName = System.IO.Path.GetFileName(path);
+                            if (!string.IsNullOrEmpty(jsName))
+                            {
+                                var userCopy = System.IO.Path.Combine(_userPluginsDir, jsName);
+                                if (Yomic.Core.Helpers.UrlSecurityHelper.IsPathInsideDirectory(userCopy, _userPluginsDir))
+                                {
+                                    fileToDelete = userCopy;
+                                }
+                            }
+                        }
                     }
-
-                    // 2. Bug Fix: Only delete from userPluginsDir, NOT from localPluginsDir.
-                    //    Bundled (system) plugins should never be permanently deleted by the user.
-                    string? jsName = string.IsNullOrWhiteSpace(trackedPath) ? null : System.IO.Path.GetFileName(trackedPath);
-                    if (!string.IsNullOrEmpty(jsName))
-                    {
-                        SafeDeleteFile(System.IO.Path.Combine(_userPluginsDir, jsName));
-                    }
-
-                    OnSourcesChanged?.Invoke();
                 }
+            }
+
+            if (disposableToRelease != null)
+            {
+                try { disposableToRelease.Dispose(); } catch { }
+            }
+            if (!string.IsNullOrEmpty(fileToDelete))
+            {
+                SafeDeleteFile(fileToDelete);
+            }
+            if (removed)
+            {
+                OnSourcesChanged?.Invoke();
             }
         }
 
         // Helper to check if a source is System (Bundled)
         public bool IsSystemSource(long id)
         {
-            if (_sourceIdToPath.TryGetValue(id, out var path))
+            lock (_sourcesLock)
             {
-                var fullPath = System.IO.Path.GetFullPath(path);
-                var fullLocalDir = System.IO.Path.GetFullPath(_localPluginsDir);
-                return fullPath.StartsWith(fullLocalDir, StringComparison.OrdinalIgnoreCase);
+                if (_sourceIdToPath.TryGetValue(id, out var path))
+                {
+                    return Yomic.Core.Helpers.UrlSecurityHelper.IsPathInsideDirectory(path, _localPluginsDir);
+                }
+                return false;
             }
-            return false;
         }
 
         // Helper to check if a source is actually installed (System or User) vs just loaded from random path
         public bool IsInstalledSource(long id)
         {
-            if (_sourceIdToPath.TryGetValue(id, out var path))
+            lock (_sourcesLock)
             {
-                var fullPath = System.IO.Path.GetFullPath(path);
-                var fullUserDir = System.IO.Path.GetFullPath(_userPluginsDir);
-                var fullLocalDir = System.IO.Path.GetFullPath(_localPluginsDir);
-
-                return fullPath.StartsWith(fullUserDir, StringComparison.OrdinalIgnoreCase) ||
-                       fullPath.StartsWith(fullLocalDir, StringComparison.OrdinalIgnoreCase);
+                if (_sourceIdToPath.TryGetValue(id, out var path))
+                {
+                    return Yomic.Core.Helpers.UrlSecurityHelper.IsPathInsideDirectory(path, _userPluginsDir) ||
+                           Yomic.Core.Helpers.UrlSecurityHelper.IsPathInsideDirectory(path, _localPluginsDir);
+                }
+                return false;
             }
-            return false;
         }
 
         public string? GetSourcePath(long id)
         {
-            if (_sourceIdToPath.TryGetValue(id, out var path)) return path;
-            return null;
+            lock (_sourcesLock)
+            {
+                return _sourceIdToPath.TryGetValue(id, out var path) ? path : null;
+            }
         }
 
         #endregion
@@ -268,7 +298,7 @@ namespace Yomic.Core.Services
             int.TryParse(m.Groups[2].Value, out int minor);
             int patch = 0;
             if (m.Groups[3].Success) int.TryParse(m.Groups[3].Value, out patch);
-            return (major * 100) + (minor * 10) + patch;
+            return (major * 10000) + (minor * 100) + patch;
         }
 
         private static void TryUpgradeUserPluginFromCatalog(string userJsPath, string catalogDir)
@@ -394,6 +424,24 @@ namespace Yomic.Core.Services
 
         public void SetCachedResult(string key, List<Manga> items, int totalPages)
         {
+            if (_cache.Count >= 256)
+            {
+                var now = DateTime.Now;
+                foreach (var kv in _cache.ToArray())
+                {
+                    if (now - kv.Value.Timestamp >= _cacheDuration)
+                    {
+                        _cache.TryRemove(kv.Key, out _);
+                    }
+                }
+                if (_cache.Count >= 256)
+                {
+                    foreach (var oldest in _cache.ToArray().OrderBy(kv => kv.Value.Timestamp).Take(64))
+                    {
+                        _cache.TryRemove(oldest.Key, out _);
+                    }
+                }
+            }
             var entry = new SourceCacheEntry
             {
                 Items = items,
@@ -428,11 +476,32 @@ namespace Yomic.Core.Services
         {
             try
             {
+                List<IMangaSource> toDispose;
+                lock (_sourcesLock)
+                {
+                    toDispose = _sources.ToList();
+                    _sources.Clear();
+                    _sourceIdToPath.Clear();
+                }
+
+                foreach (var src in toDispose)
+                {
+                    if (src is IDisposable disp)
+                    {
+                        try { disp.Dispose(); } catch { }
+                    }
+                }
+                _cache.Clear();
+
                 if (System.IO.Directory.Exists(_userPluginsDir))
                 {
                     foreach (var file in System.IO.Directory.GetFiles(_userPluginsDir))
                     {
                         System.IO.File.Delete(file);
+                    }
+                    foreach (var dir in System.IO.Directory.GetDirectories(_userPluginsDir))
+                    {
+                        System.IO.Directory.Delete(dir, recursive: true);
                     }
                 }
             }
@@ -440,6 +509,26 @@ namespace Yomic.Core.Services
             {
                 System.Console.WriteLine($"[SourceManager] Error deleting plugins: {ex.Message}");
             }
+        }
+
+        public void Dispose()
+        {
+            List<IMangaSource> toDispose;
+            lock (_sourcesLock)
+            {
+                toDispose = _sources.ToList();
+                _sources.Clear();
+                _sourceIdToPath.Clear();
+            }
+
+            foreach (var src in toDispose)
+            {
+                if (src is IDisposable disp)
+                {
+                    try { disp.Dispose(); } catch { }
+                }
+            }
+            _cache.Clear();
         }
 
         #endregion

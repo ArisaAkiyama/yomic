@@ -58,7 +58,7 @@ var source = {
         let url = this.baseUrl + "/api/manga";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let list = JSON.parse(res.body) || [];
+        let list = (() => { try { return JSON.parse(res.body) || []; } catch (e) { return []; } })();
         let q = (query || "").toLowerCase().trim();
         let filtered = list.filter(item => (item.title || "").toLowerCase().includes(q));
         let items = filtered.map(item => ({
@@ -84,7 +84,7 @@ var source = {
         if (!res || res.status !== 200 || !res.body) {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
         }
-        let d = JSON.parse(res.body);
+        let d = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         if (!d) return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
 
         let status = 0;
@@ -108,7 +108,7 @@ var source = {
         let durl = this.baseUrl + "/api/manga/" + id;
         let res = this.requestUrl(durl);
         if (!res || res.status !== 200 || !res.body) return [];
-        let d = JSON.parse(res.body);
+        let d = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         if (!d || !d.chapters) return [];
 
         let sorted = d.chapters.slice().sort((a, b) => (b.number || 0) - (a.number || 0));

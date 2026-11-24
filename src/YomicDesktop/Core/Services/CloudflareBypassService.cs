@@ -8,11 +8,13 @@ namespace Yomic.Core.Services
 {
     public class CloudflareBypassService
     {
-        private static CloudflareBypassService? _instance;
-        public static CloudflareBypassService Instance => _instance ??= new CloudflareBypassService();
+        private static readonly Lazy<CloudflareBypassService> _lazyInstance = new(() => new CloudflareBypassService());
+        public static CloudflareBypassService Instance => _lazyInstance.Value;
+        public static bool IsInstanceCreated => _lazyInstance.IsValueCreated;
 
         private IBrowser? _browser;
         private string? _userAgent;
+        private readonly object _cookieLock = new object();
         private Dictionary<string, string> _cookies = new Dictionary<string, string>();
         
         // Store full cookie data (with domain info) from interactive sessions
@@ -20,8 +22,16 @@ namespace Yomic.Core.Services
 
         private readonly System.Threading.SemaphoreSlim _initLock = new System.Threading.SemaphoreSlim(1, 1);
 
-
-        public IReadOnlyList<CookieParam> SavedCookies => _savedCookieParams;
+        public IReadOnlyList<CookieParam> SavedCookies
+        {
+            get
+            {
+                lock (_cookieLock)
+                {
+                    return _savedCookieParams.ToList();
+                }
+            }
+        }
         public string? BypassUserAgent => _userAgent;
 
         public event Action<string>? OnStatusUpdate;
@@ -29,7 +39,16 @@ namespace Yomic.Core.Services
         /// <summary>
         /// Returns true if cookies were captured from an interactive WebView session.
         /// </summary>
-        public bool HasPreSolvedCookies => _savedCookieParams.Count > 0;
+        public bool HasPreSolvedCookies
+        {
+            get
+            {
+                lock (_cookieLock)
+                {
+                    return _savedCookieParams.Count > 0;
+                }
+            }
+        }
         
         /// <summary>
         /// Expose the underlying browser for advanced page manipulation by extensions.
@@ -42,21 +61,62 @@ namespace Yomic.Core.Services
         /// </summary>
         private async Task InjectSavedCookiesAsync(IPage page, string url)
         {
-            if (_savedCookieParams.Count > 0)
+            CookieParam[] matchingCookies;
+            lock (_cookieLock)
             {
-                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer] Injecting {_savedCookieParams.Count} pre-solved cookies...");
-                await page.SetCookieAsync(_savedCookieParams.ToArray());
+                if (_savedCookieParams.Count == 0 || !Uri.TryCreate(url, UriKind.Absolute, out var targetUri))
+                    return;
+
+                matchingCookies = _savedCookieParams
+                    .Where(c => Yomic.Core.Helpers.UrlSecurityHelper.CookieMatchesRequest(targetUri, c.Domain, c.Secure ?? false))
+                    .ToArray();
+            }
+
+            if (matchingCookies.Length > 0)
+            {
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer] Injecting {matchingCookies.Length} matching pre-solved cookies...");
+                await page.SetCookieAsync(matchingCookies);
+            }
+        }
+
+        private void MergeCookiesForHost(string host, CookieParam[] newCookies)
+        {
+            lock (_cookieLock)
+            {
+                _savedCookieParams.RemoveAll(existing =>
+                    !string.IsNullOrEmpty(existing.Domain) &&
+                    existing.Domain.TrimStart('.').Equals(host, StringComparison.OrdinalIgnoreCase));
+
+                foreach (var c in newCookies)
+                {
+                    _cookies[c.Name] = c.Value;
+                    _savedCookieParams.Add(new CookieParam
+                    {
+                        Name = c.Name,
+                        Value = c.Value,
+                        Domain = c.Domain,
+                        Path = c.Path,
+                        Secure = c.Secure,
+                        HttpOnly = c.HttpOnly,
+                        Expires = c.Expires
+                    });
+                }
             }
         }
 
         public async Task InitializeAsync()
         {
-            if (_browser != null) return;
+            if (_browser != null && _browser.IsConnected) return;
 
             await _initLock.WaitAsync();
             try 
             {
-                if (_browser != null) return;
+                if (_browser != null && _browser.IsConnected) return;
+                if (_browser != null)
+                {
+                    try { await _browser.DisposeAsync(); } catch { }
+                    _browser = null;
+                }
 
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 var downloadPath = System.IO.Path.Combine(appData, "Yomic", "puppeteer");
@@ -84,16 +144,10 @@ namespace Yomic.Core.Services
                     ExecutablePath = exePath,
                     Args = new[] 
                     { 
-                        "--no-sandbox", 
-                        "--disable-setuid-sandbox",
                         "--disable-infobars",
                         "--disable-blink-features=AutomationControlled",
-                        "--disable-features=IsolateOrigins,site-per-process",
                         "--enable-features=EncryptedClientHello", 
                         "--dns-over-https-url=https://cloudflare-dns.com/dns-query", 
-                        "--ignore-certificate-errors", 
-                        "--ignore-ssl-errors",
-                        "--allow-running-insecure-content",
                         "--window-size=1920,1080",
                         "--disable-dev-shm-usage"
                     }
@@ -111,12 +165,129 @@ namespace Yomic.Core.Services
             }
         }
 
+        private static readonly System.Net.Http.HttpClient _dohGuardClient = new() { Timeout = TimeSpan.FromSeconds(4) };
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (System.Net.IPAddress[] Ips, DateTime ExpiresUtc)> _dohGuardCache =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        private static async Task<System.Net.IPAddress[]?> ResolveHostIpsViaDoHFirstAsync(string host)
+        {
+            if (System.Net.IPAddress.TryParse(host, out var literalIp))
+            {
+                return new[] { literalIp };
+            }
+
+            if (_dohGuardCache.TryGetValue(host, out var cached) && cached.ExpiresUtc > DateTime.UtcNow)
+            {
+                return cached.Ips;
+            }
+
+            // Query Cloudflare DoH first (matching Chromium's --dns-over-https-url) so ISP DNS blocking
+            // (which returns 127.0.0.1 / 0.0.0.0 / NXDOMAIN on OS DNS) never falsely blocks legitimate manga sites.
+            System.Net.IPAddress[]? resolved = null;
+            try
+            {
+                using var req = new System.Net.Http.HttpRequestMessage(
+                    System.Net.Http.HttpMethod.Get,
+                    $"https://1.1.1.1/dns-query?name={Uri.EscapeDataString(host)}&type=A");
+                req.Headers.TryAddWithoutValidation("Accept", "application/dns-json");
+                using var res = await _dohGuardClient.SendAsync(req);
+                if (res.IsSuccessStatusCode)
+                {
+                    var bytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(res.Content, 256 * 1024);
+                    using var doc = System.Text.Json.JsonDocument.Parse(bytes);
+                    if (doc.RootElement.TryGetProperty("Answer", out var answers))
+                    {
+                        var list = new List<System.Net.IPAddress>();
+                        foreach (var ans in answers.EnumerateArray())
+                        {
+                            if (ans.TryGetProperty("type", out var t) && t.GetInt32() == 1 &&
+                                ans.TryGetProperty("data", out var d) &&
+                                System.Net.IPAddress.TryParse(d.GetString(), out var ip))
+                            {
+                                list.Add(ip);
+                            }
+                        }
+                        if (list.Count > 0) resolved = list.ToArray();
+                    }
+                }
+            }
+            catch { }
+
+            if (resolved == null || resolved.Length == 0)
+            {
+                try
+                {
+                    resolved = await System.Net.Dns.GetHostAddressesAsync(host);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            if (resolved != null && resolved.Length > 0)
+            {
+                if (_dohGuardCache.Count >= 512) _dohGuardCache.Clear();
+                _dohGuardCache[host] = (resolved, DateTime.UtcNow.AddMinutes(5));
+            }
+            return resolved;
+        }
+
+        private static async Task InstallSsrfRequestGuardAsync(IPage page)
+        {
+            await page.SetRequestInterceptionAsync(true);
+            page.Request += async (_, e) =>
+            {
+                try
+                {
+                    string reqUrl = e.Request.Url ?? string.Empty;
+                    if (reqUrl.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ||
+                        reqUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase) ||
+                        reqUrl.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await e.Request.ContinueAsync();
+                        return;
+                    }
+
+                    if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(reqUrl, out var parsed) || parsed == null)
+                    {
+                        await e.Request.AbortAsync(RequestAbortErrorCode.BlockedByClient);
+                        return;
+                    }
+
+                    // Validate DNS via Cloudflare DoH first (aligned with Chromium's DoH resolver) to block SSRF without ISP-DNS false blocks
+                    var ips = await ResolveHostIpsViaDoHFirstAsync(parsed.IdnHost.TrimEnd('.'));
+                    if (ips == null || ips.Length == 0)
+                    {
+                        await e.Request.AbortAsync(RequestAbortErrorCode.NameNotResolved);
+                        return;
+                    }
+                    if (ips.Any(Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp))
+                    {
+                        await e.Request.AbortAsync(RequestAbortErrorCode.BlockedByClient);
+                        return;
+                    }
+
+                    await e.Request.ContinueAsync();
+                }
+                catch
+                {
+                    // Page or request may already be closed/handled
+                }
+            };
+        }
+
         public async Task<(string? UserAgent, Dictionary<string, string> Cookies)> GetTokensAsync(string url)
         {
+            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out _))
+            {
+                throw new ArgumentException("Blocked unsafe URL for Cloudflare token extraction.", nameof(url));
+            }
             Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer] Launching Browser...");
             await InitializeAsync();
 
             using var page = await _browser!.NewPageAsync();
+            await InstallSsrfRequestGuardAsync(page);
             
             // STEALTH: Mask webdriver property
             await page.EvaluateFunctionOnNewDocumentAsync(@"() => {
@@ -188,22 +359,29 @@ namespace Yomic.Core.Services
 
             // Extract Tokens
             _userAgent = await page.EvaluateExpressionAsync<string>("navigator.userAgent");
-            var cookies = await page.GetCookiesAsync(url);
-            
-            _cookies.Clear();
+            string currentUrl = !string.IsNullOrEmpty(page.Url) ? page.Url : url;
+            var cookies = await page.GetCookiesAsync(currentUrl);
+            var host = Uri.TryCreate(currentUrl, UriKind.Absolute, out var cu) ? cu.Host : string.Empty;
+            MergeCookiesForHost(host, cookies);
+
+            var resultCookies = new Dictionary<string, string>();
             foreach (var c in cookies)
             {
-                _cookies[c.Name] = c.Value;
+                resultCookies[c.Name] = c.Value;
             }
-
-            return (_userAgent, _cookies);
+            return (_userAgent, resultCookies);
         }
 
         public async Task<string> GetContentAsync(string url, string? waitForSelector = null)
         {
+            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out _))
+            {
+                throw new ArgumentException("Blocked unsafe URL for Cloudflare content fetch.", nameof(url));
+            }
             Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer] Fetching content directly: {url}");
             await InitializeAsync();
             using var page = await _browser!.NewPageAsync();
+            await InstallSsrfRequestGuardAsync(page);
             
             // STEALTH: Mask webdriver property
             await page.EvaluateFunctionOnNewDocumentAsync(@"() => {
@@ -254,23 +432,10 @@ namespace Yomic.Core.Services
                      {
                          Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer] Content Retrieved! (Length: {content.Length})");
                          
-                         var currCookies = await page.GetCookiesAsync(url);
-                         _cookies.Clear();
-                         _savedCookieParams.Clear();
-                         foreach (var c in currCookies)
-                         {
-                             _cookies[c.Name] = c.Value;
-                             _savedCookieParams.Add(new CookieParam
-                             {
-                                 Name = c.Name,
-                                 Value = c.Value,
-                                 Domain = c.Domain,
-                                 Path = c.Path,
-                                 Secure = c.Secure,
-                                 HttpOnly = c.HttpOnly,
-                                 Expires = c.Expires
-                             });
-                         }
+                         string currentUrl = !string.IsNullOrEmpty(page.Url) ? page.Url : url;
+                         var currCookies = await page.GetCookiesAsync(currentUrl);
+                         var host = Uri.TryCreate(currentUrl, UriKind.Absolute, out var cu) ? cu.Host : string.Empty;
+                         MergeCookiesForHost(host, currCookies);
                          _userAgent = await page.EvaluateExpressionAsync<string>("navigator.userAgent");
 
                          return content;
@@ -313,12 +478,26 @@ namespace Yomic.Core.Services
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var downloadPath = System.IO.Path.Combine(appData, "Yomic", "puppeteer");
             
-            if (!System.IO.Directory.Exists(downloadPath))
-                System.IO.Directory.CreateDirectory(downloadPath);
+            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out _))
+            {
+                throw new ArgumentException("Blocked unsafe URL for interactive Cloudflare verification.", nameof(url));
+            }
 
-            var fetcher = new BrowserFetcher(new BrowserFetcherOptions { Path = downloadPath });
-            var revisionInfo = await fetcher.DownloadAsync();
-            var exePath = revisionInfo.GetExecutablePath();
+            string exePath;
+            await _initLock.WaitAsync();
+            try
+            {
+                if (!System.IO.Directory.Exists(downloadPath))
+                    System.IO.Directory.CreateDirectory(downloadPath);
+
+                var fetcher = new BrowserFetcher(new BrowserFetcherOptions { Path = downloadPath });
+                var revisionInfo = await fetcher.DownloadAsync();
+                exePath = revisionInfo.GetExecutablePath();
+            }
+            finally
+            {
+                _initLock.Release();
+            }
 
             IBrowser? visibleBrowser = null;
             try
@@ -329,11 +508,8 @@ namespace Yomic.Core.Services
                     ExecutablePath = exePath,
                     Args = new[]
                     {
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
                         "--disable-infobars",
                         "--disable-blink-features=AutomationControlled",
-                        "--disable-features=IsolateOrigins,site-per-process",
                         "--window-size=1100,800",
                         "--disable-dev-shm-usage"
                     },
@@ -341,6 +517,22 @@ namespace Yomic.Core.Services
                 });
 
                 var page = (await visibleBrowser.PagesAsync()).FirstOrDefault() ?? await visibleBrowser.NewPageAsync();
+                await InstallSsrfRequestGuardAsync(page);
+                visibleBrowser.TargetCreated += async (_, args) =>
+                {
+                    try
+                    {
+                        if (args.Target.Type == TargetType.Page)
+                        {
+                            var newPage = await args.Target.PageAsync();
+                            if (newPage != null && newPage != page)
+                            {
+                                await InstallSsrfRequestGuardAsync(newPage);
+                            }
+                        }
+                    }
+                    catch { }
+                };
 
                 // STEALTH: Apply same patches
                 await page.EvaluateFunctionOnNewDocumentAsync(@"() => {
@@ -423,37 +615,26 @@ namespace Yomic.Core.Services
 
                     // Extract tokens
                     _userAgent = await page.EvaluateExpressionAsync<string>("navigator.userAgent");
-                    var cookies = await page.GetCookiesAsync(url);
+                    string currentUrl = !string.IsNullOrEmpty(page.Url) ? page.Url : url;
+                    var cookies = await page.GetCookiesAsync(currentUrl);
+                    var host = Uri.TryCreate(currentUrl, UriKind.Absolute, out var cu) ? cu.Host : string.Empty;
+                    MergeCookiesForHost(host, cookies);
 
-                    _cookies.Clear();
-                    _savedCookieParams.Clear();
-                    
+                    var capturedCookies = new Dictionary<string, string>();
                     foreach (var c in cookies)
                     {
-                        _cookies[c.Name] = c.Value;
-                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer]   Cookie: {c.Name} = {c.Value.Substring(0, Math.Min(20, c.Value.Length))}... (Domain: {c.Domain})");
-                        
-                        // Save full cookie params for injection into headless pages
-                        _savedCookieParams.Add(new CookieParam
-                        {
-                            Name = c.Name,
-                            Value = c.Value,
-                            Domain = c.Domain,
-                            Path = c.Path,
-                            Secure = c.Secure,
-                            HttpOnly = c.HttpOnly,
-                            Expires = c.Expires
-                        });
+                        capturedCookies[c.Name] = c.Value;
+                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer]   Cookie: {c.Name} (Domain: {c.Domain})");
                     }
 
-                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer] Captured {_cookies.Count} cookies (saved for headless reuse) and UA: {_userAgent?.Substring(0, Math.Min(50, _userAgent?.Length ?? 0))}...");
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer] Captured {capturedCookies.Count} cookies (saved for headless reuse).");
                     
                     // Keep browser open briefly so user can see the loaded page with favicon
                     OnStatusUpdate?.Invoke("Success!");
                     Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Puppeteer] Browser will close in 5 seconds...");
                     await Task.Delay(5000);
                     
-                    return (_userAgent, new Dictionary<string, string>(_cookies));
+                    return (_userAgent, capturedCookies);
                 }
                 else
                 {
@@ -464,10 +645,13 @@ namespace Yomic.Core.Services
             }
             finally
             {
-                // Always close the visible browser
-                if (visibleBrowser != null && !visibleBrowser.IsClosed)
+                // Always close and dispose the visible browser even if the user closed the window
+                if (visibleBrowser != null)
                 {
-                    try { await visibleBrowser.CloseAsync(); } catch { }
+                    if (!visibleBrowser.IsClosed)
+                    {
+                        try { await visibleBrowser.CloseAsync(); } catch { }
+                    }
                     try { await visibleBrowser.DisposeAsync(); } catch { }
                 }
             }

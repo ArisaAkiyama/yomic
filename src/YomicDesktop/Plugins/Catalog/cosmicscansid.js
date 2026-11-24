@@ -36,11 +36,37 @@ var source = {
         }
     },
 
+    safeParseJson: function(body) {
+        if (!body || typeof body !== "string") return null;
+        let trimmed = body.trim();
+        if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[")) return null;
+        try {
+            return JSON.parse(trimmed);
+        } catch (e) {
+            return null;
+        }
+    },
+
+    extractSlug: function(rawUrl) {
+        if (!rawUrl) return "";
+        let cleaned = String(rawUrl).split("?")[0].split("#")[0];
+        cleaned = cleaned.replace(/^https?:\/\/[^\/]+/i, "");
+        cleaned = cleaned.replace(/^\/+/, "").replace(/\/+$/, "");
+        cleaned = cleaned.replace(/^(series|manga|chapter)\//i, "");
+        if (cleaned.includes("/")) {
+            let parts = cleaned.split("/").filter(Boolean);
+            return parts.length > 0 ? parts[parts.length - 1] : "";
+        }
+        return cleaned;
+    },
+
     getPopularManga: function(page) {
-        let url = this.apiUrl + "/filter?limit=24&order_by=popular";
+        let p = Math.max(1, page || 1);
+        let url = this.apiUrl + "/filter?limit=24&order_by=popular&page=" + p;
         let res = this.requestUrl(url);
-        if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let json = JSON.parse(res.body);
+        if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: p };
+        let json = this.safeParseJson(res.body);
+        if (!json) return { items: [], totalPages: p };
         let list = json.data || [];
         let items = list.map(item => ({
             title: item.title,
@@ -48,14 +74,17 @@ var source = {
             thumbnailUrl: item.cover,
             status: 0
         }));
-        return { items: items, totalPages: (json.cursor && json.cursor.hasNext) ? 2 : 1 };
+        let hasNext = Boolean(json.cursor && json.cursor.hasNext) || list.length >= 24;
+        return { items: items, totalPages: hasNext ? p + 1 : p };
     },
 
     getLatestUpdates: function(page) {
-        let url = this.apiUrl + "/filter?limit=24&order_by=update";
+        let p = Math.max(1, page || 1);
+        let url = this.apiUrl + "/filter?limit=24&order_by=update&page=" + p;
         let res = this.requestUrl(url);
-        if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let json = JSON.parse(res.body);
+        if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: p };
+        let json = this.safeParseJson(res.body);
+        if (!json) return { items: [], totalPages: p };
         let list = json.data || [];
         let items = list.map(item => ({
             title: item.title,
@@ -63,14 +92,17 @@ var source = {
             thumbnailUrl: item.cover,
             status: 0
         }));
-        return { items: items, totalPages: (json.cursor && json.cursor.hasNext) ? 2 : 1 };
+        let hasNext = Boolean(json.cursor && json.cursor.hasNext) || list.length >= 24;
+        return { items: items, totalPages: hasNext ? p + 1 : p };
     },
 
     getSearchManga: function(query, page) {
-        let url = this.apiUrl + "/search?limit=48&q=" + encodeURIComponent(query || "");
+        let p = Math.max(1, page || 1);
+        let url = this.apiUrl + "/search?limit=48&page=" + p + "&q=" + encodeURIComponent(query || "");
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let json = JSON.parse(res.body);
+        let json = this.safeParseJson(res.body);
+        if (!json) return { items: [], totalPages: 1 };
         let list = json.data || [];
         let items = list.map(item => ({
             title: item.title,
@@ -78,21 +110,31 @@ var source = {
             thumbnailUrl: item.cover,
             status: 0
         }));
-        return { items: items, totalPages: 1 };
+        let hasNext = Boolean(json.cursor && json.cursor.hasNext);
+        return { items: items, totalPages: hasNext ? p + 1 : p };
     },
 
-        getMangaList: function(page, status, genre, type, sort) {
+    getMangaList: function(page, status, genre, type, sort) {
+        let p = Math.max(1, page || 1);
         let order = (sort === "latest") ? "update" : "popular";
-        let url = this.apiUrl + "/filter?limit=24&order_by=" + order;
+        let url = this.apiUrl + "/filter?limit=24&order_by=" + order + "&page=" + p;
         if (status === 1) url += "&status=ongoing";
         else if (status === 2) url += "&status=completed";
+        if (genre) {
+            let genresArr = Array.isArray(genre) ? genre : [String(genre)];
+            let cleanGenres = genresArr.map(g => String(g || "").trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean);
+            if (cleanGenres.length > 0) {
+                url += "&genre=" + encodeURIComponent(cleanGenres.join(","));
+            }
+        }
         if (type) {
             let tStr = Array.isArray(type) ? type[0] : String(type);
             url += "&type=" + encodeURIComponent(tStr.toLowerCase());
         }
         let res = this.requestUrl(url);
-        if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let json = JSON.parse(res.body);
+        if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: p };
+        let json = this.safeParseJson(res.body);
+        if (!json) return { items: [], totalPages: p };
         let list = json.data || [];
         let items = list.map(item => ({
             title: item.title,
@@ -100,25 +142,27 @@ var source = {
             thumbnailUrl: item.cover,
             status: 0
         }));
-        return { items: items, totalPages: (json.cursor && json.cursor.hasNext) ? 2 : 1 };
+        let hasNext = Boolean(json.cursor && json.cursor.hasNext) || list.length >= 24;
+        return { items: items, totalPages: hasNext ? p + 1 : p };
     },
 
     getMangaDetails: function(url) {
-        let slug = url.replace("/series/", "").replace("/manga/", "").replace(/^\/+|\/+$/g, "");
-        let durl = this.apiUrl + "/mangaDetail/" + slug;
+        let slug = this.extractSlug(url);
+        if (!slug) return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
+        let durl = this.apiUrl + "/mangaDetail/" + encodeURIComponent(slug);
         let res = this.requestUrl(durl);
         if (!res || res.status !== 200 || !res.body) {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
         }
-        let json = JSON.parse(res.body);
-        let d = json.data;
+        let json = this.safeParseJson(res.body);
+        let d = json && json.data;
         if (!d) return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
 
         let status = 0;
         let st = (d.status || "").toLowerCase();
         if (st === "ongoing") status = 1;
         else if (st === "completed" || st === "complete") status = 2;
-        else if (st.includes("hiatus") || st.includes("hold")) status = 3;
+        else if (st.includes("hiatus") || st.includes("hold")) status = 6;
 
         return {
             title: d.title || "",
@@ -132,12 +176,13 @@ var source = {
     },
 
     getChapterList: function(url) {
-        let slug = url.replace("/series/", "").replace("/manga/", "").replace(/^\/+|\/+$/g, "");
-        let durl = this.apiUrl + "/mangaDetail/" + slug;
+        let slug = this.extractSlug(url);
+        if (!slug) return [];
+        let durl = this.apiUrl + "/mangaDetail/" + encodeURIComponent(slug);
         let res = this.requestUrl(durl);
         if (!res || res.status !== 200 || !res.body) return [];
-        let json = JSON.parse(res.body);
-        let d = json.data;
+        let json = this.safeParseJson(res.body);
+        let d = json && json.data;
         if (!d || !d.chapters) return [];
 
         return d.chapters.filter(c => !c.redirect_link).map(ch => ({
@@ -148,16 +193,43 @@ var source = {
     },
 
     getPageList: function(url) {
-        let slug = url.substring(url.lastIndexOf("/") + 1);
-        let rurl = this.apiUrl + "/readingPage/" + slug;
-        let res = this.requestUrl(rurl);
-        if (!res || res.status !== 200 || !res.body) return [];
-        let json = JSON.parse(res.body);
-        let count = (json.data && json.data.pageCount) ? json.data.pageCount : 0;
+        let slug = this.extractSlug(url);
+        if (!slug) return [];
         let pages = [];
-        for (let i = 0; i < count; i++) {
-            pages.push("https://cosmicscans.invalid/" + slug + "/" + i);
+
+        // 1. Try API readingPage payload if it exposes real image URLs
+        let rurl = this.apiUrl + "/readingPage/" + encodeURIComponent(slug);
+        let res = this.requestUrl(rurl);
+        if (res && res.status === 200 && res.body) {
+            let json = this.safeParseJson(res.body);
+            let data = json && json.data ? json.data : null;
+            let rawList = (data && (data.pages || data.images || data.chapterImages)) || [];
+            if (Array.isArray(rawList)) {
+                for (let entry of rawList) {
+                    let imgUrl = typeof entry === "string" ? entry : (entry && (entry.url || entry.image || entry.src) || "");
+                    if (imgUrl && imgUrl.startsWith("http") && !pages.includes(imgUrl)) {
+                        pages.push(imgUrl);
+                    }
+                }
+            }
         }
+
+        // 2. Fallback to fetching chapter web page HTML and extracting real reader images
+        if (pages.length === 0) {
+            let webUrl = url.startsWith("http") ? url : (this.baseUrl + (url.startsWith("/") ? url : ("/chapter/" + slug)));
+            let webRes = this.requestUrl(webUrl);
+            if (webRes && webRes.status === 200 && webRes.body) {
+                let doc = Html.parse(webRes.body, webUrl);
+                let imgs = doc.querySelectorAll("#readerarea img, .rdminimal img, .reading-content img, .chapter-content img");
+                for (let img of imgs) {
+                    let src = img.absUrl("data-src") || img.absUrl("data-lazy-src") || img.absUrl("src") || "";
+                    if (src && src.startsWith("http") && !src.includes("logo") && !pages.includes(src)) {
+                        pages.push(src);
+                    }
+                }
+            }
+        }
+
         return pages;
     }
 };

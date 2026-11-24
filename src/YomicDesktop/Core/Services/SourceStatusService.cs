@@ -38,7 +38,40 @@ namespace Yomic.Core.Services
         private readonly object _fileLock = new();
         private System.Threading.Timer? _periodicTimer;
         private CancellationTokenSource? _cts;
+        private readonly object _httpClientLock = new();
+        private HttpClient? _sharedPingClient;
+        private int _sharedPingClientDohProvider = -1;
         private bool _isDisposed;
+
+        private HttpClient GetOrCreatePingClient()
+        {
+            if (_settingsService.IsOfflineMode)
+            {
+                throw new System.Net.WebException("Application is in Offline Mode.");
+            }
+            int dohProvider = _settingsService.DnsOverHttpsProvider;
+            lock (_httpClientLock)
+            {
+                if (_sharedPingClient != null && _sharedPingClientDohProvider == dohProvider)
+                {
+                    return _sharedPingClient;
+                }
+                var created = _networkService.CreateOptimizedHttpClient(useCookies: false);
+                created.Timeout = TimeSpan.FromSeconds(6);
+                _sharedPingClient = created;
+                _sharedPingClientDohProvider = dohProvider;
+                return created;
+            }
+        }
+
+        private void OnNetworkConnectionReset(object? sender, EventArgs e)
+        {
+            lock (_httpClientLock)
+            {
+                _sharedPingClient = null;
+                _sharedPingClientDohProvider = -1;
+            }
+        }
 
         public event Action<long, SourceStatus, string>? SourceStatusUpdated;
         public event Action<int, int>? SourceCheckProgress;
@@ -61,6 +94,7 @@ namespace Yomic.Core.Services
 
             _settingsService.SourceStatusRefreshIntervalMinutesChanged += OnIntervalSettingChanged;
             _sourceManager.OnSourcesChanged += OnSourcesListChanged;
+            _networkService.ConnectionReset += OnNetworkConnectionReset;
 
             StartBackgroundLoop();
         }
@@ -105,7 +139,7 @@ namespace Yomic.Core.Services
 
         public async Task CheckAllSourcesAsync()
         {
-            if (_settingsService.IsOfflineMode) return;
+            if (_isDisposed || _settingsService.IsOfflineMode) return;
 
             var sources = _sourceManager.GetSources();
             if (!sources.Any()) return;
@@ -114,11 +148,14 @@ namespace Yomic.Core.Services
             int completed = 0;
             SourceCheckProgress?.Invoke(0, total);
 
-            var prevCts = _cts;
-            _cts = new CancellationTokenSource();
-            prevCts?.Cancel();
-            prevCts?.Dispose();
-            var token = _cts.Token;
+            var newCts = new CancellationTokenSource();
+            var prevCts = Interlocked.Exchange(ref _cts, newCts);
+            if (prevCts != null)
+            {
+                try { prevCts.Cancel(); } catch { }
+                _ = Task.Delay(5000).ContinueWith(_ => { try { prevCts.Dispose(); } catch { } });
+            }
+            var token = newCts.Token;
 
             var tasks = sources.Select(async source =>
             {
@@ -167,8 +204,7 @@ namespace Yomic.Core.Services
                         return;
                     }
 
-                    using var client = _networkService.CreateOptimizedHttpClient();
-                    client.Timeout = TimeSpan.FromSeconds(6); // 6-second timeout allowance
+                    var client = GetOrCreatePingClient();
 
                     SourceStatus status;
                     string tooltip;
@@ -204,13 +240,20 @@ namespace Yomic.Core.Services
                 }
                 finally
                 {
-                    _semaphore.Release();
+                    if (!_isDisposed)
+                    {
+                        try { _semaphore.Release(); } catch (ObjectDisposedException) { }
+                    }
                 }
             }
             catch (OperationCanceledException)
             {
                 var lastStatus = GetStatus(source.Id);
                 NotifyStatus(source.Id, lastStatus.Status, lastStatus.Tooltip);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Service is shutting down — do not poison disk cache with Offline status
             }
             catch (Exception ex)
             {
@@ -261,7 +304,11 @@ namespace Yomic.Core.Services
         {
             try
             {
-                var request = new HttpRequestMessage(HttpMethod.Get, targetUrl);
+                if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(targetUrl, out var validatedUri) || validatedUri == null)
+                {
+                    return (SourceStatus.Offline, "Offline (URL tidak valid atau tidak aman)");
+                }
+                using var request = new HttpRequestMessage(HttpMethod.Get, validatedUri);
                 request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
                 using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
@@ -316,10 +363,17 @@ namespace Yomic.Core.Services
 
             _settingsService.SourceStatusRefreshIntervalMinutesChanged -= OnIntervalSettingChanged;
             _sourceManager.OnSourcesChanged -= OnSourcesListChanged;
+            _networkService.ConnectionReset -= OnNetworkConnectionReset;
 
             _periodicTimer?.Dispose();
             _cts?.Cancel();
             _cts?.Dispose();
+            lock (_httpClientLock)
+            {
+                // Detach reference without synchronously disposing while in-flight ping tasks unwind cancellation
+                _sharedPingClient = null;
+                _sharedPingClientDohProvider = -1;
+            }
             _semaphore.Dispose();
         }
     }

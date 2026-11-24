@@ -125,7 +125,7 @@ var source = {
     },
 
     getMangaDetails: function(url) {
-        let fullUrl = url.startsWith("http") ? url : (this.baseUrl + url);
+        let fullUrl = !url ? this.baseUrl : (url.startsWith("http") ? url : (url.startsWith("//") ? "https:" + url : (this.baseUrl + (url.startsWith("/") ? url : "/" + url))));
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) return {};
 
@@ -184,7 +184,7 @@ var source = {
     },
 
     getChapterList: function(mangaUrl) {
-        let fullUrl = mangaUrl.startsWith("http") ? mangaUrl : (this.baseUrl + mangaUrl);
+        let fullUrl = !mangaUrl ? this.baseUrl : (mangaUrl.startsWith("http") ? mangaUrl : (mangaUrl.startsWith("//") ? "https:" + mangaUrl : (this.baseUrl + (mangaUrl.startsWith("/") ? mangaUrl : "/" + mangaUrl))));
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) return [];
 
@@ -214,15 +214,25 @@ var source = {
     },
 
     getPageList: function(chapterUrl) {
-        let fullUrl = chapterUrl.startsWith("http") ? chapterUrl : (this.baseUrl + chapterUrl);
+        let fullUrl = !chapterUrl ? this.baseUrl : (chapterUrl.startsWith("http") ? chapterUrl : (chapterUrl.startsWith("//") ? "https:" + chapterUrl : (this.baseUrl + (chapterUrl.startsWith("/") ? chapterUrl : "/" + chapterUrl))));
         let res = this.requestUrl(fullUrl);
         if (!res || res.status !== 200 || !res.body) return [];
 
         let doc = Html.parse(res.body, fullUrl);
-        let imgEls = doc.querySelectorAll("div.reader-area img:not(noscript img), .reader-area img");
+        let imgEls = doc.querySelectorAll("div.reader-area img, .reader-area img");
 
         let pages = [];
         for (let img of imgEls) {
+            let cur = img.parentElement;
+            let inNoscript = false;
+            while (cur) {
+                if (cur.tagName && cur.tagName.toLowerCase() === "noscript") {
+                    inNoscript = true;
+                    break;
+                }
+                cur = cur.parentElement;
+            }
+            if (inNoscript) continue;
             let src = img.absUrl("data-src") || img.absUrl("data-lazy-src") || img.absUrl("src") || img.attr("src") || "";
             src = src.replace(/\\/g, '').trim();
             if (src && !src.includes("histats") && !src.includes("ads") && !pages.includes(src)) {

@@ -1,63 +1,90 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 
 namespace Yomic.Core.Services
 {
     public static class AutoUpdateTaskService
     {
         private const string TaskName = "Yomic_Background_AutoUpdate";
+        private static readonly object _taskLock = new object();
 
         public static void RegisterOrUpdateTask(int intervalHours)
         {
-            try
+            lock (_taskLock)
             {
-                // Unregister existing task first to ensure clean state
-                UnregisterTask();
-
-                if (intervalHours <= 0)
+                try
                 {
-                    // Disabled, so we just stop here
-                    LogService.Info("AutoUpdateTask", "Background task disabled/removed.");
-                    return;
+                    if (intervalHours <= 0)
+                    {
+                        UnregisterTask();
+                        LogService.Info("AutoUpdateTask", "Background task disabled/removed.");
+                        return;
+                    }
+
+                    string exePath = Environment.ProcessPath ?? string.Empty;
+                    if (string.IsNullOrEmpty(exePath) || !exePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        LogService.Warning("AutoUpdateTask", "Cannot register task: Executable path is invalid or not an .exe.");
+                        return;
+                    }
+
+                    // Windows schtasks.exe restricts /sc HOURLY /mo to 1..23; use /sc DAILY /mo 1 for 24h+
+                    string scheduleType = intervalHours >= 24 ? "DAILY" : "HOURLY";
+                    int modifier = intervalHours >= 24 ? Math.Max(1, intervalHours / 24) : Math.Clamp(intervalHours, 1, 23);
+
+                    var processInfo = new ProcessStartInfo
+                    {
+                        FileName = Path.Combine(Environment.SystemDirectory, "schtasks.exe"),
+                        CreateNoWindow = true,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    };
+                    processInfo.ArgumentList.Add("/create");
+                    processInfo.ArgumentList.Add("/tn");
+                    processInfo.ArgumentList.Add(TaskName);
+                    processInfo.ArgumentList.Add("/tr");
+                    processInfo.ArgumentList.Add($"\"{exePath}\" --background-update");
+                    processInfo.ArgumentList.Add("/sc");
+                    processInfo.ArgumentList.Add(scheduleType);
+                    processInfo.ArgumentList.Add("/mo");
+                    processInfo.ArgumentList.Add(modifier.ToString());
+                    processInfo.ArgumentList.Add("/f");
+
+                    using var process = Process.Start(processInfo);
+                    if (process == null)
+                    {
+                        LogService.Warning("AutoUpdateTask", "Failed to start schtasks.exe.");
+                        return;
+                    }
+
+                    // Drain stdout and stderr concurrently BEFORE WaitForExit to prevent OS pipe deadlock
+                    var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                    var stderrTask = process.StandardError.ReadToEndAsync();
+                    if (!process.WaitForExit(10000))
+                    {
+                        try { process.Kill(entireProcessTree: true); } catch { }
+                        LogService.Warning("AutoUpdateTask", "Timed out waiting for schtasks.exe.");
+                        return;
+                    }
+
+                    string error = stderrTask.GetAwaiter().GetResult();
+                    _ = stdoutTask.GetAwaiter().GetResult();
+
+                    if (process.ExitCode == 0)
+                    {
+                        LogService.Info("AutoUpdateTask", $"Successfully registered task ({scheduleType} /mo {modifier} -> every {intervalHours}h).");
+                    }
+                    else
+                    {
+                        LogService.Warning("AutoUpdateTask", $"Failed to register task (exit={process.ExitCode}): {error}");
+                    }
                 }
-
-                string exePath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
-                if (string.IsNullOrEmpty(exePath) || !exePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                catch (Exception ex)
                 {
-                    LogService.Warning("AutoUpdateTask", "Cannot register task: Executable path is invalid or not an .exe.");
-                    return;
+                    LogService.Error("AutoUpdateTask", $"Error managing task: {ex.Message}", ex);
                 }
-
-                // Register new task using schtasks
-                // /sc HOURLY /mo <interval>
-                string command = $"/create /tn \"{TaskName}\" /tr \"\\\"{exePath}\\\" --background-update\" /sc HOURLY /mo {intervalHours} /f";
-
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = "schtasks.exe",
-                    Arguments = command,
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-
-                using var process = Process.Start(processInfo);
-                process?.WaitForExit();
-
-                if (process?.ExitCode == 0)
-                {
-                    LogService.Info("AutoUpdateTask", $"Successfully registered task for every {intervalHours} hours.");
-                }
-                else
-                {
-                    string error = process?.StandardError.ReadToEnd() ?? "Unknown error";
-                    LogService.Warning("AutoUpdateTask", $"Failed to register task: {error}");
-                }
-            }
-            catch (Exception ex)
-            {
-                LogService.Error("AutoUpdateTask", $"Error managing task: {ex.Message}", ex);
             }
         }
 
@@ -67,14 +94,17 @@ namespace Yomic.Core.Services
             {
                 var processInfo = new ProcessStartInfo
                 {
-                    FileName = "schtasks.exe",
-                    Arguments = $"/delete /tn \"{TaskName}\" /f",
+                    FileName = Path.Combine(Environment.SystemDirectory, "schtasks.exe"),
                     CreateNoWindow = true,
                     UseShellExecute = false
                 };
+                processInfo.ArgumentList.Add("/delete");
+                processInfo.ArgumentList.Add("/tn");
+                processInfo.ArgumentList.Add(TaskName);
+                processInfo.ArgumentList.Add("/f");
 
                 using var process = Process.Start(processInfo);
-                process?.WaitForExit();
+                process?.WaitForExit(10000);
             }
             catch (Exception ex)
             {

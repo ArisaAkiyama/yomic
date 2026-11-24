@@ -4,7 +4,8 @@ import {
   buildComicPageSvg,
   buildMangaCoverSvg,
   DEFAULT_APP_SETTINGS,
-  escapeXml
+  escapeXml,
+  sanitizeImageSrc
 } from '../mock-data.js';
 import {
   ActivityUpdateItem,
@@ -105,26 +106,26 @@ export function renderUpdatesView(this: YomicApp, container: HTMLElement): void 
                 const fallbackSvg = manga
                   ? buildMangaCoverSvg(manga)
                   : buildMangaCoverSvg({ title: u.mangaTitle, sourceName: u.sourceName } as MangaItem);
-                const thumb = u.coverUrl || (manga ? this.getMangaCoverHtmlSrc(manga) : '');
+                const thumb = sanitizeImageSrc(u.coverUrl || (manga ? this.getMangaCoverHtmlSrc(manga) : '')) || escapeXml(fallbackSvg);
                 const isRead = !u.isNew;
                 const extraChCount = u.extraChaptersCount ?? 0;
                 const playChNum = u.firstUnreadChapterNumber !== undefined && u.firstUnreadChapterNumber > 0 ? u.firstUnreadChapterNumber : u.chapterNumber;
                 return `
                   <div class="v1-update-row ${isRead ? 'is-read' : ''}">
-                    <div class="v1-update-left" data-open-detail="${u.mangaId}">
-                      <img class="v1-update-cover" src="${thumb}" alt="${escapeXml(u.mangaTitle)}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackSvg}';" />
+                    <div class="v1-update-left" data-open-detail="${escapeXml(u.mangaId)}">
+                      <img class="v1-update-cover" src="${thumb}" alt="${escapeXml(u.mangaTitle)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
                       <div class="v1-update-info">
-                        <div class="v1-update-title" title="${escapeXml(u.mangaTitle)}">${u.mangaTitle}</div>
+                        <div class="v1-update-title" title="${escapeXml(u.mangaTitle)}">${escapeXml(u.mangaTitle)}</div>
                         <div class="v1-update-ch-line">
                           <span class="v1-update-ch-num tabular-nums">Ch. ${playChNum}</span>
-                          ${u.chapterTitle ? `<span class="v1-update-ch-sep">·</span><span class="v1-update-ch-title">${u.chapterTitle}</span>` : ''}
+                          ${u.chapterTitle ? `<span class="v1-update-ch-sep">·</span><span class="v1-update-ch-title">${escapeXml(u.chapterTitle)}</span>` : ''}
                           ${extraChCount > 0 ? `<span class="v1-update-extra-inline tabular-nums">(+${extraChCount} ${this.l('bab', 'ch.')})</span>` : ''}
                         </div>
                       </div>
                     </div>
                     <div class="v1-update-right">
-                      <span class="v1-update-time tabular-nums">${u.timeAgo}</span>
-                      <button class="v1-update-action-btn ${isRead ? 'ghost' : 'primary'}" data-quick-read="${u.mangaId}" data-ch="${playChNum}" title="${isRead ? this.l('Baca Ulang Chapter ' + playChNum, 'Re-read Chapter ' + playChNum) : this.l('Baca Chapter ' + playChNum, 'Read Chapter ' + playChNum)}">
+                      <span class="v1-update-time tabular-nums">${escapeXml(u.timeAgo)}</span>
+                      <button class="v1-update-action-btn ${isRead ? 'ghost' : 'primary'}" data-quick-read="${escapeXml(u.mangaId)}" data-ch="${playChNum}" title="${isRead ? this.l('Baca Ulang Chapter ' + playChNum, 'Re-read Chapter ' + playChNum) : this.l('Baca Chapter ' + playChNum, 'Read Chapter ' + playChNum)}">
                         ${getIconSvg('play-linear', { size: 13 })}
                         <span>${this.t('common.read')}</span>
                       </button>
@@ -169,7 +170,7 @@ export function renderUpdatesView(this: YomicApp, container: HTMLElement): void 
   document.getElementById('btnClearAllUpdates')?.addEventListener('click', () => {
     this.activityUpdates.length = 0;
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke('updates:clear-all');
+      void this.bridge.invoke('updates:clear-all').catch(() => {});
     }
     this.renderUpdatesView(container);
     this.showToast(this.l('Daftar pembaruan telah dibersihkan.', 'Updates list cleared.'));
@@ -206,7 +207,9 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
       (m) =>
         !this.removedHistoryIds.has(m.id) &&
         ((m.lastViewedEpoch && m.lastViewedEpoch > 0) ||
-          (m.lastReadTimeAgo && m.lastReadTimeAgo !== 'Belum dibaca'))
+          (m.lastReadTimeAgo &&
+            m.lastReadTimeAgo !== 'Belum dibaca' &&
+            m.lastReadTimeAgo !== 'Unread'))
     )
     .sort((a, b) => (b.lastViewedEpoch ?? 0) - (a.lastViewedEpoch ?? 0));
   const toggleViewIconPath = this.historyViewMode === 'grid' ? SOLAR_PATHS['list'] : SOLAR_PATHS['layout-grid'];
@@ -231,9 +234,9 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
             const pageStr = formatHistoryReadingProgress(m.lastReadPage, m.lastReadTotalPages);
             const chMeta = pageStr ? `Ch. ${m.lastReadChapter} (${pageStr})` : `Ch. ${m.lastReadChapter}`;
             return `
-              <article class="manga-card" data-open-detail="${m.id}">
+              <article class="manga-card" data-open-detail="${escapeXml(m.id)}">
                 <div class="manga-cover-wrap">
-                  <img class="manga-cover-img" src="${coverSrc}" alt="${escapeXml(m.title)}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackSvg}';" />
+                  <img class="manga-cover-img" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(m.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
                 </div>
                 <div class="manga-card-body">
                   <div class="manga-card-title" title="${escapeXml(m.title)}">${escapeXml(m.title)}</div>
@@ -292,8 +295,8 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
                   const pageStr = formatHistoryReadingProgress(m.lastReadPage, m.lastReadTotalPages);
                   return `
                     <div class="v1-update-row">
-                      <div class="v1-update-left" data-open-detail="${m.id}">
-                        <img class="v1-update-cover" src="${coverSrc}" alt="${escapeXml(m.title)}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackSvg}';" />
+                      <div class="v1-update-left" data-open-detail="${escapeXml(m.id)}">
+                        <img class="v1-update-cover" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(m.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
                         <div class="v1-update-info">
                           <div class="v1-update-title" title="${escapeXml(m.title)}">${escapeXml(m.title)}</div>
                           <div class="v1-update-ch-line">
@@ -306,10 +309,10 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
                       </div>
                       <div class="v1-update-right">
                         <span class="v1-update-time tabular-nums">${escapeXml(m.lastReadTimeAgo || '')}</span>
-                        <button class="v1-history-play-btn" data-quick-read="${m.id}" data-ch="${m.lastReadChapter}" title="${escapeXml(this.l('Lanjutkan Membaca Ch. ' + m.lastReadChapter, 'Continue Reading Ch. ' + m.lastReadChapter))}" aria-label="${escapeXml(this.l('Lanjutkan Membaca', 'Continue Reading'))}">
+                        <button class="v1-history-play-btn" data-quick-read="${escapeXml(m.id)}" data-ch="${m.lastReadChapter}" title="${escapeXml(this.l('Lanjutkan Membaca Ch. ' + m.lastReadChapter, 'Continue Reading Ch. ' + m.lastReadChapter))}" aria-label="${escapeXml(this.l('Lanjutkan Membaca', 'Continue Reading'))}">
                           ${getIconSvg('play-linear', { size: 16 })}
                         </button>
-                        <button class="v1-history-del-btn" data-del-history="${m.id}" title="${escapeXml(this.l('Hapus dari Riwayat', 'Remove from History'))}" aria-label="${escapeXml(this.l('Hapus dari Riwayat', 'Remove from History'))}">
+                        <button class="v1-history-del-btn" data-del-history="${escapeXml(m.id)}" title="${escapeXml(this.l('Hapus dari Riwayat', 'Remove from History'))}" aria-label="${escapeXml(this.l('Hapus dari Riwayat', 'Remove from History'))}">
                           ${getIconSvg('delete-bin-line', { size: 15 })}
                         </button>
                       </div>
@@ -373,7 +376,7 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
       m.lastReadTimeAgo = 'Belum dibaca';
     });
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke('history:clear-all');
+      void this.bridge.invoke('history:clear-all').catch(() => {});
     }
     this.renderHistoryView(container);
     this.showToast(this.t('history.clearedToast'));
@@ -381,16 +384,24 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
   document.getElementById('btnRefreshHistory')?.addEventListener('click', () => {
     this.removedHistoryIds.clear();
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke<MangaItem[]>('history:get-list').then((items) => {
-        if (Array.isArray(items)) {
-          for (const m of items) this.upsertMangaItem(m);
-        }
-        this.renderHistoryView(container);
-      });
+      void this.bridge
+        .invoke<MangaItem[]>('history:get-list')
+        .then((items) => {
+          if (Array.isArray(items)) {
+            for (const m of items) this.upsertMangaItem(m);
+          }
+          if (this.currentTab === 'history' && !this.activeDetailMangaId) {
+            this.renderHistoryView(container);
+          }
+          this.showToast(this.l('Riwayat baca telah disegarkan.', 'Reading history refreshed.'));
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal menyegarkan riwayat baca.', 'Failed to refresh reading history.'));
+        });
     } else {
       this.renderHistoryView(container);
+      this.showToast(this.l('Riwayat baca telah disegarkan.', 'Reading history refreshed.'));
     }
-    this.showToast(this.l('Riwayat baca telah disegarkan.', 'Reading history refreshed.'));
   });
   document.getElementById('btnToggleHistoryViewMode')?.addEventListener('click', () => {
     this.historyViewMode = this.historyViewMode === 'grid' ? 'list' : 'grid';
@@ -408,7 +419,7 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
           found.lastReadTimeAgo = 'Belum dibaca';
         }
         if (this.bridge.isWebViewHost) {
-          void this.bridge.invoke('history:remove-item', { mangaId: id });
+          void this.bridge.invoke('history:remove-item', { mangaId: id }).catch(() => {});
         }
         this.renderHistoryView(container);
         this.showToast(this.l('Item dihapus dari riwayat.', 'Item removed from history.'));
@@ -689,22 +700,10 @@ function syncStatisticsWithMarkAsRead(
     };
   });
 
-  // Ensure 14-day sum matches Mark-as-Read chapters when chapters were marked or unmarked
+  // Only trim 14-day daily activity if it somehow exceeds total read chapters;
+  // never dump all-time historical chapters onto today's bar.
   const sum14 = mergedDaily.reduce((acc, d) => acc + d.chaptersRead, 0);
-  if (sum14 < client.totalChaptersRead && mergedDaily.length > 0) {
-    // Attribute newly marked-as-read chapters that had no backend History timestamp to the latest active day or today
-    const diff = client.totalChaptersRead - sum14;
-    let targetIdx = mergedDaily.length - 1;
-    for (let i = mergedDaily.length - 1; i >= 0; i--) {
-      if (mergedDaily[i].chaptersRead > 0) {
-        targetIdx = i;
-        break;
-      }
-    }
-    mergedDaily[targetIdx].chaptersRead += diff;
-    mergedDaily[targetIdx].minutesRead = Math.max(1, Math.round(mergedDaily[targetIdx].chaptersRead * 2.5));
-  } else if (sum14 > client.totalChaptersRead && sum14 > 0) {
-    // Trim excess non-library or unmarked chapters from largest bars so chart never exceeds Mark-as-Read total
+  if (sum14 > client.totalChaptersRead && sum14 > 0) {
     let excess = sum14 - client.totalChaptersRead;
     const indicesBySize = mergedDaily
       .map((d, i) => ({ i, ch: d.chaptersRead }))

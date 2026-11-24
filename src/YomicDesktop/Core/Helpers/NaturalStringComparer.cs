@@ -28,7 +28,7 @@ namespace Yomic.Core.Helpers
             return _descending ? -result : result;
         }
 
-        private static readonly Regex _chunkRegex = new Regex(@"(\d+(\.\d+)?)", RegexOptions.Compiled);
+        private static readonly Regex _chunkRegex = new Regex(@"(\d+(?:\.\d+)?)", RegexOptions.Compiled);
 
         private int CompareNatural(string strA, string strB)
         {
@@ -42,8 +42,8 @@ namespace Yomic.Core.Helpers
 
                 if (string.IsNullOrWhiteSpace(chunkA) && string.IsNullOrWhiteSpace(chunkB)) continue;
 
-                bool isNumA = float.TryParse(chunkA, NumberStyles.Any, CultureInfo.InvariantCulture, out float numA);
-                bool isNumB = float.TryParse(chunkB, NumberStyles.Any, CultureInfo.InvariantCulture, out float numB);
+                bool isNumA = float.TryParse(chunkA, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out float numA);
+                bool isNumB = float.TryParse(chunkB, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out float numB);
 
                 if (isNumA && isNumB)
                 {

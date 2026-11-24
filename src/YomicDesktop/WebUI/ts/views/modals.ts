@@ -101,7 +101,7 @@ export function openAnnouncementsModal(this: YomicApp): void {
   if (this.bridge.isWebViewHost) {
     const latestId = this.announcements[0]?.id || '';
     if (latestId) {
-      void this.bridge.invoke('announcements:mark-read', { id: latestId });
+      void this.bridge.invoke('announcements:mark-read', { id: latestId }).catch(() => {});
     }
     void this.bridge
       .invoke<{ announcements?: any[]; hasUnread?: boolean }>('announcements:get-list', { force: false })
@@ -110,7 +110,7 @@ export function openAnnouncementsModal(this: YomicApp): void {
           this.applyBackendAnnouncements(res.announcements, false);
           const topId = this.announcements[0]?.id || '';
           if (topId) {
-            void this.bridge.invoke('announcements:mark-read', { id: topId });
+            void this.bridge.invoke('announcements:mark-read', { id: topId }).catch(() => {});
           }
         }
       })
@@ -619,6 +619,10 @@ export function bindModalShellEvents(this: YomicApp): void {
       this.showToast(this.t('feedback.emptyWarning'));
       return;
     }
+    if (text.length > 10000) {
+      this.showToast(this.l('Pesan masukan terlalu panjang (maksimal 10.000 karakter).', 'Feedback message is too long (maximum 10,000 characters).'));
+      return;
+    }
     const checkedRadio = document.querySelector<HTMLInputElement>('input[name="feedbackType"]:checked');
     const category = checkedRadio?.value || 'bug';
     const categoryLabels: Record<string, string> = {
@@ -633,9 +637,7 @@ export function bindModalShellEvents(this: YomicApp): void {
       ? { ...pendingFeedbackScreenshot }
       : null;
 
-    if (msgEl) msgEl.value = '';
-    clearFeedbackAttachment();
-    this.closeFeedbackModal();
+    if (submitBtn) submitBtn.disabled = true;
     this.showToast(this.l('Mengirim masukan...', 'Sending feedback...'));
 
     void (async () => {
@@ -649,12 +651,17 @@ export function bindModalShellEvents(this: YomicApp): void {
           screenshotMimeType: screenshotPayload?.mimeType ?? ''
         });
         if (res && res.ok) {
+          if (msgEl) msgEl.value = '';
+          clearFeedbackAttachment();
+          this.closeFeedbackModal();
           this.showToast(this.t('feedback.sentSuccess'));
         } else {
           this.showToast(res?.error || this.l('Gagal mengirim masukan. Silakan coba lagi nanti.', 'Failed to send feedback. Please try again later.'));
         }
       } catch {
         this.showToast(this.l('Terjadi kesalahan saat mengirim masukan.', 'An error occurred while sending feedback.'));
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
     })();
   });

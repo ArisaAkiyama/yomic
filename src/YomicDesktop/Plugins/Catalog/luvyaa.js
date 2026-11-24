@@ -124,7 +124,7 @@ var source = {
         }
 
         let response = fetch(url);
-        if (response.status !== 200) return { items: [], totalPages: page };
+        if (!response || response.status !== 200) return { items: [], totalPages: page };
 
         let doc = Html.parse(response.body, url);
         let cards = doc.querySelectorAll("div.bsx, div.utao, div.animposx");
@@ -189,9 +189,9 @@ var source = {
     },
 
     getMangaDetails: function(url) {
-        let fullUrl = this.baseUrl + url;
+        let fullUrl = !url ? this.baseUrl : (url.startsWith("http") ? url : (url.startsWith("//") ? "https:" + url : (this.baseUrl + (url.startsWith("/") ? url : "/" + url))));
         let response = fetch(fullUrl);
-        if (response.status !== 200) return {};
+        if (!response || response.status !== 200) return {};
 
         let doc = Html.parse(response.body, fullUrl);
 
@@ -245,9 +245,9 @@ var source = {
     },
 
     getChapterList: function(mangaUrl) {
-        let fullUrl = this.baseUrl + mangaUrl;
+        let fullUrl = !mangaUrl ? this.baseUrl : (mangaUrl.startsWith("http") ? mangaUrl : (mangaUrl.startsWith("//") ? "https:" + mangaUrl : (this.baseUrl + (mangaUrl.startsWith("/") ? mangaUrl : "/" + mangaUrl))));
         let response = fetch(fullUrl);
-        if (response.status !== 200) return [];
+        if (!response || response.status !== 200) return [];
 
         let doc = Html.parse(response.body, fullUrl);
         let items = doc.querySelectorAll("#chapterlist ul li, ul.cl-ul li, div.eplister ul li");
@@ -292,9 +292,9 @@ var source = {
     },
 
     getPageList: function(chapterUrl) {
-        let fullUrl = this.baseUrl + chapterUrl;
+        let fullUrl = !chapterUrl ? this.baseUrl : (chapterUrl.startsWith("http") ? chapterUrl : (chapterUrl.startsWith("//") ? "https:" + chapterUrl : (this.baseUrl + (chapterUrl.startsWith("/") ? chapterUrl : "/" + chapterUrl))));
         let response = fetch(fullUrl);
-        if (response.status !== 200) return [];
+        if (!response || response.status !== 200) return [];
 
         let pages = [];
 

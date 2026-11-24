@@ -744,7 +744,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
       <!-- 5. TENTANG (Ala Mobile Gambar 1) -->
       <section class="v1-settings-section" style="${activeSub === 'about' ? '' : 'display:none;'}">
         <div class="v1-about-mobile-hero">
-          <img src="assets/app-logo.png" class="v1-about-mobile-logo" alt="Yomic Logo" onerror="this.src='app-logo.png'" />
+          <img src="app-logo.png" class="v1-about-mobile-logo" alt="Yomic Logo" />
           <span class="v1-about-mobile-title">Yomic</span>
         </div>
 
@@ -756,7 +756,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Versi', 'Version')}</span>
               </div>
-              <span class="v1-setting-desc">Stable 2.2.1 (Windows Desktop)</span>
+              <span class="v1-setting-desc">Stable 2.3.0 (Windows Desktop)</span>
             </div>
           </div>
 
@@ -774,20 +774,31 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Catatan rilis', 'Release notes')}</span>
               </div>
-              <span class="v1-setting-desc">v2.2.1</span>
+              <span class="v1-setting-desc">v2.3.0</span>
             </div>
             <span id="aboutReleaseNotesChevron" class="v1-about-release-chevron">
               ${getIconSvg('alt-arrow-down-linear', { size: 18 })}
             </span>
           </button>
           <div id="aboutReleaseNotesPanel" class="v1-about-release-notes" style="display:none;">
-            <div class="v1-about-release-head">[2.2.1] - Update</div>
+            <div class="v1-about-release-head">[2.3.0] - Major Update</div>
             <div class="v1-about-release-subhead">Update Details:</div>
             <ul class="v1-about-release-list">
-              <li>Add full-screen native-themed App Updater Overlay (#appUpdateOverlay in index.html, main.css, and settings.ts) featuring Yomic branding, real-time progress bar, live MB downloaded/total counter, formatted GitHub release notes card, one-click Update Now button, and Escape/close dismissal.</li>
-              <li>Add detailed update download progress reporting (onDetailedProgress callback in UpdateService.DownloadAndInstallUpdateAsync) streaming throttled (120ms) percentage, downloadedBytes, totalBytes, and lifecycle stage (downloading, installing, error).</li>
-              <li>Add live IPC update progress bridge (event:app-update-progress in BackendIpcController and backend-sync.ts) wired directly to updateAppUpdateOverlayProgress in settings.ts with an extended 300-second installer download timeout.</li>
-              <li>Improve Check for Updates flow in Settings About view to open the full-screen Updater Overlay immediately across checking, available, up-to-date, downloading, installing, and error states with bilingual (ID/EN) status labels.</li>
+              <li>Add centralized URL, SSRF, Cookie, and Filesystem security helper (UrlSecurityHelper.cs) enforcing public HTTP/HTTPS validation, IPv4/IPv6 private/loopback/CGNAT/metadata IP blocking, bounded HTTP stream reading (ReadContentBoundedAsync) against OOM DoS, strict RFC 6265 cookie domain matching, Google Apps Script webhook allowlisting, and directory containment checks.</li>
+              <li>Add fail-closed SHA-256 cryptographic integrity verification in UpdateService (ExtractExpectedSha256 &amp; VerifyHashMatchesExpectedHex using constant-time CryptographicOperations.FixedTimeEquals), strict official repository URL/redirect scoping, stale update directory cleanup, single-instance mutex handoff (ReleaseSingleInstanceMutexForRestart), and silent auto-relaunch support in Installer/Yomic.iss.</li>
+              <li>Add SHA-256 release checksum generator script (scripts/generate-release-sha256.ps1) to emit verified .sha256 files and release-note integrity blocks.</li>
+              <li>Add strict WebView2 security boundaries in MainWindow.xaml.cs and index.html: Content-Security-Policy (CSP) meta header, external script preload-theme.js, strict app.yomic.local IPC origin validation, blocked external navigation/frames, and prevented unrestricted popup windows.</li>
+              <li>Add comprehensive XSS &amp; injection hardening across all WebUI views (app.ts, library.ts, manga-detail.ts, reader.ts, downloads.ts, browse.ts, extensions.ts, settings.ts, modals.ts, updates-history.ts) with escapeXml, sanitizeImageSrc, sanitizeCssColor, modal keyboard focus trapping, and safe Cancel-first focus on destructive confirmation dialogs.</li>
+              <li>Add DownloadSpeedMode presets (Safe, Fast, Max) in SettingsService, DownloadService, BackendIpcController, and Settings UI for configurable concurrent chapter/page download throughput.</li>
+              <li>Add automatic installed extension updating on startup (AutoUpdateInstalledExtensionsAsync &amp; event:extensions-updated) plus fail-closed SHA-256 verification on third-party CDN mirrors, staged plugin validation before replacing working scripts, and path traversal protection in ExtensionRepositoryService.</li>
+              <li>Add DoH-first SSRF request interception guard (InstallSsrfRequestGuardAsync) and thread-safe host-scoped cookie merging in CloudflareBypassService so ISP DNS poisoning never causes false blocks while blocking private/loopback targets.</li>
+              <li>Add pooled reusable HttpClient with DoH-change reset, atomic disk cache writes (WriteFileAtomicAsync), curl --resolve public-IP pinning without unsafe auto-redirects, HTML/Cloudflare error payload rejection (LooksLikeHtmlPayload), and remote SVG script neutralization in WebResourceImageProxy.</li>
+              <li>Add online live SQLite backup (CopyLiveSqliteDatabaseOnline), zip-bomb bounded extraction caps (512 MB DB / 5 MB settings), isolated staging validation with SQLite integrity check before restore, and OAuth/webhook credential sanitization in BackupService.</li>
+              <li>Add relational SQLite foreign keys with cascade deletes, legacy orphan cleanup on upgrade, performance composite indexes (Source+Url, Favorite, MangaId+Url, DateFetch, MangaId+LastRead), and tuned WAL/busy_timeout/memory-temp PRAGMAs in MangaDbContext.</li>
+              <li>Add full BackendIpcController modularization into 7 focused partial handler files (BootstrapAndMapping, Downloads, LibraryAndHistory, MangaDetail, Reader, SettingsAndSystem, SourcesAndExtensions) and CSS modularization of main.css into 7 ordered stylesheets under WebUI/styles/modules/.</li>
+              <li>Add automated CI &amp; Test Infrastructure: GitHub Actions workflow (.github/workflows/ci-desktop.yml), C# xUnit test suite (SecurityTests, CoreServicesTests, BackupAndDatabaseTests, IntegrityAndCatalogTests covering 102-plugin Jint loading &amp; SQLite FK/indexes), and Node.js WebUI automated tests (tests/WebUI.Tests/webui.test.mjs).</li>
+              <li>Improve 90+ bundled JavaScript extensions in Plugins/Catalog (including VoraToon v1.2.2 fast disjoint regex RSC parser &amp; MangaDex v1.0.4 translated chapter feed) with null-safe response guards and try/catch JSON parsing to prevent plugin crashes on transient network errors.</li>
+              <li>Improve reliability across MyAnimeListService (serialized SemaphoreSlim token refresh &amp; cryptographically unbiased PKCE state), AutoUpdateTaskService (schtasks DAILY fallback for 24h+ &amp; concurrent stdout/stderr drain), WebViewPageExtractorWindow (deadlock-free watchdog before init/polling), MainWindow (adaptive MinWidth/MinHeight on compact high-DPI laptops), and Google Sheets feedback webhook (atomic rate limiting, 6 MB magic-byte screenshot validation, private Drive storage &amp; formula injection sanitization).</li>
             </ul>
           </div>
         </div>
@@ -810,12 +821,17 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
   const persistSetting = (key: string, value: unknown) => {
     this.persistLocalCache();
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke<AppSettingsState>('settings:update', { key, value }).then((updated) => {
-        if (updated) {
-          Object.assign(this.settings, updated);
-          this.persistLocalCache();
-        }
-      });
+      void this.bridge
+        .invoke<AppSettingsState>('settings:update', { key, value })
+        .then((updated) => {
+          if (updated) {
+            Object.assign(this.settings, updated);
+            this.persistLocalCache();
+          }
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal menyimpan pengaturan ke backend.', 'Failed to save setting to backend.'), 'warning');
+        });
     }
   };
 
@@ -839,9 +855,23 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     this.renderSettingsView(container);
   });
 
-  // Toggle switches
+  // Toggle switches (mouse + keyboard accessible via Tab + Space/Enter, with accessible label & focus preservation)
   container.querySelectorAll<HTMLElement>('[data-toggle-setting]').forEach((el) => {
+    if (!el.hasAttribute('tabindex')) {
+      el.tabIndex = 0;
+    }
+    if (!el.hasAttribute('aria-label') && !el.hasAttribute('aria-labelledby')) {
+      const labelText = el.closest('.v1-setting-row')?.querySelector('.v1-setting-title')?.textContent?.trim();
+      if (labelText) el.setAttribute('aria-label', labelText);
+    }
+    el.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        el.click();
+      }
+    });
     el.addEventListener('click', () => {
+      const wasFocused = document.activeElement === el;
       const key = el.dataset.toggleSetting as keyof AppSettingsState | undefined;
       if (!key) return;
       const currentVal = this.settings[key];
@@ -874,13 +904,16 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
             this.activeBrowseSourceId = null;
           }
           if (this.bridge.isWebViewHost) {
-            void this.bridge.invoke<ExtensionItem[]>('ext:list', { refreshRemote: false }).then((list) => {
-              if (Array.isArray(list)) {
-                this.extensions.length = 0;
-                this.extensions.push(...list);
-                this.persistLocalCache();
-              }
-            });
+            void this.bridge
+              .invoke<ExtensionItem[]>('ext:list', { refreshRemote: false })
+              .then((list) => {
+                if (Array.isArray(list)) {
+                  this.extensions.length = 0;
+                  this.extensions.push(...list);
+                  this.persistLocalCache();
+                }
+              })
+              .catch(() => {});
           }
         } else if (key === 'blurExplicitCovers') {
           this.showToast(
@@ -945,8 +978,8 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         } else if (key === 'enableImageSharpening') {
           this.showToast(
             this.settings.enableImageSharpening
-              ? 'Penajaman gambar (Sharpening) diaktifkan.'
-              : 'Penajaman gambar (Sharpening) dinonaktifkan.'
+              ? this.l('Penajaman gambar (Sharpening) diaktifkan.', 'Image sharpening enabled.')
+              : this.l('Penajaman gambar (Sharpening) dinonaktifkan.', 'Image sharpening disabled.')
           );
         } else if (key === 'enableImageOptimization') {
           this.showToast(
@@ -968,6 +1001,9 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           );
         }
         this.renderSettingsView(container);
+        if (wasFocused) {
+          container.querySelector<HTMLElement>(`[data-toggle-setting="${key}"]`)?.focus();
+        }
       }
     });
   });
@@ -979,9 +1015,14 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     currentValue: string,
     onSelect: (val: string, label: string) => void
   ) => {
-    document.getElementById('settingSelectModalOverlay')?.remove();
+    const prevSelectOverlay = document.getElementById('settingSelectModalOverlay') as (HTMLElement & { _closeModal?: () => void }) | null;
+    if (prevSelectOverlay?._closeModal) {
+      prevSelectOverlay._closeModal();
+    } else {
+      prevSelectOverlay?.remove();
+    }
     const checkIcon = getIconSvg('check', { size: 16, strokeWidth: 2.4 });
-    const overlay = document.createElement('div');
+    const overlay = document.createElement('div') as HTMLDivElement & { _closeModal?: () => void };
     overlay.id = 'settingSelectModalOverlay';
     overlay.className = 'v1-setting-select-modal-overlay';
     overlay.innerHTML = `
@@ -1008,6 +1049,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
       window.removeEventListener('keydown', onEscKey);
       overlay.remove();
     };
+    overlay._closeModal = closeModal;
     const onEscKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Escape') {
         closeModal();
@@ -1137,8 +1179,13 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           if (res?.dbSizeText) {
             this.settings.dbSizeText = res.dbSizeText;
           }
-          this.renderSettingsView(container);
+          if (this.currentTab === 'settings' && !this.activeDetailMangaId) {
+            this.renderSettingsView(container);
+          }
           this.showToast(this.l('Seluruh cache gambar komik non-pustaka berhasil dibersihkan.', 'All non-library comic image cache cleared.'));
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal membersihkan cache non-pustaka.', 'Failed to clear non-library cache.'));
         })
         .finally(() => {
           if (btn) btn.disabled = false;
@@ -1160,6 +1207,9 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           } else if (res && !res.ok && !res.cancelled) {
             this.showToast(this.l('Gagal mengekspor log aktivitas.', 'Failed to export activity logs.'));
           }
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal mengekspor log aktivitas.', 'Failed to export activity logs.'));
         })
         .finally(() => {
           if (btn) btn.disabled = false;
@@ -1231,8 +1281,13 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           if (res?.dbSizeText) {
             this.settings.dbSizeText = res.dbSizeText;
           }
-          this.renderSettingsView(container);
+          if (this.currentTab === 'settings' && !this.activeDetailMangaId) {
+            this.renderSettingsView(container);
+          }
           this.showToast(this.l('Sampul pustaka berhasil disegarkan!', 'Library covers refreshed!'));
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal menyegarkan sampul pustaka.', 'Failed to refresh library covers.'));
         })
         .finally(() => {
           if (btn) {
@@ -1261,8 +1316,13 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         .invoke<{ dbSizeText?: string }>('settings:clear-cache', undefined, 60000)
         .then((res) => {
           this.settings.dbSizeText = res?.dbSizeText || '0.0 MB';
-          this.renderSettingsView(container);
+          if (this.currentTab === 'settings' && !this.activeDetailMangaId) {
+            this.renderSettingsView(container);
+          }
           this.showToast(this.l('Seluruh berkas cache gambar berhasil dibersihkan.', 'All image cache files cleared.'));
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal membersihkan cache gambar.', 'Failed to clear image cache.'));
         })
         .finally(() => {
           if (btn) btn.disabled = false;
@@ -1273,7 +1333,19 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     this.renderSettingsView(container);
     this.showToast(this.l('Seluruh berkas cache gambar berhasil dibersihkan.', 'All image cache files cleared.'));
   });
-  document.getElementById('btnDangerClearHistory')?.addEventListener('click', () => {
+  document.getElementById('btnDangerClearHistory')?.addEventListener('click', async () => {
+    const confirmed = await this.showConfirmModal({
+      title: this.l('Hapus Seluruh Riwayat Baca', 'Clear All Reading History'),
+      message: this.l(
+        'Apakah Anda yakin ingin menghapus seluruh riwayat baca dan mereset status baca bab di pustaka? Tindakan ini tidak dapat dibatalkan.',
+        'Are you sure you want to clear all reading history and reset chapter read status in your library? This action cannot be undone.'
+      ),
+      confirmText: this.l('Hapus Riwayat', 'Clear History'),
+      cancelText: this.t('modal.cancel'),
+      isDanger: true
+    });
+    if (!confirmed) return;
+
     const btn = document.getElementById('btnDangerClearHistory') as HTMLButtonElement | null;
     const descEl = document.getElementById('clearHistoryDesc');
     if (btn) btn.disabled = true;
@@ -1299,8 +1371,13 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           if (res?.dbSizeText) {
             this.settings.dbSizeText = res.dbSizeText;
           }
-          this.renderSettingsView(container);
+          if (this.currentTab === 'settings' && !this.activeDetailMangaId) {
+            this.renderSettingsView(container);
+          }
           this.showToast(this.l('Seluruh riwayat baca telah dibersihkan.', 'All reading history cleared.'));
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal membersihkan riwayat baca.', 'Failed to clear reading history.'));
         })
         .finally(() => {
           if (btn) btn.disabled = false;
@@ -1327,11 +1404,16 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         .then((res) => {
           if (res?.saved) {
             this.settings.lastBackupText = res.lastBackupText || this.l('Cadangan terakhir: Baru saja disimpan', 'Last backup: Just saved');
-            this.renderSettingsView(container);
+            if (this.currentTab === 'settings' && !this.activeDetailMangaId) {
+              this.renderSettingsView(container);
+            }
             this.showToast(this.l('Berkas cadangan (.yomicbackup) berhasil dibuat.', 'Backup file (.yomicbackup) created.'));
           } else if (!res?.cancelled) {
             this.showToast(this.l('Gagal membuat berkas cadangan.', 'Failed to create backup file.'));
           }
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal membuat berkas cadangan.', 'Failed to create backup file.'));
         })
         .finally(() => {
           if (btn) btn.disabled = false;
@@ -1359,6 +1441,9 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           } else if (!res?.cancelled) {
             this.showToast(this.l('Gagal memulihkan berkas cadangan.', 'Failed to restore backup file.'));
           }
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal memulihkan berkas cadangan.', 'Failed to restore backup file.'));
         })
         .finally(() => {
           if (btn) btn.disabled = false;
@@ -1388,7 +1473,9 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           .then((updated) => {
             if (updated) {
               Object.assign(this.settings, updated);
-              this.renderSettingsView(container);
+              if (this.currentTab === 'settings' && !this.activeDetailMangaId) {
+                this.renderSettingsView(container);
+              }
               if (this.settings.isMalConnected) {
                 this.showToast(
                   this.l(`Terhubung ke MyAnimeList (@${this.settings.malConnectedUser}).`, `Connected to MyAnimeList (@${this.settings.malConnectedUser}).`)
@@ -1404,12 +1491,21 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               }
             }
           })
+          .catch(() => {
+            this.showToast(
+              this.l('Gagal menghubungi MyAnimeList. Silakan coba lagi.', 'Failed to connect to MyAnimeList. Please try again.')
+            );
+          })
           .finally(() => {
             if (btn) btn.disabled = false;
             if (descEl) {
-              descEl.textContent = this.settings.isMalConnected
-                ? this.t('settings.tracker.malConnectedAs', { user: this.settings.malConnectedUser })
-                : this.t('settings.tracker.malNotConnected');
+              if (this.settings.isMalConnected) {
+                descEl.innerHTML = this.t('settings.tracker.malConnectedAs', {
+                  user: escapeXml(this.settings.malConnectedUser)
+                });
+              } else {
+                descEl.textContent = this.t('settings.tracker.malNotConnected');
+              }
             }
           });
         return;
@@ -1424,8 +1520,13 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     };
 
     if (wasConnected) {
-      document.getElementById('malDisconnectModalOverlay')?.remove();
-      const overlay = document.createElement('div');
+      const prevMalOverlay = document.getElementById('malDisconnectModalOverlay') as (HTMLElement & { _closeModal?: () => void }) | null;
+      if (prevMalOverlay?._closeModal) {
+        prevMalOverlay._closeModal();
+      } else {
+        prevMalOverlay?.remove();
+      }
+      const overlay = document.createElement('div') as HTMLDivElement & { _closeModal?: () => void };
       overlay.id = 'malDisconnectModalOverlay';
       overlay.style.cssText =
         'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
@@ -1444,7 +1545,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
             <button id="btnCancelMalDisconnect" type="button" style="height:38px;padding:0 14px;border-radius:10px;border:none;background:transparent;color:var(--ink-secondary,#a1a1aa);font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">
               ${this.t('modal.cancel')}
             </button>
-            <button id="btnConfirmMalDisconnect" type="button" style="height:38px;padding:0 20px;border-radius:10px;border:none;background:#f43f5e;color:#ffffff;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">
+            <button id="btnConfirmMalDisconnect" type="button" style="height:38px;padding:0 20px;border-radius:10px;border:none;background:#e11d48;color:#ffffff;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">
               <span>${this.l('Putuskan', 'Disconnect')}</span>
             </button>
           </div>
@@ -1455,6 +1556,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         window.removeEventListener('keydown', onEsc);
         overlay.remove();
       };
+      overlay._closeModal = closeModal;
       const onEsc = (ev: KeyboardEvent) => {
         if (ev.key === 'Escape') closeModal();
       };
@@ -1473,11 +1575,13 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     executeMalToggle();
   });
   document.getElementById('btnDangerResetAll')?.addEventListener('click', () => {
-    const existingOverlay = document.getElementById('dangerClearDataModalOverlay');
-    if (existingOverlay) {
+    const existingOverlay = document.getElementById('dangerClearDataModalOverlay') as (HTMLElement & { _closeModal?: () => void }) | null;
+    if (existingOverlay?._closeModal) {
+      existingOverlay._closeModal();
+    } else if (existingOverlay) {
       existingOverlay.remove();
     }
-    const overlay = document.createElement('div');
+    const overlay = document.createElement('div') as HTMLDivElement & { _closeModal?: () => void };
     overlay.id = 'dangerClearDataModalOverlay';
     overlay.style.cssText =
       'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
@@ -1496,25 +1600,41 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           <button id="btnCancelClearAllData" type="button" style="height:38px;padding:0 14px;border-radius:10px;border:none;background:transparent;color:var(--ink-secondary,#a1a1aa);font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">
             ${this.t('modal.cancel')}
           </button>
-          <button id="btnConfirmClearAllData" type="button" style="height:38px;padding:0 20px;border-radius:10px;border:none;background:#f43f5e;color:#ffffff;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">
+          <button id="btnConfirmClearAllData" type="button" style="height:38px;padding:0 20px;border-radius:10px;border:none;background:#e11d48;color:#ffffff;font-size:13.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">
             <span>${this.l('Atur Ulang', 'Reset')}</span>
           </button>
         </div>
       </div>
     `;
     document.body.appendChild(overlay);
+    let countdownTimer: number | null = null;
+    let isBusy = false;
+    const onEsc = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape' && !isBusy) {
+        closeModal();
+      }
+    };
     const closeModal = (): void => {
+      if (countdownTimer !== null) {
+        window.clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+      window.removeEventListener('keydown', onEsc);
       overlay.remove();
     };
+    overlay._closeModal = closeModal;
+    window.addEventListener('keydown', onEsc);
     overlay.addEventListener('click', (ev) => {
-      if (ev.target === overlay) {
+      if (ev.target === overlay && !isBusy) {
         closeModal();
       }
     });
     document.getElementById('btnCancelClearAllData')?.addEventListener('click', () => {
-      closeModal();
+      if (!isBusy) closeModal();
     });
     document.getElementById('btnConfirmClearAllData')?.addEventListener('click', () => {
+      if (isBusy) return;
+      isBusy = true;
       const confirmBtn = document.getElementById('btnConfirmClearAllData') as HTMLButtonElement | null;
       const cancelBtn = document.getElementById('btnCancelClearAllData') as HTMLButtonElement | null;
       const msgEl = document.getElementById('dangerClearDataModalMsg');
@@ -1527,6 +1647,17 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         cancelBtn.style.display = 'none';
       }
       const finishAndCountdown = (serverMsg?: string): void => {
+        // Purge all persisted client localStorage state so factory reset leaves zero stale theme/cache/positions
+        try {
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < window.localStorage.length; i++) {
+            const k = window.localStorage.key(i);
+            if (k && k.startsWith('yomic_')) keysToRemove.push(k);
+          }
+          keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+        } catch {
+          // ignore storage access errors
+        }
         this.mangaList.splice(0, this.mangaList.length);
         this.removedHistoryIds.clear();
         Object.assign(this.settings, DEFAULT_APP_SETTINGS);
@@ -1538,7 +1669,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
             'All data cleared. The application will automatically reload in 3 seconds.'
           );
         if (msgEl) {
-          msgEl.style.color = '#ef4444';
+          msgEl.style.color = '#e11d48';
           msgEl.style.fontWeight = '600';
           msgEl.textContent = finalNotice;
         }
@@ -1547,16 +1678,17 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         }
         this.showToast(finalNotice);
         let remaining = 3;
-        const timer = window.setInterval(() => {
+        countdownTimer = window.setInterval(() => {
           remaining -= 1;
           if (remaining > 0) {
             if (confirmBtn) {
               confirmBtn.textContent = this.l(`Memuat Ulang (${remaining} dtk)...`, `Reloading (${remaining}s)...`);
             }
           } else {
-            window.clearInterval(timer);
             closeModal();
-            this.renderSettingsView(container);
+            if (this.currentTab === 'settings' && !this.activeDetailMangaId) {
+              this.renderSettingsView(container);
+            }
           }
         }, 1000);
       };
@@ -1565,11 +1697,17 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           .invoke<{ ok: boolean; message?: string }>('data:clear-all')
           .then((res) => {
             if (res && res.ok === false) {
+              isBusy = false;
               closeModal();
               this.showToast(res.message || this.l('Gagal menghapus data aplikasi.', 'Failed to clear application data.'));
               return;
             }
             finishAndCountdown(res?.message);
+          })
+          .catch(() => {
+            isBusy = false;
+            closeModal();
+            this.showToast(this.l('Gagal menghapus data aplikasi. Silakan coba lagi.', 'Failed to clear application data. Please try again.'));
           });
         return;
       }
@@ -1660,10 +1798,11 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     });
   });
 
-  // Individual reset buttons
+  // Individual reset buttons (ALWAYS cancel any active capture-phase keydown recorder first!)
   container.querySelectorAll<HTMLButtonElement>('[data-reset-hotkey]').forEach((btn) => {
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();
+      cancelRecording();
       const actionId = btn.dataset.resetHotkey;
       if (!actionId) return;
       const def = HOTKEY_DEFINITIONS.find((d) => d.id === actionId);
@@ -1675,10 +1814,15 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
 
   // Reset all hotkeys button with confirmation modal
   document.getElementById('btnResetAllHotkeys')?.addEventListener('click', () => {
-    const existingOverlay = document.getElementById('resetHotkeysModalOverlay');
-    if (existingOverlay) existingOverlay.remove();
+    cancelRecording();
+    const existingOverlay = document.getElementById('resetHotkeysModalOverlay') as (HTMLElement & { _closeModal?: () => void }) | null;
+    if (existingOverlay?._closeModal) {
+      existingOverlay._closeModal();
+    } else if (existingOverlay) {
+      existingOverlay.remove();
+    }
 
-    const overlay = document.createElement('div');
+    const overlay = document.createElement('div') as HTMLDivElement & { _closeModal?: () => void };
     overlay.id = 'resetHotkeysModalOverlay';
     overlay.style.cssText =
       'position:fixed;inset:0;background:rgba(15,23,42,0.55);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
@@ -1706,7 +1850,19 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     `;
     document.body.appendChild(overlay);
 
-    const closeResetModal = () => overlay.remove();
+    const onEsc = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeResetModal();
+      }
+    };
+    const closeResetModal = () => {
+      window.removeEventListener('keydown', onEsc, { capture: true });
+      overlay.remove();
+    };
+    overlay._closeModal = closeResetModal;
+    window.addEventListener('keydown', onEsc, { capture: true });
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) closeResetModal();
     });
@@ -1739,6 +1895,17 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     const isEn = document.documentElement.lang === 'en';
 
     const startInstall = (dlUrl: string, targetVer: string, releaseNotes: string) => {
+      const isDirectExe = /\.exe(?:[?#]|$)/i.test(dlUrl);
+      if (!isDirectExe) {
+        // Non-.exe release page: launch in browser and close overlay cleanly instead of soft-locking
+        if (this.bridge.isWebViewHost) {
+          void this.bridge.invoke<{ ok?: boolean }>('app:install-update', { downloadUrl: dlUrl }, 30000).catch(() => {});
+        }
+        closeAppUpdateOverlay();
+        this.showToast(this.l('Membuka halaman rilis Yomic di browser...', 'Opening Yomic release page in browser...'));
+        return;
+      }
+
       openAppUpdateOverlay({
         version: targetVer,
         releaseNotes,
@@ -1746,17 +1913,22 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         mode: 'downloading'
       });
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke<{ ok?: boolean }>('app:install-update', { downloadUrl: dlUrl }, 300000).then((res) => {
-          if (!res?.ok) {
+        void this.bridge
+          .invoke<{ ok?: boolean }>('app:install-update', { downloadUrl: dlUrl }, 300000)
+          .then((res) => {
+            if (!res?.ok) {
+              updateAppUpdateOverlayProgress({ progress: 0, downloadedBytes: 0, totalBytes: 0, stage: 'error' }, isEn);
+            }
+          })
+          .catch(() => {
             updateAppUpdateOverlayProgress({ progress: 0, downloadedBytes: 0, totalBytes: 0, stage: 'error' }, isEn);
-          }
-        });
+          });
       }
     };
 
     // Immediately open the full-screen Updater UI when Check for Updates is clicked
     openAppUpdateOverlay({
-      version: '2.2.1',
+      version: '2.3.0',
       releaseNotes: '',
       isEn,
       mode: 'checking'
@@ -1765,7 +1937,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     if (!this.bridge.isWebViewHost) {
       window.setTimeout(() => {
         openAppUpdateOverlay({
-          version: '2.2.1',
+          version: '2.3.0',
           releaseNotes: '',
           isEn,
           mode: 'uptodate'
@@ -1785,7 +1957,9 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
       }>('app:check-update', undefined, 15000)
       .then((info) => {
         if (btn) btn.disabled = false;
-        const ver = info?.latestVersion || info?.currentVersion || '2.2.1';
+        // If user already dismissed the checking overlay, do not forcibly pop it back open
+        if (!document.getElementById('appUpdateOverlay')) return;
+        const ver = info?.latestVersion || info?.currentVersion || '2.3.0';
         const notes = info?.releaseNotes || '';
         if (info?.isUpdateAvailable && info.downloadUrl) {
           openAppUpdateOverlay({
@@ -1806,8 +1980,9 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
       })
       .catch(() => {
         if (btn) btn.disabled = false;
+        if (!document.getElementById('appUpdateOverlay')) return;
         openAppUpdateOverlay({
-          version: '2.2.1',
+          version: '2.3.0',
           releaseNotes: '',
           isEn,
           mode: 'error'
@@ -1926,7 +2101,7 @@ export function openAppUpdateOverlay(opts: {
   const verEl = document.getElementById('appUpdateVersionText');
   const startBtn = document.getElementById('btnStartAppUpdateNow') as HTMLButtonElement | null;
   const closeBtn = document.getElementById('btnCloseAppUpdateOverlay') as HTMLButtonElement | null;
-  const cleanVer = (opts.version || '2.2.1').replace(/^v/i, '');
+  const cleanVer = (opts.version || '2.3.0').replace(/^v/i, '');
 
   if (barFill) {
     barFill.classList.toggle('indeterminate', mode === 'checking');

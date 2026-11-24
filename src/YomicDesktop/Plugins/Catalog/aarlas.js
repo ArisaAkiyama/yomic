@@ -42,9 +42,9 @@ var source = {
         }
 
         let response = fetch(url);
-        if (response.status !== 200) return { items: [], totalPages: page };
+        if (!response || response.status !== 200) return { items: [], totalPages: page };
 
-        let json = JSON.parse(response.body);
+        let json = (() => { try { return JSON.parse(response.body) || {}; } catch (e) { return {}; } })();
         let entries = json.feed.entry || [];
         let totalResults = parseInt(json.feed.openSearch$totalResults.$t) || 0;
         let totalPages = Math.ceil(totalResults / appPageSize);
@@ -109,9 +109,9 @@ var source = {
     },
 
     getMangaDetails: function(url) {
-        let fullUrl = this.baseUrl + url;
+        let fullUrl = !url ? this.baseUrl : (url.startsWith("http") ? url : (url.startsWith("//") ? "https:" + url : (this.baseUrl + (url.startsWith("/") ? url : "/" + url))));
         let response = fetch(fullUrl);
-        if (response.status !== 200) return {};
+        if (!response || response.status !== 200) return {};
 
         let doc = Html.parse(response.body, fullUrl);
         
@@ -169,9 +169,9 @@ var source = {
     },
 
     getChapterList: function(mangaUrl) {
-        let fullUrl = this.baseUrl + mangaUrl;
+        let fullUrl = !mangaUrl ? this.baseUrl : (mangaUrl.startsWith("http") ? mangaUrl : (mangaUrl.startsWith("//") ? "https:" + mangaUrl : (this.baseUrl + (mangaUrl.startsWith("/") ? mangaUrl : "/" + mangaUrl))));
         let response = fetch(fullUrl);
-        if (response.status !== 200) return [];
+        if (!response || response.status !== 200) return [];
 
         let doc = Html.parse(response.body, fullUrl);
         let titleEl = doc.querySelector("article.oh.a2 header h1");
@@ -186,9 +186,9 @@ var source = {
 
         let feedUrl = `${this.apiUrl}/feeds/posts/default/-/${encodeURIComponent(label)}?alt=json&max-results=500`;
         let feedResponse = fetch(feedUrl);
-        if (feedResponse.status !== 200) return [];
+        if (!feedResponse || feedResponse.status !== 200) return [];
 
-        let json = JSON.parse(feedResponse.body);
+        let json = (() => { try { return JSON.parse(feedResponse.body) || {}; } catch (e) { return {}; } })();
         let entries = json.feed.entry || [];
         
         let chapters = [];
@@ -233,9 +233,9 @@ var source = {
     },
 
     getPageList: function(chapterUrl) {
-        let fullUrl = this.baseUrl + chapterUrl;
+        let fullUrl = !chapterUrl ? this.baseUrl : (chapterUrl.startsWith("http") ? chapterUrl : (chapterUrl.startsWith("//") ? "https:" + chapterUrl : (this.baseUrl + (chapterUrl.startsWith("/") ? chapterUrl : "/" + chapterUrl))));
         let response = fetch(fullUrl);
-        if (response.status !== 200) return [];
+        if (!response || response.status !== 200) return [];
 
         let doc = Html.parse(response.body, fullUrl);
         let pages = [];

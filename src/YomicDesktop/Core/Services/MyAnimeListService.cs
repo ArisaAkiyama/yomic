@@ -11,7 +11,7 @@ using System.Security.Cryptography;
 
 namespace Yomic.Core.Services
 {
-    public class MyAnimeListService
+    public class MyAnimeListService : IDisposable
     {
         private const string ClientId = "2178a6ea66e6d2c4356ab0fd4d298ce4"; // Public client ID for Yomic desktop client
         private const string RedirectUri = "http://127.0.0.1:49152/";
@@ -23,33 +23,39 @@ namespace Yomic.Core.Services
         public MyAnimeListService(SettingsService settingsService)
         {
             _settingsService = settingsService;
-            _httpClient = new HttpClient();
+            _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         }
 
         public bool IsConnected => !string.IsNullOrEmpty(_settingsService.MalAccessToken);
 
-        public string GetAuthorizationUrl(string codeChallenge)
+        public string GetAuthorizationUrl(string codeChallenge, string? state = null)
         {
-            return $"https://myanimelist.net/v1/oauth2/authorize?response_type=code" +
-                   $"&client_id={ClientId}" +
-                   $"&code_challenge={codeChallenge}" +
-                   $"&code_challenge_method=plain" +
-                   $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}";
+            var url = $"https://myanimelist.net/v1/oauth2/authorize?response_type=code" +
+                      $"&client_id={ClientId}" +
+                      $"&code_challenge={Uri.EscapeDataString(codeChallenge)}" +
+                      $"&code_challenge_method=plain" +
+                      $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}";
+            if (!string.IsNullOrEmpty(state))
+            {
+                url += $"&state={Uri.EscapeDataString(state)}";
+            }
+            return url;
+        }
+
+        public static string GenerateOAuthState()
+        {
+            byte[] bytes = RandomNumberGenerator.GetBytes(32);
+            return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         }
 
         public static string GenerateCodeVerifier()
         {
-            // Generate a secure 128 character alphanumeric string
+            // Generate a cryptographically unbiased 128-character PKCE verifier
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
-            var randomBytes = new byte[128];
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(randomBytes);
-            }
             var result = new StringBuilder(128);
-            foreach (var b in randomBytes)
+            for (int i = 0; i < 128; i++)
             {
-                result.Append(chars[b % chars.Length]);
+                result.Append(chars[RandomNumberGenerator.GetInt32(chars.Length)]);
             }
             return result.ToString();
         }
@@ -138,15 +144,29 @@ namespace Yomic.Core.Services
             return "";
         }
 
+        private readonly System.Threading.SemaphoreSlim _refreshLock = new(1, 1);
+
         private async Task EnsureValidTokenAsync()
         {
             if (!IsConnected) return;
 
-            // Refresh token 5 minutes before it expires
+            // Refresh token 5 minutes before it expires (serialized to prevent concurrent refresh_token rotation failure)
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             if (now + 300000 >= _settingsService.MalTokenExpiresAt)
             {
-                await RefreshTokenAsync();
+                await _refreshLock.WaitAsync();
+                try
+                {
+                    var recheckNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    if (recheckNow + 300000 >= _settingsService.MalTokenExpiresAt)
+                    {
+                        await RefreshTokenAsync();
+                    }
+                }
+                finally
+                {
+                    _refreshLock.Release();
+                }
             }
         }
 
@@ -162,8 +182,8 @@ namespace Yomic.Core.Services
                     { "refresh_token", _settingsService.MalRefreshToken }
                 };
 
-                var content = new FormUrlEncodedContent(values);
-                var response = await _httpClient.PostAsync(TokenUrl, content);
+                using var content = new FormUrlEncodedContent(values);
+                using var response = await _httpClient.PostAsync(TokenUrl, content);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -176,11 +196,13 @@ namespace Yomic.Core.Services
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
-                _settingsService.MalAccessToken = root.GetProperty("access_token").GetString() ?? "";
-                _settingsService.MalRefreshToken = root.GetProperty("refresh_token").GetString() ?? "";
-                var expiresIn = root.GetProperty("expires_in").GetInt64();
-                _settingsService.MalTokenExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (expiresIn * 1000);
-                _settingsService.Save();
+                if (root.TryGetProperty("access_token", out var atProp) && atProp.ValueKind == JsonValueKind.String)
+                    _settingsService.MalAccessToken = atProp.GetString() ?? "";
+                if (root.TryGetProperty("refresh_token", out var rtProp) && rtProp.ValueKind == JsonValueKind.String)
+                    _settingsService.MalRefreshToken = rtProp.GetString() ?? "";
+                if (root.TryGetProperty("expires_in", out var expProp) && expProp.ValueKind == JsonValueKind.Number)
+                    _settingsService.MalTokenExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (expProp.GetInt64() * 1000);
+                _settingsService.SaveImmediate();
 
                 LogService.Success("MyAnimeList", "Token refreshed successfully.");
                 return true;
@@ -281,8 +303,8 @@ namespace Yomic.Core.Services
             try
             {
                 var url = $"https://api.myanimelist.net/v2/manga/{malId}?fields=my_list_status,num_chapters";
-                var request = await CreateAuthenticatedRequestAsync(HttpMethod.Get, url);
-                var response = await _httpClient.SendAsync(request);
+                using var request = await CreateAuthenticatedRequestAsync(HttpMethod.Get, url);
+                using var response = await _httpClient.SendAsync(request);
 
                 if (!response.IsSuccessStatusCode) return null;
 
@@ -290,18 +312,28 @@ namespace Yomic.Core.Services
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
-                var title = root.GetProperty("title").GetString() ?? "";
-                var totalChapters = root.TryGetProperty("num_chapters", out var chaptersProp) ? chaptersProp.GetInt32() : 0;
+                var title = root.TryGetProperty("title", out var titleProp) && titleProp.ValueKind == JsonValueKind.String
+                    ? titleProp.GetString() ?? ""
+                    : "";
+                var totalChapters = root.TryGetProperty("num_chapters", out var chaptersProp) && chaptersProp.ValueKind == JsonValueKind.Number
+                    ? chaptersProp.GetInt32()
+                    : 0;
                 
                 string status = "reading";
                 int score = 0;
                 int readChapters = 0;
 
-                if (root.TryGetProperty("my_list_status", out var myStatusObj))
+                if (root.TryGetProperty("my_list_status", out var myStatusObj) && myStatusObj.ValueKind == JsonValueKind.Object)
                 {
-                    status = myStatusObj.TryGetProperty("status", out var sProp) ? sProp.GetString() ?? "reading" : "reading";
-                    score = myStatusObj.TryGetProperty("score", out var scProp) ? scProp.GetInt32() : 0;
-                    readChapters = myStatusObj.TryGetProperty("num_chapters_read", out var numProp) ? numProp.GetInt32() : 0;
+                    status = myStatusObj.TryGetProperty("status", out var sProp) && sProp.ValueKind == JsonValueKind.String
+                        ? sProp.GetString() ?? "reading"
+                        : "reading";
+                    score = myStatusObj.TryGetProperty("score", out var scProp) && scProp.ValueKind == JsonValueKind.Number
+                        ? scProp.GetInt32()
+                        : 0;
+                    readChapters = myStatusObj.TryGetProperty("num_chapters_read", out var numProp) && numProp.ValueKind == JsonValueKind.Number
+                        ? numProp.GetInt32()
+                        : 0;
                 }
 
                 return new MangaTrack
@@ -330,7 +362,7 @@ namespace Yomic.Core.Services
             try
             {
                 var url = $"https://api.myanimelist.net/v2/manga/{malId}/my_list_status";
-                var request = await CreateAuthenticatedRequestAsync(HttpMethod.Patch, url);
+                using var request = await CreateAuthenticatedRequestAsync(HttpMethod.Patch, url);
 
                 var values = new Dictionary<string, string>
                 {
@@ -339,8 +371,9 @@ namespace Yomic.Core.Services
                     { "score", score.ToString() }
                 };
 
-                request.Content = new FormUrlEncodedContent(values);
-                var response = await _httpClient.SendAsync(request);
+                using var formContent = new FormUrlEncodedContent(values);
+                request.Content = formContent;
+                using var response = await _httpClient.SendAsync(request);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -356,6 +389,12 @@ namespace Yomic.Core.Services
                 LogService.Error("MyAnimeList", "Update status exception", ex);
                 return false;
             }
+        }
+
+        public void Dispose()
+        {
+            try { _httpClient.Dispose(); } catch { }
+            try { _refreshLock.Dispose(); } catch { }
         }
     }
 

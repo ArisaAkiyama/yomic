@@ -46,7 +46,7 @@ var source = {
         let url = this.apiUrl + "/comics?page=" + p + "&limit=20&sort=popular";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let list = (json.data && json.data.data) ? json.data.data : [];
         let items = list.map(item => ({
             title: item.title,
@@ -63,7 +63,7 @@ var source = {
         let url = this.apiUrl + "/comics?page=" + p + "&limit=20&sort=latest";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let list = (json.data && json.data.data) ? json.data.data : [];
         let items = list.map(item => ({
             title: item.title,
@@ -80,7 +80,7 @@ var source = {
         let url = this.apiUrl + "/comics?page=" + p + "&limit=20&search=" + encodeURIComponent(query || "") + "&sort=latest";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let list = (json.data && json.data.data) ? json.data.data : [];
         let items = list.map(item => ({
             title: item.title,
@@ -105,7 +105,7 @@ var source = {
         if (!res || res.status !== 200 || !res.body) {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
         }
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let d = json.data;
         if (!d) return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
 
@@ -131,7 +131,7 @@ var source = {
         let slug = url.replace("/comic/", "").replace(/^\/+|\/+$/g, "");
         let res = this.requestUrl(this.apiUrl + "/comics/" + slug);
         if (!res || res.status !== 200 || !res.body) return [];
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let d = json.data;
         if (!d || !d.chapters) return [];
 
@@ -150,7 +150,7 @@ var source = {
         let apiUrl = "https://api.kumopoi.com/api/v1/chapters/" + chId + "/pages";
         let res = this.requestUrl(apiUrl);
         if (!res || res.status !== 200 || !res.body) return [];
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let pages = (json.data && json.data.pages) ? json.data.pages : [];
         return pages.map(p => this.apiUrl + "/media/chapter/deliver?token=" + encodeURIComponent(p.token));
     }

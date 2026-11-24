@@ -5,7 +5,8 @@ import {
   buildComicPageSvg,
   buildMangaCoverSvg,
   DEFAULT_APP_SETTINGS,
-  escapeXml
+  escapeXml,
+  sanitizeImageSrc
 } from '../mock-data.js';
 import {
   ActivityUpdateItem,
@@ -69,7 +70,7 @@ export function updateDownloadsProgressInPlace(container: HTMLElement, downloads
       const isPaused = dl.status === 'paused';
       const fill = row.querySelector<HTMLElement>('.v1-dl-bar-fill');
       if (fill) {
-        fill.style.width = `${dl.progressPercent}%`;
+        fill.style.width = `${Math.max(0, Math.min(100, Number(dl.progressPercent) || 0))}%`;
         fill.className = `v1-dl-bar-fill ${isPaused ? 'paused' : ''}`;
       }
       const isEn = document.documentElement.lang === 'en';
@@ -147,8 +148,8 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
 
             return `
               <div class="v1-update-row">
-                <div class="v1-update-left" data-open-detail="${dl.mangaId}">
-                  <img class="v1-update-cover" src="${thumb}" alt="${escapedMangaTitle}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackSvg}';" />
+                <div class="v1-update-left" data-open-detail="${escapeXml(dl.mangaId)}">
+                  <img class="v1-update-cover" src="${sanitizeImageSrc(thumb) || escapeXml(fallbackSvg)}" alt="${escapedMangaTitle}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
                   <div class="v1-update-info">
                     <div class="v1-update-title" title="${escapedMangaTitle}">${escapedMangaTitle}</div>
                     <div class="v1-update-ch-line">
@@ -162,21 +163,21 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
                   ${
                     isDone
                       ? `<span class="v1-update-time tabular-nums">${sizeLabel}${this.l('Tersimpan', 'Saved')}</span>
-                         <button class="v1-update-action-btn primary" data-quick-read="${dl.mangaId}" data-ch="${chapterNum}" title="${escapeXml(this.t('common.read') + ' ' + dl.chapterLabel)}">
+                         <button class="v1-update-action-btn primary" data-quick-read="${escapeXml(dl.mangaId)}" data-ch="${chapterNum}" title="${escapeXml(this.t('common.read') + ' ' + dl.chapterLabel)}">
                            ${getIconSvg('play-linear', { size: 13 })}
                            <span>${this.t('common.read')}</span>
                          </button>`
                       : `<div class="v1-dl-progress-box">
                            <div class="v1-dl-bar-track">
-                             <div class="v1-dl-bar-fill ${stateClass}" style="width:${dl.progressPercent}%;"></div>
+                             <div class="v1-dl-bar-fill ${stateClass}" style="width:${Math.max(0, Math.min(100, Number(dl.progressPercent) || 0))}%;"></div>
                            </div>
                            <span class="v1-update-time tabular-nums">${escapeXml(formatDownloadProgressLabel(dl, document.documentElement.lang === 'en'))}</span>
                          </div>
-                         <button class="v1-dl-icon-btn" data-toggle-dl="${dl.id}" title="${escapeXml(isPaused ? this.l('Lanjutkan Unduhan', 'Resume Download') : this.l('Jeda Unduhan', 'Pause Download'))}" aria-label="${escapeXml(isPaused ? this.l('Lanjutkan Unduhan', 'Resume Download') : this.l('Jeda Unduhan', 'Pause Download'))}">
+                         <button class="v1-dl-icon-btn" data-toggle-dl="${escapeXml(dl.id)}" title="${escapeXml(isPaused ? this.l('Lanjutkan Unduhan', 'Resume Download') : this.l('Jeda Unduhan', 'Pause Download'))}" aria-label="${escapeXml(isPaused ? this.l('Lanjutkan Unduhan', 'Resume Download') : this.l('Jeda Unduhan', 'Pause Download'))}">
                            ${getIconSvg(isPaused ? 'play-linear' : 'pause-linear', { size: 15 })}
                          </button>`
                   }
-                  <button class="v1-history-del-btn" data-cancel-dl="${dl.id}" data-url="${dl.chapterUrl || ''}" data-is-done="${isDone ? '1' : '0'}" data-title="${escapedMangaTitle}" data-chapter="${escapedChLabel}" title="${escapeXml(isDone ? this.l('Hapus File Unduhan', 'Delete Downloaded File') : this.l('Batalkan Unduhan', 'Cancel Download'))}" aria-label="${escapeXml(isDone ? this.l('Hapus File Unduhan', 'Delete Downloaded File') : this.l('Batalkan Unduhan', 'Cancel Download'))}">
+                  <button class="v1-history-del-btn" data-cancel-dl="${escapeXml(dl.id)}" data-url="${escapeXml(dl.chapterUrl || '')}" data-is-done="${isDone ? '1' : '0'}" data-title="${escapedMangaTitle}" data-chapter="${escapedChLabel}" title="${escapeXml(isDone ? this.l('Hapus File Unduhan', 'Delete Downloaded File') : this.l('Batalkan Unduhan', 'Cancel Download'))}" aria-label="${escapeXml(isDone ? this.l('Hapus File Unduhan', 'Delete Downloaded File') : this.l('Batalkan Unduhan', 'Cancel Download'))}">
                     ${getIconSvg('delete-bin-line', { size: 16 })}
                   </button>
                 </div>
@@ -227,43 +228,59 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
 
   document.getElementById('btnResumeAllDl')?.addEventListener('click', () => {
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke<DownloadQueueItem[]>('downloads:resume-all').then((queue) => {
-        if (Array.isArray(queue)) {
-          this.downloads.length = 0;
-          this.downloads.push(...queue);
-          this.renderDownloadsView(container);
-        }
-      });
-    } else {
-      this.downloads.forEach((d) => {
-        if (d.status === 'paused') {
-          d.status = 'downloading';
-          d.speedText = '4.8 MB/s';
-        }
-      });
-      this.renderDownloadsView(container);
+      void this.bridge
+        .invoke<DownloadQueueItem[]>('downloads:resume-all')
+        .then((queue) => {
+          if (Array.isArray(queue)) {
+            this.downloads.length = 0;
+            this.downloads.push(...queue);
+            if (this.currentTab === 'downloads' && !this.activeDetailMangaId) {
+              this.renderDownloadsView(container);
+            }
+          }
+          this.showToast(this.l('Seluruh unduhan dilanjutkan.', 'All downloads resumed.'));
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal melanjutkan unduhan.', 'Failed to resume downloads.'));
+        });
+      return;
     }
+    this.downloads.forEach((d) => {
+      if (d.status === 'paused') {
+        d.status = 'downloading';
+        d.speedText = '4.8 MB/s';
+      }
+    });
+    this.renderDownloadsView(container);
     this.showToast(this.l('Seluruh unduhan dilanjutkan.', 'All downloads resumed.'));
   });
 
   document.getElementById('btnPauseAllDl')?.addEventListener('click', () => {
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke<DownloadQueueItem[]>('downloads:pause-all').then((queue) => {
-        if (Array.isArray(queue)) {
-          this.downloads.length = 0;
-          this.downloads.push(...queue);
-          this.renderDownloadsView(container);
-        }
-      });
-    } else {
-      this.downloads.forEach((d) => {
-        if (d.status === 'downloading') {
-          d.status = 'paused';
-          d.speedText = this.t('downloads.statusPaused');
-        }
-      });
-      this.renderDownloadsView(container);
+      void this.bridge
+        .invoke<DownloadQueueItem[]>('downloads:pause-all')
+        .then((queue) => {
+          if (Array.isArray(queue)) {
+            this.downloads.length = 0;
+            this.downloads.push(...queue);
+            if (this.currentTab === 'downloads' && !this.activeDetailMangaId) {
+              this.renderDownloadsView(container);
+            }
+          }
+          this.showToast(this.l('Seluruh unduhan aktif telah dijeda.', 'All active downloads paused.'));
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal menjeda unduhan.', 'Failed to pause downloads.'));
+        });
+      return;
     }
+    this.downloads.forEach((d) => {
+      if (d.status === 'downloading') {
+        d.status = 'paused';
+        d.speedText = this.t('downloads.statusPaused');
+      }
+    });
+    this.renderDownloadsView(container);
     this.showToast(this.l('Seluruh unduhan aktif telah dijeda.', 'All active downloads paused.'));
   });
 
@@ -288,23 +305,31 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
     if (!confirmed) return;
 
     if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke<DownloadQueueItem[]>('downloads:clear-completed').then((queue) => {
-        if (Array.isArray(queue)) {
-          this.downloads.length = 0;
-          this.downloads.push(...queue);
-          this.updateSidebarCounters();
-          this.renderDownloadsView(container);
-        }
-      });
-    } else {
-      for (let i = this.downloads.length - 1; i >= 0; i--) {
-        if (this.downloads[i].status === 'completed') {
-          this.downloads.splice(i, 1);
-        }
-      }
-      this.updateSidebarCounters();
-      this.renderDownloadsView(container);
+      void this.bridge
+        .invoke<DownloadQueueItem[]>('downloads:clear-completed')
+        .then((queue) => {
+          if (Array.isArray(queue)) {
+            this.downloads.length = 0;
+            this.downloads.push(...queue);
+            this.updateSidebarCounters();
+            if (this.currentTab === 'downloads' && !this.activeDetailMangaId) {
+              this.renderDownloadsView(container);
+            }
+          }
+          this.showToast(this.l('Daftar unduhan selesai telah dibersihkan.', 'Completed downloads list cleared.'));
+        })
+        .catch(() => {
+          this.showToast(this.l('Gagal membersihkan daftar unduhan selesai.', 'Failed to clear completed downloads.'));
+        });
+      return;
     }
+    for (let i = this.downloads.length - 1; i >= 0; i--) {
+      if (this.downloads[i].status === 'completed') {
+        this.downloads.splice(i, 1);
+      }
+    }
+    this.updateSidebarCounters();
+    this.renderDownloadsView(container);
     this.showToast(this.l('Daftar unduhan selesai telah dibersihkan.', 'Completed downloads list cleared.'));
   });
 
@@ -313,13 +338,20 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
       const dlId = btn.dataset.toggleDl;
       if (!dlId) return;
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke<DownloadQueueItem[]>('downloads:toggle-pause', { id: dlId }).then((queue) => {
-          if (Array.isArray(queue)) {
-            this.downloads.length = 0;
-            this.downloads.push(...queue);
-            this.renderDownloadsView(container);
-          }
-        });
+        void this.bridge
+          .invoke<DownloadQueueItem[]>('downloads:toggle-pause', { id: dlId })
+          .then((queue) => {
+            if (Array.isArray(queue)) {
+              this.downloads.length = 0;
+              this.downloads.push(...queue);
+              if (this.currentTab === 'downloads' && !this.activeDetailMangaId) {
+                this.renderDownloadsView(container);
+              }
+            }
+          })
+          .catch(() => {
+            this.showToast(this.l('Gagal mengubah status unduhan.', 'Failed to toggle download status.'));
+          });
         return;
       }
       const dl = this.downloads.find((d) => d.id === dlId);
@@ -356,25 +388,55 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
         if (!confirmed) return;
       }
 
-      if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke<DownloadQueueItem[]>('downloads:cancel', { id: dlId, chapterUrl }).then((queue) => {
-          if (Array.isArray(queue)) {
-            this.downloads.length = 0;
-            this.downloads.push(...queue);
-            this.updateSidebarCounters();
-            this.renderDownloadsView(container);
+      const syncRemovedDownloadInMemory = () => {
+        if (!isDone) return;
+        for (const m of this.mangaList) {
+          if (!Array.isArray(m.chapters)) continue;
+          let changed = false;
+          for (const ch of m.chapters) {
+            if (chapterUrl && ch.url && ch.url === chapterUrl && ch.isDownloaded) {
+              ch.isDownloaded = false;
+              changed = true;
+            }
           }
-        });
-        this.showToast(
-          isDone
-            ? this.l('File unduhan berhasil dihapus dari komputer.', 'Downloaded file deleted from disk.')
-            : this.l('Item unduhan dibatalkan dari antrean.', 'Download item cancelled from queue.')
-        );
+          if (changed) {
+            m.downloadedCount = m.chapters.filter((c) => c.isDownloaded).length;
+          }
+        }
+      };
+
+      if (this.bridge.isWebViewHost) {
+        void this.bridge
+          .invoke<DownloadQueueItem[]>('downloads:cancel', { id: dlId, chapterUrl })
+          .then((queue) => {
+            syncRemovedDownloadInMemory();
+            if (Array.isArray(queue)) {
+              this.downloads.length = 0;
+              this.downloads.push(...queue);
+              this.updateSidebarCounters();
+              if (this.currentTab === 'downloads' && !this.activeDetailMangaId) {
+                this.renderDownloadsView(container);
+              }
+            }
+            this.showToast(
+              isDone
+                ? this.l('File unduhan berhasil dihapus dari komputer.', 'Downloaded file deleted from disk.')
+                : this.l('Item unduhan dibatalkan dari antrean.', 'Download item cancelled from queue.')
+            );
+          })
+          .catch(() => {
+            this.showToast(
+              isDone
+                ? this.l('Gagal menghapus file unduhan dari komputer.', 'Failed to delete downloaded file from disk.')
+                : this.l('Gagal membatalkan item unduhan.', 'Failed to cancel download item.')
+            );
+          });
         return;
       }
       const idx = this.downloads.findIndex((d) => d.id === dlId);
       if (idx >= 0) {
         this.downloads.splice(idx, 1);
+        syncRemovedDownloadInMemory();
         this.renderDownloadsView(container);
         this.showToast(
           isDone
@@ -424,6 +486,22 @@ export function enqueueDownload(
             }
           }
         }
+      })
+      .catch(() => {
+        // Revert optimistic queued rows if backend enqueue failed
+        for (let i = this.downloads.length - 1; i >= 0; i--) {
+          if (this.downloads[i].id.startsWith('opt-') && this.downloads[i].mangaId === manga.id) {
+            this.downloads.splice(i, 1);
+          }
+        }
+        this.updateSidebarCounters();
+        if (this.activeDetailMangaId === manga.id) {
+          const container = document.getElementById('viewContainer');
+          if (container) {
+            updateDetailChapterDownloadsInPlace(container, manga, this.downloads, document.documentElement.lang === 'en');
+          }
+        }
+        this.showToast(this.l('Gagal menambahkan unduhan ke antrean.', 'Failed to add download to queue.'), 'warning');
       });
     this.showToast(
       mode === 'all'

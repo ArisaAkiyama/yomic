@@ -45,16 +45,27 @@ namespace Yomic.Core.Services
 
             try
             {
-                using var codec = SKCodec.Create(new SKMemoryStream(rawBytes));
-                if (codec == null)
+                using var memStream = new SKMemoryStream(rawBytes);
+                using var codec = SKCodec.Create(memStream);
+                if (codec == null || codec.FrameCount > 1)
                 {
-                    // Not a codec Skia directly decodes (e.g., animated gif or raw avif if missing codec), return as is
+                    // Preserve animated GIF/WebP or codecs Skia doesn't directly decode
                     return rawBytes;
                 }
 
                 var info = codec.Info;
-                // If it's already an optimal size and no cropping or sharpening is requested, skip re-encoding
-                bool needsResize = options.MaxDimension > 0 && (info.Width > options.MaxDimension || info.Height > options.MaxDimension);
+                // Guard against decompression / pixel bombs before allocating native Skia bitmap memory (~320 MB cap)
+                const long MaxDecodePixels = 80_000_000L;
+                if (info.Width <= 0 || info.Height <= 0 || (long)info.Width * info.Height > MaxDecodePixels)
+                {
+                    return rawBytes;
+                }
+
+                // Tall vertical webtoon strips (height > 2.5x width) should only cap width, NEVER crush strip height to 2160px!
+                bool isVerticalStrip = info.Width > 0 && info.Height > info.Width * 2.5;
+                bool needsResize = options.MaxDimension > 0 && (isVerticalStrip
+                    ? info.Width > options.MaxDimension
+                    : (info.Width > options.MaxDimension || info.Height > options.MaxDimension));
                 if (!needsResize && !options.AutoCropBorders && !options.EnableSharpening)
                 {
                     return rawBytes;
@@ -80,8 +91,8 @@ namespace Yomic.Core.Services
                         }
                     }
 
-                    // 2. Smart Downscale (Cap at maxDimension, e.g., 2160px for high-DPI desktop displays)
-                    if (options.MaxDimension > 0 && (currentBitmap.Width > options.MaxDimension || currentBitmap.Height > options.MaxDimension))
+                    // 2. Smart Downscale (Cap width for tall vertical webtoon strips; cap max dimension for standard pages)
+                    if (options.MaxDimension > 0)
                     {
                         var resized = DownscaleProportionally(currentBitmap, options.MaxDimension);
                         if (resized != null && resized != currentBitmap)
@@ -242,10 +253,19 @@ namespace Yomic.Core.Services
             if (newWidth > 100 && newHeight > 100 && (newWidth < width - 12 || newHeight < height - 12))
             {
                 var cropRect = SKRectI.Create(left, top, newWidth, newHeight);
-                var cropped = new SKBitmap(newWidth, newHeight, bitmap.ColorType, bitmap.AlphaType);
-                using var canvas = new SKCanvas(cropped);
-                canvas.DrawBitmap(bitmap, cropRect, SKRect.Create(0, 0, newWidth, newHeight));
-                return cropped;
+                var safeColorType = bitmap.ColorType == SKColorType.Gray8 ? SKImageInfo.PlatformColorType : bitmap.ColorType;
+                var cropped = new SKBitmap(newWidth, newHeight, safeColorType, bitmap.AlphaType);
+                try
+                {
+                    using var canvas = new SKCanvas(cropped);
+                    canvas.DrawBitmap(bitmap, cropRect, SKRect.Create(0, 0, newWidth, newHeight));
+                    return cropped;
+                }
+                catch
+                {
+                    cropped.Dispose();
+                    throw;
+                }
             }
 
             return null;
@@ -253,26 +273,48 @@ namespace Yomic.Core.Services
 
         /// <summary>
         /// Proportional downscaler with high-quality bicubic sampling.
+        /// For tall vertical webtoon strips (height > 2.5x width), scales only by maxDimension width
+        /// so vertical comics are never crushed to unreadable narrow widths.
         /// </summary>
         public SKBitmap? DownscaleProportionally(SKBitmap bitmap, int maxDimension)
         {
-            if (bitmap.Width <= maxDimension && bitmap.Height <= maxDimension) return null;
+            if (bitmap.Width <= 0 || bitmap.Height <= 0 || maxDimension <= 0) return null;
 
-            double ratio = Math.Min((double)maxDimension / bitmap.Width, (double)maxDimension / bitmap.Height);
-            int targetWidth = Math.Max(1, (int)(bitmap.Width * ratio));
-            int targetHeight = Math.Max(1, (int)(bitmap.Height * ratio));
-
-            var info = new SKImageInfo(targetWidth, targetHeight, bitmap.ColorType, bitmap.AlphaType);
-            var resized = new SKBitmap(info);
-
-            using var canvas = new SKCanvas(resized);
-            using var paint = new SKPaint
+            bool isVerticalStrip = bitmap.Height > bitmap.Width * 2.5;
+            double ratio;
+            if (isVerticalStrip)
             {
-                FilterQuality = SKFilterQuality.High,
-                IsAntialias = true
-            };
-            canvas.DrawBitmap(bitmap, new SKRect(0, 0, targetWidth, targetHeight), paint);
-            return resized;
+                if (bitmap.Width <= maxDimension) return null;
+                ratio = (double)maxDimension / bitmap.Width;
+            }
+            else
+            {
+                if (bitmap.Width <= maxDimension && bitmap.Height <= maxDimension) return null;
+                ratio = Math.Min((double)maxDimension / bitmap.Width, (double)maxDimension / bitmap.Height);
+            }
+
+            int targetWidth = Math.Max(1, (int)Math.Round(bitmap.Width * ratio));
+            int targetHeight = Math.Max(1, (int)Math.Round(bitmap.Height * ratio));
+
+            var safeColorType = bitmap.ColorType == SKColorType.Gray8 ? SKImageInfo.PlatformColorType : bitmap.ColorType;
+            var info = new SKImageInfo(targetWidth, targetHeight, safeColorType, bitmap.AlphaType);
+            var resized = new SKBitmap(info);
+            try
+            {
+                using var canvas = new SKCanvas(resized);
+                using var paint = new SKPaint
+                {
+                    FilterQuality = SKFilterQuality.High,
+                    IsAntialias = true
+                };
+                canvas.DrawBitmap(bitmap, new SKRect(0, 0, targetWidth, targetHeight), paint);
+                return resized;
+            }
+            catch
+            {
+                resized.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
@@ -280,79 +322,121 @@ namespace Yomic.Core.Services
         /// </summary>
         public SKBitmap? ApplySharpeningFilter(SKBitmap bitmap)
         {
-            var info = new SKImageInfo(bitmap.Width, bitmap.Height, bitmap.ColorType, bitmap.AlphaType);
+            var safeColorType = bitmap.ColorType == SKColorType.Gray8 ? SKImageInfo.PlatformColorType : bitmap.ColorType;
+            var info = new SKImageInfo(bitmap.Width, bitmap.Height, safeColorType, bitmap.AlphaType);
             var sharpened = new SKBitmap(info);
-
-            // 3x3 Sharpen kernel matrix
-            float[] kernel = new float[]
+            try
             {
-                 0.0f, -0.35f,  0.0f,
-                -0.35f,  2.40f, -0.35f,
-                 0.0f, -0.35f,  0.0f
-            };
+                // 3x3 Sharpen kernel matrix
+                float[] kernel = new float[]
+                {
+                     0.0f, -0.35f,  0.0f,
+                    -0.35f,  2.40f, -0.35f,
+                     0.0f, -0.35f,  0.0f
+                };
 
-            using var canvas = new SKCanvas(sharpened);
-            using var paint = new SKPaint();
-            using var filter = SKImageFilter.CreateMatrixConvolution(
-                new SKSizeI(3, 3),
-                kernel,
-                1.0f,
-                0.0f,
-                new SKPointI(1, 1),
-                SKShaderTileMode.Clamp,
-                false);
+                using var canvas = new SKCanvas(sharpened);
+                using var paint = new SKPaint();
+                using var filter = SKImageFilter.CreateMatrixConvolution(
+                    new SKSizeI(3, 3),
+                    kernel,
+                    1.0f,
+                    0.0f,
+                    new SKPointI(1, 1),
+                    SKShaderTileMode.Clamp,
+                    false);
 
-            paint.ImageFilter = filter;
-            canvas.DrawBitmap(bitmap, 0, 0, paint);
-            return sharpened;
+                paint.ImageFilter = filter;
+                canvas.DrawBitmap(bitmap, 0, 0, paint);
+                return sharpened;
+            }
+            catch
+            {
+                sharpened.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
         /// Stitches a series of vertical webtoon strip chunks into a single seamless image.
+        /// Automatically falls back to JPEG if height exceeds WebP's 16,383px spec limit.
         /// </summary>
         public byte[]? StitchWebtoonPages(IEnumerable<byte[]> pageChunks, int targetWidth = 0)
         {
+            var chunkList = pageChunks?.Where(c => c != null && c.Length > 0).ToList();
+            if (chunkList == null || chunkList.Count == 0) return null;
+
             var bitmaps = new List<SKBitmap>();
             try
             {
-                foreach (var chunk in pageChunks)
+                byte[]? singleValidChunk = null;
+                foreach (var chunk in chunkList)
                 {
-                    if (chunk == null || chunk.Length == 0) continue;
                     var bmp = SKBitmap.Decode(chunk);
-                    if (bmp != null) bitmaps.Add(bmp);
+                    if (bmp != null && bmp.Width > 0 && bmp.Height > 0)
+                    {
+                        bitmaps.Add(bmp);
+                        singleValidChunk ??= chunk;
+                    }
+                    else
+                    {
+                        bmp?.Dispose();
+                    }
                 }
 
                 if (bitmaps.Count == 0) return null;
-                if (bitmaps.Count == 1) return ProcessPage(pageChunks.First());
+                if (bitmaps.Count == 1) return ProcessPage(singleValidChunk!);
 
                 int maxWidth = bitmaps.Max(b => b.Width);
                 if (targetWidth > 0) maxWidth = Math.Min(maxWidth, targetWidth);
 
-                int totalHeight = 0;
+                long totalHeightLong = 0;
                 foreach (var b in bitmaps)
                 {
                     double scale = (double)maxWidth / b.Width;
-                    totalHeight += (int)(b.Height * scale);
+                    totalHeightLong += (long)Math.Round(b.Height * scale);
                 }
 
-                var stitched = new SKBitmap(maxWidth, totalHeight);
+                // Cap maximum stitched canvas width & height to prevent native OOM (JPEG max is 65,535px)
+                const int MaxSafeStitchWidth = 4096;
+                const int MaxSafeStitchHeight = 32768;
+                if (maxWidth > MaxSafeStitchWidth)
+                {
+                    maxWidth = MaxSafeStitchWidth;
+                    totalHeightLong = 0;
+                    foreach (var b in bitmaps)
+                    {
+                        double scale = (double)maxWidth / b.Width;
+                        totalHeightLong += (long)Math.Round(b.Height * scale);
+                    }
+                }
+                if (totalHeightLong <= 0 || totalHeightLong > MaxSafeStitchHeight)
+                {
+                    return null;
+                }
+
+                int totalHeight = (int)totalHeightLong;
+                using var stitched = new SKBitmap(maxWidth, totalHeight, SKImageInfo.PlatformColorType, SKAlphaType.Premul);
                 using (var canvas = new SKCanvas(stitched))
                 {
                     canvas.Clear(SKColors.White);
+                    using var paint = new SKPaint { FilterQuality = SKFilterQuality.High, IsAntialias = true };
                     int currentY = 0;
                     foreach (var b in bitmaps)
                     {
                         double scale = (double)maxWidth / b.Width;
-                        int scaledH = (int)(b.Height * scale);
+                        int scaledH = Math.Max(1, (int)Math.Round(b.Height * scale));
                         var destRect = new SKRect(0, currentY, maxWidth, currentY + scaledH);
-                        canvas.DrawBitmap(b, destRect);
+                        canvas.DrawBitmap(b, destRect, paint);
                         currentY += scaledH;
                     }
                 }
 
                 using var image = SKImage.FromBitmap(stitched);
-                using var data = image.Encode(SKEncodedImageFormat.Webp, 85);
-                stitched.Dispose();
+                var format = totalHeight <= 16383 && maxWidth <= 16383
+                    ? SKEncodedImageFormat.Webp
+                    : SKEncodedImageFormat.Jpeg;
+                using var data = image.Encode(format, 85);
                 return data?.ToArray();
             }
             finally

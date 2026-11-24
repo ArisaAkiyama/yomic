@@ -443,7 +443,7 @@ var source = {
             }
         });
         if (response.status < 200 || response.status >= 300) return null;
-        return JSON.parse(response.body);
+        try { return JSON.parse(response.body); } catch (e) { return null; }
     },
 
     genres: [

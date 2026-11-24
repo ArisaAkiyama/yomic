@@ -85,7 +85,7 @@ export function bindBackendEvents(this: YomicApp): void {
       if (container && (prog.active !== wasActive || this.syncProgress.current === 0)) {
         this.renderLibraryView(container);
       }
-    } else if (this.currentTab === 'updates') {
+    } else if (this.currentTab === 'updates' && !this.activeDetailMangaId) {
       const container = document.getElementById('viewContainer');
       if (container && (prog.active !== wasActive || this.syncProgress.current === 0)) {
         this.renderUpdatesView(container);
@@ -158,14 +158,34 @@ export function upsertMangaItem(this: YomicApp, incoming: MangaItem): MangaItem 
   );
   if (existingIdx >= 0) {
     const prev = this.mangaList[existingIdx];
+    const preserveCategories =
+      prev.inLibrary &&
+      incoming.inLibrary &&
+      (!incoming.categoryIds || incoming.categoryIds.length === 0) &&
+      prev.categoryIds &&
+      prev.categoryIds.length > 0;
+    const preserveMal =
+      prev.malTracked &&
+      !incoming.malTracked &&
+      (!incoming.malId || incoming.malId === 0);
+
     const merged: MangaItem = {
       ...prev,
       ...incoming,
-      chapters: incoming.chapters && incoming.chapters.length > 0 ? incoming.chapters : prev.chapters || []
+      chapters: incoming.chapters && incoming.chapters.length > 0 ? incoming.chapters : prev.chapters || [],
+      categoryIds: preserveCategories ? prev.categoryIds : incoming.categoryIds,
+      malTracked: preserveMal ? prev.malTracked : incoming.malTracked,
+      malId: preserveMal ? prev.malId : incoming.malId,
+      malTitle: preserveMal ? prev.malTitle : incoming.malTitle,
+      malStatus: preserveMal ? prev.malStatus : incoming.malStatus,
+      malScore: preserveMal ? prev.malScore : incoming.malScore
     };
     this.mangaList[existingIdx] = merged;
     if (this.activeDetailMangaId === prev.id) {
       this.activeDetailMangaId = merged.id;
+    }
+    if (this.readerMangaId === prev.id) {
+      this.readerMangaId = merged.id;
     }
     return merged;
   } else {
@@ -264,6 +284,7 @@ export async function bootstrapFromBackend(this: YomicApp): Promise<void> {
     if (data.settings) {
       Object.assign(this.settings, data.settings);
       this.readerMode = this.settings.defaultReaderMode || 'webtoon';
+      this.applyTheme(this.settings.isDarkMode);
       applyStaticDomTranslations(this.settings.appLanguage);
     }
     if (Array.isArray(data.announcements) && data.announcements.length > 0) {
@@ -294,6 +315,8 @@ export async function bootstrapFromBackend(this: YomicApp): Promise<void> {
   }
 }
 
+let activeDetailFetchSeq = 0;
+
 export async function fetchMangaDetailFromBackend(
   this: YomicApp,
   mangaId: string,
@@ -302,6 +325,7 @@ export async function fetchMangaDetailFromBackend(
   forceRefresh = false,
   sourceName?: string
 ): Promise<void> {
+  const reqSeq = ++activeDetailFetchSeq;
   try {
     this.isDetailLoading = true;
     const detail = await this.bridge.invoke<MangaItem | null>('manga:get-detail', {
@@ -311,6 +335,7 @@ export async function fetchMangaDetailFromBackend(
       sourceName: sourceName || '',
       forceRefresh
     });
+    if (reqSeq !== activeDetailFetchSeq) return;
     this.isDetailLoading = false;
     if (detail) {
       const updated = this.upsertMangaItem(detail);
@@ -318,8 +343,15 @@ export async function fetchMangaDetailFromBackend(
         this.activeDetailMangaId = updated.id;
         this.renderCurrentWorkspace(true);
       }
+    } else if (this.activeDetailMangaId === mangaId) {
+      // Clear skeleton loading rows cleanly even when backend returns null
+      this.renderCurrentWorkspace(true);
     }
   } catch {
+    if (reqSeq !== activeDetailFetchSeq) return;
     this.isDetailLoading = false;
+    if (this.activeDetailMangaId === mangaId) {
+      this.renderCurrentWorkspace(true);
+    }
   }
 }

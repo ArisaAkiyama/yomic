@@ -3,7 +3,7 @@
  * ========================================================================= */
 
 import type { YomicApp } from '../app.js';
-import { buildMangaCoverSvg, escapeXml } from '../mock-data.js';
+import { buildMangaCoverSvg, escapeXml, sanitizeCssColor, sanitizeImageSrc } from '../mock-data.js';
 import { ExtensionItem, MangaItem } from '../types.js';
 
 const SOURCE_ICON_LOOKUP: Array<{ match: string[]; url: string }> = [
@@ -50,8 +50,20 @@ export function resolveSourceIconUrl(key: string, baseUrl?: string, explicitIcon
 }
 
 export function getMangaCoverHtmlSrc(this: YomicApp, manga: MangaItem): string {
-  if (manga.coverUrl && manga.coverUrl.trim() !== '') {
-    return manga.coverUrl;
+  const trimmed = (manga.coverUrl || '').trim();
+  if (trimmed) {
+    const lower = trimmed.toLowerCase();
+    if (
+      lower.startsWith('https://') ||
+      lower.startsWith('http://') ||
+      lower.startsWith('data:image/') ||
+      lower.startsWith('blob:') ||
+      lower.startsWith('./') ||
+      lower.startsWith('assets/') ||
+      lower === 'app-logo.png'
+    ) {
+      return trimmed;
+    }
   }
   return buildMangaCoverSvg(manga);
 }
@@ -68,12 +80,14 @@ export function buildSourceLogoHtml(this: YomicApp, src: ExtensionItem, sizePx?:
   const size = sizePx || 36;
   const sizeStyle = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.35)}px;border-radius:8px;`;
   const key = `${src.pkg || ''} ${src.id || ''} ${src.name || ''}`;
-  const iconUrl = resolveSourceIconUrl(key, src.baseUrl, src.iconUrl);
+  const iconUrl = sanitizeImageSrc(resolveSourceIconUrl(key, src.baseUrl, src.iconUrl));
+  const safeAccent = sanitizeCssColor(src.accentColor);
+  const safeInitials = escapeXml(initials);
 
   if (iconUrl) {
-    return `<div class="v1-source-logo" style="${sizeStyle}background:transparent;border:none;box-shadow:none;padding:0;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;"><img src="${iconUrl}" alt="${escapeXml(src.name)}" style="width:100%;height:100%;object-fit:contain;border-radius:6px;display:block;" onerror="this.onerror=null;this.parentElement.style.background='${src.accentColor}';this.parentElement.style.color='#FFFFFF';this.parentElement.innerHTML='${initials}';" /></div>`;
+    return `<div class="v1-source-logo" style="${sizeStyle}background:transparent;border:none;box-shadow:none;padding:0;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;"><img src="${iconUrl}" alt="${escapeXml(src.name)}" style="width:100%;height:100%;object-fit:contain;border-radius:6px;display:block;" data-fallback-initials="${safeInitials}" data-fallback-bg="${safeAccent}" /></div>`;
   }
-  return `<div class="v1-source-logo" style="${sizeStyle}background:${src.accentColor};color:#FFFFFF;">${initials}</div>`;
+  return `<div class="v1-source-logo" style="${sizeStyle}background:${safeAccent};color:#FFFFFF;">${safeInitials}</div>`;
 }
 
 export function buildSourceFaviconHtml(
@@ -85,18 +99,18 @@ export function buildSourceFaviconHtml(
   const sName = sourceName || '';
   const ext = this.extensions.find(
     (e) =>
-      (sourceId && String(e.sourceId) === String(sourceId)) ||
-      (sourceId && e.id === String(sourceId)) ||
-      (e.name && e.name.toLowerCase() === sName.toLowerCase()) ||
-      (e.name && e.name.toLowerCase().includes(sName.toLowerCase()))
+      (sourceId !== undefined && sourceId !== '' && String(e.sourceId) === String(sourceId)) ||
+      (sourceId !== undefined && sourceId !== '' && e.id === String(sourceId)) ||
+      (sName !== '' && e.name && e.name.toLowerCase() === sName.toLowerCase()) ||
+      (sName !== '' && e.name && e.name.toLowerCase().includes(sName.toLowerCase()))
   );
   const key = `${ext?.pkg || ''} ${ext?.id || ''} ${ext?.name || ''} ${sName}`.toLowerCase();
-  const iconUrl = resolveSourceIconUrl(key, ext?.baseUrl, ext?.iconUrl);
+  const iconUrl = sanitizeImageSrc(resolveSourceIconUrl(key, ext?.baseUrl, ext?.iconUrl));
 
   if (iconUrl) {
-    return `<img class="manga-card-favicon" src="${iconUrl}" alt="${escapeXml(sName)}" title="${escapeXml(sName)}" width="${sizePx}" height="${sizePx}" loading="lazy" onerror="this.style.display='none';" />`;
+    return `<img class="manga-card-favicon" src="${iconUrl}" alt="${escapeXml(sName)}" title="${escapeXml(sName)}" width="${sizePx}" height="${sizePx}" loading="lazy" data-fallback-hide="1" />`;
   }
 
-  const initials = sName.slice(0, 2).toUpperCase() || '??';
+  const initials = escapeXml(sName.slice(0, 2).toUpperCase() || '??');
   return `<span class="manga-card-favicon-fallback" title="${escapeXml(sName)}">${initials}</span>`;
 }

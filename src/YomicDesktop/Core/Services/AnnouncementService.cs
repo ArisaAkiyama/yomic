@@ -19,7 +19,7 @@ namespace Yomic.Core.Services
         private System.Threading.Timer? _realtimeTimer;
         private string? _lastFetchedId;
         private string? _lastFetchedCommitSha;
-        private bool _isChecking;
+        private int _isChecking;
         private bool _disposed;
 
         public List<Announcement> CachedAnnouncements { get; private set; } = new();
@@ -38,8 +38,12 @@ namespace Yomic.Core.Services
             if (_realtimeTimer != null) return;
 
             var period = TimeSpan.FromMinutes(Math.Max(1, intervalMinutes));
-            // Trigger first check almost immediately (500ms), then periodically every minute
-            _realtimeTimer = new System.Threading.Timer(async _ => await PerformPeriodicCheckAsync(), null, TimeSpan.FromMilliseconds(500), period);
+            // Trigger first check almost immediately (500ms), then periodically every period (avoid async void callback)
+            _realtimeTimer = new System.Threading.Timer(
+                _ => _ = Task.Run(PerformPeriodicCheckAsync),
+                null,
+                TimeSpan.FromMilliseconds(500),
+                period);
         }
 
         public void StopRealtimeMonitoring()
@@ -50,8 +54,7 @@ namespace Yomic.Core.Services
 
         private async Task PerformPeriodicCheckAsync()
         {
-            if (_isChecking || _disposed) return;
-            _isChecking = true;
+            if (_disposed || Interlocked.CompareExchange(ref _isChecking, 1, 0) != 0) return;
 
             try
             {
@@ -63,7 +66,7 @@ namespace Yomic.Core.Services
             }
             finally
             {
-                _isChecking = false;
+                Interlocked.Exchange(ref _isChecking, 0);
             }
         }
 
@@ -101,6 +104,11 @@ namespace Yomic.Core.Services
 
         public async Task<List<Announcement>> FetchAnnouncementsAsync(bool force = false)
         {
+            if (_settingsService.IsOfflineMode)
+            {
+                return CachedAnnouncements;
+            }
+
             try
             {
                 using var client = _networkService != null
@@ -128,17 +136,10 @@ namespace Yomic.Core.Services
                     return CachedAnnouncements;
                 }
 
-                // Step 2: Fetch raw JSON using Commit SHA (Bypasses Fastly 5-minute CDN cache completely because SHA is unique)
-                string targetUrl;
-                if (!string.IsNullOrEmpty(latestCommitSha))
-                {
-                    targetUrl = string.Format(ANNOUNCEMENTS_RAW_COMMIT_TEMPLATE, latestCommitSha);
-                    _lastFetchedCommitSha = latestCommitSha;
-                }
-                else
-                {
-                    targetUrl = $"{ANNOUNCEMENTS_RAW_FALLBACK_URL}?t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-                }
+                // Step 2: Fetch raw JSON using Commit SHA (commit SHA is ONLY recorded AFTER download + parse succeed!)
+                string targetUrl = !string.IsNullOrEmpty(latestCommitSha)
+                    ? string.Format(ANNOUNCEMENTS_RAW_COMMIT_TEMPLATE, latestCommitSha)
+                    : $"{ANNOUNCEMENTS_RAW_FALLBACK_URL}?t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 
                 LogService.Info("AnnouncementService", $"Fetching announcements from: {targetUrl}");
                 var response = await client.GetStringAsync(targetUrl);
@@ -167,6 +168,10 @@ namespace Yomic.Core.Services
                     }
                 }
 
+                if (!string.IsNullOrEmpty(latestCommitSha))
+                {
+                    _lastFetchedCommitSha = latestCommitSha;
+                }
                 CachedAnnouncements = list;
                 LogService.Info("AnnouncementService", $"Successfully fetched {list.Count} announcements from GitHub (Commit: {(latestCommitSha != null && latestCommitSha.Length >= 7 ? latestCommitSha.Substring(0, 7) : "fallback")}).");
                 AnnouncementsUpdated?.Invoke(this, list);
@@ -218,8 +223,9 @@ namespace Yomic.Core.Services
 
         public bool HasUnreadAnnouncements()
         {
-            if (CachedAnnouncements.Count == 0) return false;
-            var latestId = CachedAnnouncements[0].Id;
+            var snapshot = CachedAnnouncements;
+            if (snapshot == null || snapshot.Count == 0) return false;
+            var latestId = snapshot[0].Id;
             var isUnread = !string.IsNullOrEmpty(latestId) && !string.Equals(latestId, _settingsService.LastReadAnnouncementId, StringComparison.OrdinalIgnoreCase);
             LogService.Info("AnnouncementService", $"Unread check: Latest ID='{latestId}', Last Read ID='{_settingsService.LastReadAnnouncementId}', HasUnread={isUnread}");
             return isUnread;

@@ -3,34 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://img.yomic.local https: data: blob:; connect-src 'self' https://img.yomic.local; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none';" />
   <title>Yomic</title>
-  <link rel="stylesheet" href="./styles/tokens.css?v=2.0.7" />
-  <link rel="stylesheet" href="./styles/main.css?v=2.0.7" />
-  <script>
-    (function () {
-      try {
-        var preload = window.__YOMIC_PRELOAD__;
-        var isDark = preload && preload.settings && typeof preload.settings.isDarkMode === 'boolean'
-          ? preload.settings.isDarkMode
-          : null;
-        if (isDark === null) {
-          var cached = localStorage.getItem('yomic_bootstrap_cache');
-          if (cached) {
-            var parsed = JSON.parse(cached);
-            if (parsed && parsed.settings && typeof parsed.settings.isDarkMode === 'boolean') {
-              isDark = parsed.settings.isDarkMode;
-            }
-          }
-        }
-        if (isDark) {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }
-        if (localStorage.getItem('yomic_onboarding_completed') !== 'true') {
-          document.documentElement.setAttribute('data-onboarding-pending', 'true');
-        }
-      } catch (e) {}
-    })();
-  </script>
+  <link rel="stylesheet" href="./styles/tokens.css?v=2.3.0" />
+  <link rel="stylesheet" href="./styles/main.css?v=2.3.0" />
+  <script src="./preload-theme.js?v=2.3.0"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -233,7 +210,7 @@
                   <span class="v1-reader-image-label" data-i18n="reader.autoCropLabel">Potong Tepi Putih (Auto-Crop)</span>
                   <span class="v1-reader-image-desc" data-i18n="reader.autoCropDesc">Pangkas margin kosong / letterbox</span>
                 </div>
-                <div id="toggleReaderCrop" class="toggle-switch">
+                <div id="toggleReaderCrop" class="toggle-switch" role="switch" aria-checked="false" aria-label="Auto-Crop Borders" tabindex="0">
                   <div class="toggle-thumb"></div>
                 </div>
               </div>
@@ -242,7 +219,7 @@
                   <span class="v1-reader-image-label" data-i18n="reader.sharpenLabel">Penajaman Gambar (Sharpening)</span>
                   <span class="v1-reader-image-desc" data-i18n="reader.sharpenDesc">Tingkatkan kejernihan teks &amp; garis</span>
                 </div>
-                <div id="toggleReaderSharpen" class="toggle-switch">
+                <div id="toggleReaderSharpen" class="toggle-switch" role="switch" aria-checked="false" aria-label="Image Sharpening" tabindex="0">
                   <div class="toggle-thumb"></div>
                 </div>
               </div>
@@ -251,7 +228,7 @@
                   <span class="v1-reader-image-label" data-i18n="reader.optimizeLabel">Optimasi Gambar Cerdas</span>
                   <span class="v1-reader-image-desc" data-i18n="reader.optimizeDesc">Hemat memori dan beban GPU</span>
                 </div>
-                <div id="toggleReaderOpt" class="toggle-switch">
+                <div id="toggleReaderOpt" class="toggle-switch" role="switch" aria-checked="true" aria-label="Smart Image Optimization" tabindex="0">
                   <div class="toggle-thumb"></div>
                 </div>
               </div>
@@ -499,7 +476,7 @@
 
       <div class="app-update-center">
         <div class="app-update-brand">
-          <img src="assets/app-logo.png" class="app-update-logo" alt="Yomic Logo" onerror="this.src='app-logo.png'" />
+          <img src="app-logo.png" class="app-update-logo" alt="Yomic Logo" />
           <span class="app-update-brand-name">Yomic</span>
         </div>
         <div id="appUpdateStatusText" class="app-update-status">Mengunduh Pembaruan Yomic...</div>
@@ -510,7 +487,7 @@
         <div class="app-update-notes-card">
           <div id="appUpdateNotesBody" class="app-update-notes-body"></div>
         </div>
-        <div id="appUpdateVersionText" class="app-update-version">Version: 2.2.1</div>
+        <div id="appUpdateVersionText" class="app-update-version">Version: 2.3.0</div>
         <div class="app-update-actions">
           <button id="btnStartAppUpdateNow" type="button" class="app-update-primary-btn" style="display: none;">Update Now</button>
         </div>
@@ -521,6 +498,6 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
   </div>
 
-  <script type="module" src="./dist/app.js?v=2.0.7"></script>
+  <script type="module" src="./dist/app.js?v=2.3.0"></script>
 </body>
 </html>
