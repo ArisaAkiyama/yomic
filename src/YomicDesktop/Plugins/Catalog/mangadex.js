@@ -6,7 +6,7 @@ var source = {
     uploadsUrl: "https://uploads.mangadex.org",
     language: "en",
     selectedLanguage: "en",
-    version: "1.1.0",
+    version: "1.2.0",
     description: "MangaDex extension implemented in JavaScript using the official MangaDex API",
     author: "DesktopKomik",
     iconBackground: "#ff6740",
@@ -301,7 +301,7 @@ var source = {
         let pages = [];
 
         for (let i = 0; i < files.length; i++) {
-            pages.push(baseUrl + "/" + qualityPath + "/" + hash + "/" + files[i] + "|Referer=https://mangadex.org&Origin=https://mangadex.org");
+            pages.push(baseUrl + "/" + qualityPath + "/" + hash + "/" + files[i] + "|Referer=https://mangadex.org|Origin=https://mangadex.org");
         }
 
         return pages;

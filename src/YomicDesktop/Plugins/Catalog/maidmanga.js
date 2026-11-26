@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://www.maid.my.id",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/maidmanga/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.1.0",
+    version: "1.2.0",
     description: "MaidManga Indonesian extension implemented in JavaScript using ZManga/WordPress pages",
     author: "DesktopKomik",
     iconBackground: "#1f2937",
@@ -206,7 +206,7 @@ var source = {
             if (!this.isReaderImage(src, img)) continue;
             if (seen[src]) continue;
             seen[src] = true;
-            pages.push(src + "|Referer=" + this.baseUrl + "/&Origin=" + this.baseUrl);
+            pages.push(src + "|Referer=" + this.baseUrl + "/|Origin=" + this.baseUrl);
         }
 
         if (pages.length === 0) {
@@ -379,7 +379,7 @@ var source = {
             let src = this.htmlDecode(match[1]);
             if (!this.isReaderImageUrl(src) || seen[src]) continue;
             seen[src] = true;
-            pages.push(src + "|Referer=" + this.baseUrl + "/&Origin=" + this.baseUrl);
+            pages.push(src + "|Referer=" + this.baseUrl + "/|Origin=" + this.baseUrl);
         }
         return pages;
     },

@@ -3,7 +3,7 @@ var source = {
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/en/weebcentral/res/mipmap-xxhdpi/ic_launcher.png",
     baseUrl: "https://weebcentral.com",
     language: "en",
-    version: "1.1.0",
+    version: "1.2.0",
     description: "WeebCentral English extension implemented in JavaScript using WeebCentral lightweight endpoints",
     author: "DesktopKomik",
     iconBackground: "#1f2937",
@@ -204,10 +204,24 @@ var source = {
         let seen = {};
 
         for (let i = 0; i < images.length; i++) {
-            let src = images[i].absUrl("src");
+            let src = ((el) => {
+                let cands = [
+                    el.absUrl("data-lazy-src") || el.attr("data-lazy-src"),
+                    el.absUrl("data-src") || el.attr("data-src"),
+                    el.absUrl("data-original") || el.attr("data-original"),
+                    el.absUrl("src") || el.attr("src")
+                ];
+                for (let c of cands) {
+                    if (!c) continue;
+                    let low = c.trim().toLowerCase();
+                    if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue;
+                    return c.trim();
+                }
+                return "";
+            })(images[i]);
             if (!src || seen[src]) continue;
             seen[src] = true;
-            pages.push(src + "|Referer=" + this.baseUrl + "&Origin=" + this.baseUrl);
+            pages.push(src + "|Referer=" + this.baseUrl + "|Origin=" + this.baseUrl);
         }
 
         return pages;

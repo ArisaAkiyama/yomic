@@ -9,14 +9,14 @@ var source = {
     baseUrl: "https://mangalay.blogspot.com",
     apiUrl: "https://mangalay.blogspot.com",
     language: "id",
-    version: "1.1.0",
+    version: "1.2.0",
     description: "Koleksi Baca Komik di Mangalay",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/mangalay/res/mipmap-xxhdpi/ic_launcher.png",
     iconBackground: "#0f172a",
     iconForeground: "#38bdf8",
     isNsfw: false,
-    isHasMorePages: true,
+    isHasMorePages: false,
     pageSize: 20,
     genres: [],
     formats: [],
@@ -66,16 +66,19 @@ var source = {
     },
 
     getPopularManga: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let items = this.fetchIndex();
         return { items: items, totalPages: 1 };
     },
 
     getLatestUpdates: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let items = this.fetchIndex();
         return { items: items, totalPages: 1 };
     },
 
     getSearchManga: function(query, page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let list = this.fetchIndex();
         let q = (query || "").toLowerCase().trim();
         let items = list.filter(m => m.title.toLowerCase().includes(q));
