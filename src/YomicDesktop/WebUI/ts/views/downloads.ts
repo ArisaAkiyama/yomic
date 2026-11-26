@@ -133,9 +133,9 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
             const isPaused = dl.status === 'paused';
             const stateClass = isDone ? 'completed' : isPaused ? 'paused' : '';
 
-            // Accurate chapter number calculation (preserves decimals like 137.5, handles non-English labels)
+            // Accurate chapter number calculation (preserves Chapter 0 and decimals like 137.5)
             const chapterNum =
-              typeof dl.chapterNumber === 'number' && dl.chapterNumber > 0
+              typeof dl.chapterNumber === 'number' && dl.chapterNumber >= 0
                 ? dl.chapterNumber
                 : (() => {
                     const match = dl.chapterLabel.match(/(\d+(\.\d+)?)/);

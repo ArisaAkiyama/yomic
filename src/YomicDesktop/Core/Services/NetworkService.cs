@@ -76,6 +76,12 @@ namespace Yomic.Core.Services
             _offlineModeChangedHandler = (isOffline) =>
             {
                 if (_isDisposed) return;
+                if (isOffline)
+                {
+                    // Immediately reflect offline status even if an online probe is currently in-flight
+                    SetOnlineStatus(false);
+                    return;
+                }
                 _ = CheckConnectivityAsync();
             };
 
@@ -229,6 +235,12 @@ namespace Yomic.Core.Services
                 
                 if (isConnected)
                 {
+                    // Re-check Offline Mode after awaiting HTTP so enabling Offline Mode mid-probe is never overwritten
+                    if (_settingsService.IsOfflineMode)
+                    {
+                        SetOnlineStatus(false);
+                        return false;
+                    }
                     Interlocked.Exchange(ref _consecutiveFailures, 0);
                     long rtt = sw.ElapsedMilliseconds;
                     CurrentPingMs = rtt;
@@ -264,6 +276,11 @@ namespace Yomic.Core.Services
                     var reply = await ping.SendPingAsync("8.8.8.8", 1500);
                     if (reply.Status == System.Net.NetworkInformation.IPStatus.Success)
                     {
+                        if (_settingsService.IsOfflineMode)
+                        {
+                            SetOnlineStatus(false);
+                            return false;
+                        }
                         Interlocked.Exchange(ref _consecutiveFailures, 0);
                         long rtt = reply.RoundtripTime;
                         CurrentPingMs = rtt;
@@ -326,9 +343,9 @@ namespace Yomic.Core.Services
                 string[] dohQueries = dohProvider switch
                 {
                     1 => new[] { "https://1.1.1.1/dns-query?name={0}&type={1}", "https://cloudflare-dns.com/dns-query?name={0}&type={1}" }, // Cloudflare
-                    2 => new[] { "https://8.8.8.8/resolve?name={0}&type={1}", "https://dns.google/resolve?name={0}&type={1}" }, // Google
+                    2 => new[] { "https://8.8.8.8/resolve?name={0}&type={1}", "https://dns.google/resolve?name={0}&type={1}", "https://1.1.1.1/dns-query?name={0}&type={1}" }, // Google + Cloudflare failover
                     3 => new[] { "https://dns.adguard-dns.com/resolve?name={0}&type={1}", "https://94.140.14.14/resolve?name={0}&type={1}" }, // AdGuard
-                    _ => new[] { "https://8.8.8.8/resolve?name={0}&type={1}" } // Fallback
+                    _ => new[] { "https://8.8.8.8/resolve?name={0}&type={1}", "https://1.1.1.1/dns-query?name={0}&type={1}" } // Fallback
                 };
 
                 foreach (var template in dohQueries)
@@ -513,6 +530,9 @@ namespace Yomic.Core.Services
             {
                 LogService.Info("Network", "Resetting connections...");
                 _dohDnsCache.Clear();
+                Yomic.Core.Sources.HttpSource.ClearDnsCache();
+                ExtensionRepositoryService.ClearDnsCache();
+                Yomic.Core.Helpers.UrlSecurityHelper.ClearAllDnsCaches();
                 
                 // Flush Windows DNS cache (requires cmd)
                 try

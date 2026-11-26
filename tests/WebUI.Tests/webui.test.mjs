@@ -650,4 +650,17 @@ describe('i18n & Static WebUI Integrity', () => {
       globalThis.document = prevDoc;
     }
   });
+
+  it('Batch 27 CSS & views fix Dual-Page zoom safe-center/300%, bare thumbnail blur clip-path, and Chapter 0 downloads', () => {
+    const refineCss = fs.readFileSync(path.join(webUiRoot, 'styles', 'modules', '07-refinements-updater.css'), 'utf8');
+    const modalsCss = fs.readFileSync(path.join(webUiRoot, 'styles', 'modules', '06-modals-dark-stats.css'), 'utf8');
+    const readerTs = fs.readFileSync(path.join(webUiRoot, 'ts', 'views', 'reader.ts'), 'utf8');
+    const downloadsTs = fs.readFileSync(path.join(webUiRoot, 'ts', 'views', 'downloads.ts'), 'utf8');
+
+    assert.ok(refineCss.includes('justify-content: safe center !important;'), 'Dual-Page container must use safe center');
+    assert.ok(refineCss.includes('width: max-content;'), 'Dual-Page container must allow horizontal expansion when zoomed > 100%');
+    assert.ok(modalsCss.includes('clip-path: inset(0 round 5px);'), 'Bare thumbnail blur must clip cleanly inside 5px radius');
+    assert.ok(readerTs.includes('Math.min(3.0,'), 'getDualPageImgStyle must allow zooming up to 300%');
+    assert.ok(downloadsTs.includes('dl.chapterNumber >= 0'), 'downloads.ts must preserve Chapter 0');
+  });
 });

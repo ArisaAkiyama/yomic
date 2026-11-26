@@ -153,6 +153,8 @@ namespace Yomic.Core.Services
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (List<IPAddress> Ips, DateTime ExpiresUtc)> _repoDohCache =
             new(StringComparer.OrdinalIgnoreCase);
 
+        internal static void ClearDnsCache() => _repoDohCache.Clear();
+
         private const string RepoOwner = "ArisaAkiyama";
 
         private const string RepoName = "extension-yomic";
@@ -1259,10 +1261,12 @@ namespace Yomic.Core.Services
                 }
 
                 string trimmedId = idOrPkg.Trim();
-                string pkgStem = trimmedId.Contains('.') ? trimmedId.Split('.').Last() : trimmedId;
-                string stemNoExt = pkgStem.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
-                    ? Path.GetFileNameWithoutExtension(pkgStem)
-                    : pkgStem;
+                // Strip .js extension BEFORE splitting on '.' so non-catalog filenames like "mycustom.js"
+                // resolve stem "mycustom" instead of "js".
+                string withoutJsExt = trimmedId.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
+                    ? Path.GetFileNameWithoutExtension(trimmedId)
+                    : trimmedId;
+                string stemNoExt = withoutJsExt.Contains('.') ? withoutJsExt.Split('.').Last() : withoutJsExt;
 
                 var entry = entries.FirstOrDefault(e =>
                     string.Equals(e.Pkg, trimmedId, StringComparison.OrdinalIgnoreCase) ||

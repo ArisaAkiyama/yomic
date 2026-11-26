@@ -1569,22 +1569,66 @@ namespace Yomic.Core.Services
             return batchNewChaptersCount;
         }
 
+        public async Task MarkAllChaptersNotDownloadedAsync(long mangaId)
+        {
+            if (mangaId <= 0) return;
+            await _dbLock.WaitAsync();
+            try
+            {
+                using var context = CreateDbContext();
+                var downloaded = await context.Chapters
+                    .Where(c => c.MangaId == mangaId && c.IsDownloaded)
+                    .ToListAsync();
+                if (downloaded.Count > 0)
+                {
+                    foreach (var ch in downloaded)
+                    {
+                        ch.IsDownloaded = false;
+                    }
+                    await context.SaveChangesAsync();
+                }
+            }
+            finally
+            {
+                _dbLock.Release();
+            }
+        }
+
         public async Task ClearDatabaseAsync()
         {
             try
             {
-                await _dbLock.WaitAsync();
-                try
+                string targetDbPath = string.IsNullOrWhiteSpace(_customDbPath)
+                    ? MangaDbContext.DefaultDatabasePath
+                    : _customDbPath;
+
+                // Acquire exclusive maintenance barrier so BOTH concurrent writers AND concurrent readers
+                // drain and block before deleting & recreating SQLite files (prevents Windows IOException file locks).
+                using (await MangaDbContext.EnterExclusiveMaintenanceAsync(targetDbPath))
                 {
-                    using var context = CreateDbContext();
-                    await context.Database.EnsureDeletedAsync();
-                    await context.Database.EnsureCreatedAsync();
+                    const int maxAttempts = 5;
+                    for (int attempt = 1; attempt <= maxAttempts; attempt++)
+                    {
+                        try
+                        {
+                            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+                            var walPath = targetDbPath + "-wal";
+                            var shmPath = targetDbPath + "-shm";
+                            if (System.IO.File.Exists(walPath)) System.IO.File.Delete(walPath);
+                            if (System.IO.File.Exists(shmPath)) System.IO.File.Delete(shmPath);
+                            if (System.IO.File.Exists(targetDbPath)) System.IO.File.Delete(targetDbPath);
+                            break;
+                        }
+                        catch (System.IO.IOException) when (attempt < maxAttempts)
+                        {
+                            await Task.Delay(100 * attempt);
+                        }
+                    }
+
+                    using var recreateContext = new MangaDbContext(_customDbPath, bypassMaintenanceBarrier: true);
+                    await recreateContext.Database.EnsureCreatedAsync();
                     MangaDbContext.ResetColumnCheck();
                     System.Diagnostics.Debug.WriteLine("[LibraryService] Database cleared and recreated.");
-                }
-                finally
-                {
-                    _dbLock.Release();
                 }
 
                 // Only delete real AppData downloads/covers when operating on the live DB (never when isolated with _customDbPath)

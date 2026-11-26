@@ -49,20 +49,31 @@ jobs:
           if (-not $tsc) { throw "Could not locate tsc.js under $nugetRoot" }
           node $tsc -p src/YomicDesktop/WebUI/tsconfig.json
 
-      - name: Verify Version Parity Across Csproj, Installer, Updater, and WebUI
+      - name: Verify Version Parity Across Csproj, Manifest, Installer, Updater, and WebUI
         shell: pwsh
         run: |
           [xml]$csproj = Get-Content src/YomicDesktop/YomicDesktop.csproj
           $ver = ($csproj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1).Trim()
+          $fileVer = ($csproj.Project.PropertyGroup.FileVersion | Where-Object { $_ } | Select-Object -First 1).Trim()
+          $asmVer = ($csproj.Project.PropertyGroup.AssemblyVersion | Where-Object { $_ } | Select-Object -First 1).Trim()
+          $verEsc = [regex]::Escape($ver)
           $iss = Get-Content Installer/Yomic.iss -Raw
           $upd = Get-Content src/YomicDesktop/Core/Services/UpdateService.cs -Raw
+          $manifest = Get-Content src/YomicDesktop/app.manifest -Raw
           $html = Get-Content src/YomicDesktop/WebUI/index.html -Raw
           $css = Get-Content src/YomicDesktop/WebUI/styles/main.css -Raw
-          if ($iss -notmatch "#define MyAppVersion `"$ver`"") { throw "Installer/Yomic.iss version mismatch (expected $ver)" }
-          if ($upd -notmatch "return `"$ver`";") { throw "UpdateService.cs fallback version mismatch (expected $ver)" }
-          if ($html -notmatch "\?v=$ver") { throw "WebUI/index.html cache-buster mismatch (expected ?v=$ver)" }
-          if ($css -notmatch "\?v=$ver") { throw "WebUI/styles/main.css cache-buster mismatch (expected ?v=$ver)" }
-          Write-Host "Version parity verified: v$ver"
+          $setTs = Get-Content src/YomicDesktop/WebUI/ts/views/settings.ts -Raw
+          $setJs = Get-Content src/YomicDesktop/WebUI/dist/views/settings.js -Raw
+          if ($fileVer -and $fileVer -ne "$ver.0") { throw "YomicDesktop.csproj FileVersion mismatch (expected $ver.0, got $fileVer)" }
+          if ($asmVer -and $asmVer -ne "$ver.0") { throw "YomicDesktop.csproj AssemblyVersion mismatch (expected $ver.0, got $asmVer)" }
+          if ($manifest -notmatch "version=`"$verEsc\.0`"") { throw "app.manifest version mismatch (expected $ver.0)" }
+          if ($iss -notmatch "#define MyAppVersion `"$verEsc`"") { throw "Installer/Yomic.iss version mismatch (expected $ver)" }
+          if ($upd -notmatch "return `"$verEsc`";") { throw "UpdateService.cs fallback version mismatch (expected $ver)" }
+          if ($html -notmatch "\?v=$verEsc") { throw "WebUI/index.html cache-buster mismatch (expected ?v=$ver)" }
+          if ($css -notmatch "\?v=$verEsc") { throw "WebUI/styles/main.css cache-buster mismatch (expected ?v=$ver)" }
+          if ($setTs -notmatch $verEsc) { throw "WebUI/ts/views/settings.ts version mismatch (expected $ver)" }
+          if ($setJs -notmatch $verEsc) { throw "WebUI/dist/views/settings.js compiled version mismatch (expected $ver)" }
+          Write-Host "Version parity verified across all 9 surfaces: v$ver"
 
       - name: Run WebUI TypeScript Automated Tests (node:test)
         run: node --test tests/WebUI.Tests/webui.test.mjs
@@ -75,3 +86,19 @@ jobs:
 
       - name: Validate Clean Release Publish
         run: dotnet publish src/YomicDesktop/YomicDesktop.csproj -c Release -r win-x64 --self-contained true --no-restore -o dist/ci_publish -v minimal
+
+      - name: Validate Inno Setup Installer Script Compilation
+        shell: pwsh
+        run: |
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+          if (-not $iscc) {
+            $candidates = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+              "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
+            )
+            $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw "ISCC.exe (Inno Setup 6) not found on runner" }
+          & $iscc "/DMySourceDir=..\dist\ci_publish" "/Odist\ci_installer" "Installer\Yomic.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed with exit code $LASTEXITCODE" }

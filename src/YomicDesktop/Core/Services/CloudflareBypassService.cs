@@ -238,7 +238,7 @@ namespace Yomic.Core.Services
 
         private static async Task InstallSsrfRequestGuardCoreAsync(IPage page)
         {
-            await page.SetRequestInterceptionAsync(true);
+            // Attach Request handler BEFORE enabling request interception so early requests can never slip unhandled
             page.Request += async (_, e) =>
             {
                 try
@@ -287,6 +287,7 @@ namespace Yomic.Core.Services
                     // Page or request may already be closed/handled
                 }
             };
+            await page.SetRequestInterceptionAsync(true);
         }
 
         public async Task<(string? UserAgent, Dictionary<string, string> Cookies)> GetTokensAsync(string url)
@@ -552,10 +553,14 @@ namespace Yomic.Core.Services
                         if (args.Target.Type == TargetType.Page)
                         {
                             var newPage = await args.Target.PageAsync();
-                            if (newPage != null && newPage != page)
+                            if (newPage == null || newPage == page) return;
+                            // Close unexpected JS-spawned popups immediately (prevents window.open SSRF race before interception attaches)
+                            if (args.Target.Opener != null)
                             {
-                                await InstallSsrfRequestGuardAsync(newPage);
+                                try { await newPage.CloseAsync(); } catch { }
+                                return;
                             }
+                            await InstallSsrfRequestGuardAsync(newPage);
                         }
                     }
                     catch { }

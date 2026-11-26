@@ -18,9 +18,15 @@ namespace Yomic.Core.Data
         public DbSet<MangaTrack> Tracks { get; set; } = null!;
 
         private readonly string? _customDbPath;
+        private readonly bool _bypassMaintenanceBarrier;
         private static bool _hasLoggedPath = false;
         private static volatile bool _columnsEnsured = false;
         private static readonly object _columnsLock = new object();
+
+        internal static string DefaultDatabasePath => System.IO.Path.Combine(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+            "Yomic",
+            "manga.db");
 
         /// <summary>
         /// Shared process-wide SQLite write &amp; maintenance gate coordinating LibraryService upserts,
@@ -190,6 +196,24 @@ namespace Yomic.Core.Data
             _customDbPath = customDbPath;
         }
 
+        internal MangaDbContext(string? customDbPath, bool bypassMaintenanceBarrier)
+        {
+            _customDbPath = customDbPath;
+            _bypassMaintenanceBarrier = bypassMaintenanceBarrier;
+        }
+
+        public override void Dispose()
+        {
+            try { SqlitePragmaInterceptor.ReleaseLeaseIfAttached(Database.GetDbConnection()); } catch { }
+            base.Dispose();
+        }
+
+        public override async ValueTask DisposeAsync()
+        {
+            try { SqlitePragmaInterceptor.ReleaseLeaseIfAttached(Database.GetDbConnection()); } catch { }
+            await base.DisposeAsync().ConfigureAwait(false);
+        }
+
         public static void ResetColumnCheck()
         {
             _columnsEnsured = false;
@@ -205,11 +229,12 @@ namespace Yomic.Core.Data
                 DbConnection? conn = null;
                 try
                 {
-                    // NEVER wrap GetDbConnection() in `using` — the DbContext owns its connection!
+                    // Open through EF Core (context.Database.OpenConnection) so SqlitePragmaInterceptor enforces
+                    // the exclusive maintenance barrier instead of bypassing it via raw conn.Open().
                     conn = context.Database.GetDbConnection();
                     if (conn.State != System.Data.ConnectionState.Open)
                     {
-                        conn.Open();
+                        context.Database.OpenConnection();
                         weOpened = true;
                     }
                     using var cmd = conn.CreateCommand();
@@ -284,7 +309,7 @@ namespace Yomic.Core.Data
                 {
                     if (weOpened && conn != null && conn.State == System.Data.ConnectionState.Open)
                     {
-                        try { conn.Close(); } catch { }
+                        try { context.Database.CloseConnection(); } catch { }
                     }
                 }
             }
@@ -322,7 +347,7 @@ namespace Yomic.Core.Data
 
             // Do NOT use Cache=Shared with WAL — shared-cache causes SQLITE_LOCKED bypassing busy_timeout
             optionsBuilder.UseSqlite($"Data Source={dbPath};Default Timeout=10");
-            optionsBuilder.AddInterceptors(new SqlitePragmaInterceptor(dbPath));
+            optionsBuilder.AddInterceptors(new SqlitePragmaInterceptor(dbPath, _bypassMaintenanceBarrier));
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -408,13 +433,15 @@ namespace Yomic.Core.Data
         internal const string PragmaSql = "PRAGMA busy_timeout=10000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-10000; PRAGMA temp_store=MEMORY;";
 
         private readonly string _dbPath;
+        private readonly bool _bypassMaintenanceBarrier;
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<DbConnection, object> _activeLeases = new();
 
-        public SqlitePragmaInterceptor() : this(string.Empty) { }
+        public SqlitePragmaInterceptor() : this(string.Empty, false) { }
 
-        public SqlitePragmaInterceptor(string dbPath)
+        public SqlitePragmaInterceptor(string dbPath, bool bypassMaintenanceBarrier = false)
         {
             _dbPath = dbPath;
+            _bypassMaintenanceBarrier = bypassMaintenanceBarrier;
         }
 
         private static void AttachLease(DbConnection connection, object lease)
@@ -429,6 +456,12 @@ namespace Yomic.Core.Data
                 }
                 _activeLeases.Add(connection, lease);
             }
+        }
+
+        internal static void ReleaseLeaseIfAttached(DbConnection? connection)
+        {
+            if (connection == null) return;
+            ReleaseLease(connection);
         }
 
         private static void ReleaseLease(DbConnection connection)
@@ -449,30 +482,52 @@ namespace Yomic.Core.Data
 
         public override InterceptionResult ConnectionOpening(DbConnection connection, ConnectionEventData eventData, InterceptionResult result)
         {
-            var lease = MangaDbContext.AcquireConnectionSlotSync(_dbPath);
-            AttachLease(connection, (System.Action)lease.ReleaseOnce);
+            if (!_bypassMaintenanceBarrier)
+            {
+                var lease = MangaDbContext.AcquireConnectionSlotSync(_dbPath);
+                AttachLease(connection, (System.Action)lease.ReleaseOnce);
+            }
             return base.ConnectionOpening(connection, eventData, result);
         }
 
         public override async ValueTask<InterceptionResult> ConnectionOpeningAsync(DbConnection connection, ConnectionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default)
         {
-            var lease = await MangaDbContext.AcquireConnectionSlotAsync(_dbPath, cancellationToken).ConfigureAwait(false);
-            AttachLease(connection, (System.Action)lease.ReleaseOnce);
+            if (!_bypassMaintenanceBarrier)
+            {
+                var lease = await MangaDbContext.AcquireConnectionSlotAsync(_dbPath, cancellationToken).ConfigureAwait(false);
+                AttachLease(connection, (System.Action)lease.ReleaseOnce);
+            }
             return await base.ConnectionOpeningAsync(connection, eventData, result, cancellationToken).ConfigureAwait(false);
         }
 
         public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData)
         {
-            using var command = connection.CreateCommand();
-            command.CommandText = PragmaSql;
-            command.ExecuteNonQuery();
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = PragmaSql;
+                command.ExecuteNonQuery();
+            }
+            catch
+            {
+                ReleaseLease(connection);
+                throw;
+            }
         }
 
         public override async Task ConnectionOpenedAsync(DbConnection connection, ConnectionEndEventData eventData, CancellationToken cancellationToken = default)
         {
-            using var command = connection.CreateCommand();
-            command.CommandText = PragmaSql;
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = PragmaSql;
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                ReleaseLease(connection);
+                throw;
+            }
         }
 
         public override void ConnectionClosed(DbConnection connection, ConnectionEndEventData eventData)

@@ -23,6 +23,9 @@ namespace Yomic.Core.Services
         
         [System.Text.Json.Serialization.JsonIgnore]
         public CancellationTokenSource CancellationTokenSource { get; set; } = new();
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        internal bool ResumeRequestedWhileUnwinding { get; set; }
     }
 
     public class DownloadService : IDisposable
@@ -647,6 +650,16 @@ namespace Yomic.Core.Services
                 else if (request.Status == "Paused")
                 {
                     var oldCts = request.CancellationTokenSource;
+                    bool shouldAutoResume;
+                    lock (_processingLock)
+                    {
+                        shouldAutoResume = request.ResumeRequestedWhileUnwinding;
+                        request.ResumeRequestedWhileUnwinding = false;
+                        if (shouldAutoResume && !_isPaused && !_isDisposed)
+                        {
+                            request.Status = "Queued";
+                        }
+                    }
                     if (!_isDisposed)
                     {
                         request.CancellationTokenSource = new CancellationTokenSource();
@@ -1001,10 +1014,34 @@ namespace Yomic.Core.Services
                         }
                     }
 
+                    bool finalizedAsCompleted = false;
+                    bool wasCancelledDuringFinalize = false;
                     lock (_processingLock)
                     {
-                        request.Status = "Completed";
+                        if (request.Status == "Cancelled")
+                        {
+                            wasCancelledDuringFinalize = true;
+                        }
+                        else if (request.Status != "Paused")
+                        {
+                            request.Status = "Completed";
+                            finalizedAsCompleted = true;
+                        }
                     }
+
+                    if (wasCancelledDuringFinalize)
+                    {
+                        // User cancelled during CBZ packaging/directory move — roll back promoted files cleanly
+                        try { DownloadPathService.DeleteDownloadedChapter(request.Manga, request.Chapter); } catch { }
+                        try { if (Directory.Exists(tempChapterDir)) Directory.Delete(tempChapterDir, true); } catch { }
+                        return;
+                    }
+
+                    if (!finalizedAsCompleted)
+                    {
+                        return;
+                    }
+
                     request.Chapter.IsDownloaded = true;
                     StatusChanged?.Invoke(this, request);
 
@@ -1072,6 +1109,14 @@ namespace Yomic.Core.Services
                     req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "cors");
                     req.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-site");
                     req.Headers.TryAddWithoutValidation("Origin", "https://mangamillion.shueisha.co.jp");
+                }
+
+                if (customHeaders.TryGetValue("Origin", out var customOrigin) &&
+                    !req.Headers.Contains("Origin") &&
+                    Uri.TryCreate(customOrigin, UriKind.Absolute, out var originUri) &&
+                    (originUri.Scheme == Uri.UriSchemeHttp || originUri.Scheme == Uri.UriSchemeHttps))
+                {
+                    req.Headers.TryAddWithoutValidation("Origin", originUri.GetLeftPart(UriPartial.Authority));
                 }
 
                 if (customHeaders.TryGetValue("Referer", out var customRef))
@@ -1237,14 +1282,26 @@ namespace Yomic.Core.Services
             _isPaused = false;
 
             var resumedItems = new List<DownloadRequest>();
-            lock (_queueLock)
+            // Acquire _processingLock -> _queueLock atomically so active workers unwinding from Pause
+            // immediately re-queue as "Queued" instead of silently dropping Resume.
+            lock (_processingLock)
             {
-                foreach (var item in _queue)
+                foreach (var active in _activeDownloads)
                 {
-                    if (item.Status == "Paused")
+                    if (active.Status == "Paused")
                     {
-                        item.Status = "Queued";
-                        resumedItems.Add(item);
+                        active.ResumeRequestedWhileUnwinding = true;
+                    }
+                }
+                lock (_queueLock)
+                {
+                    foreach (var item in _queue)
+                    {
+                        if (item.Status == "Paused")
+                        {
+                            item.Status = "Queued";
+                            resumedItems.Add(item);
+                        }
                     }
                 }
             }
@@ -1309,12 +1366,23 @@ namespace Yomic.Core.Services
             _isPaused = false;
 
             bool resumedInQueue = false;
-            lock (_queueLock)
+            lock (_processingLock)
             {
-                if (_queue.Contains(request))
+                if (_activeDownloads.Contains(request) && request.Status == "Paused")
                 {
-                    request.Status = "Queued";
-                    resumedInQueue = true;
+                    // Worker is still unwinding after Pause(); signal finally{} to re-queue as "Queued"
+                    request.ResumeRequestedWhileUnwinding = true;
+                }
+                else
+                {
+                    lock (_queueLock)
+                    {
+                        if (_queue.Contains(request))
+                        {
+                            request.Status = "Queued";
+                            resumedInQueue = true;
+                        }
+                    }
                 }
             }
 
@@ -1383,6 +1451,16 @@ namespace Yomic.Core.Services
                 request.Status = "Cancelled";
                 try { request.CancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
                 try { request.CancellationTokenSource.Dispose(); } catch { }
+                // Clean up any partial .tmp folder left behind if this queued item was previously paused mid-download
+                if (request.Manga != null && request.Chapter != null)
+                {
+                    try
+                    {
+                        var tempDir = DownloadPathService.GetChapterTempDirectory(request.Manga, request.Chapter);
+                        if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+                    }
+                    catch { }
+                }
                 QueueChanged?.Invoke(this, request);
                 SaveQueue();
                 return;

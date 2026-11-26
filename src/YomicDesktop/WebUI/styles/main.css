@@ -1,10 +1,10 @@
 /* =========================================================================
  * YOMIC V2 — MODULAR STYLESHEET ENTRYPOINT (PRESERVES EXACT CASCADE ORDER)
  * ========================================================================= */
-@import url('./modules/01-base-shell.css?v=2.5.0');
-@import url('./modules/02-library-browse.css?v=2.5.0');
-@import url('./modules/03-manga-detail.css?v=2.5.0');
-@import url('./modules/04-settings-empty.css?v=2.5.0');
-@import url('./modules/05-reader.css?v=2.5.0');
-@import url('./modules/06-modals-dark-stats.css?v=2.5.0');
-@import url('./modules/07-refinements-updater.css?v=2.5.0');
+@import url('./modules/01-base-shell.css?v=2.6.0');
+@import url('./modules/02-library-browse.css?v=2.6.0');
+@import url('./modules/03-manga-detail.css?v=2.6.0');
+@import url('./modules/04-settings-empty.css?v=2.6.0');
+@import url('./modules/05-reader.css?v=2.6.0');
+@import url('./modules/06-modals-dark-stats.css?v=2.6.0');
+@import url('./modules/07-refinements-updater.css?v=2.6.0');

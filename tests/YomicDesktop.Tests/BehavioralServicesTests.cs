@@ -1182,4 +1182,159 @@ var source = {
             CleanupTempDir(tempDir);
         }
     }
+
+    [Fact]
+    public async Task MangaDbContext_EnsureMangaColumnsExist_RespectsExclusiveMaintenanceBarrier()
+    {
+        string tempDir = CreateTempDir("schema_barrier");
+        string dbPath = Path.Combine(tempDir, "schema.db");
+        try
+        {
+            using (var init = new MangaDbContext(dbPath))
+            {
+                await init.Database.EnsureCreatedAsync();
+            }
+
+            MangaDbContext.ResetColumnCheck();
+            Task schemaTask;
+            using (await MangaDbContext.EnterExclusiveMaintenanceAsync(dbPath))
+            {
+                schemaTask = Task.Run(() =>
+                {
+                    using var ctx = new MangaDbContext(dbPath);
+                    MangaDbContext.EnsureMangaColumnsExist(ctx, forceRecheck: true);
+                });
+
+                await Task.Delay(120);
+                Assert.False(schemaTask.IsCompleted, "EnsureMangaColumnsExist must not bypass the exclusive maintenance barrier.");
+            }
+
+            await schemaTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            CleanupTempDir(tempDir);
+        }
+    }
+
+    [Fact]
+    public async Task LibraryService_ClearDatabaseAsync_RecreatesEmptyDbCleanlyWithExclusiveBarrier()
+    {
+        string tempDir = CreateTempDir("clear_db_barrier");
+        string dbPath = Path.Combine(tempDir, "clear.db");
+        try
+        {
+            using (var init = new MangaDbContext(dbPath))
+            {
+                await init.Database.EnsureCreatedAsync();
+            }
+
+            var library = new LibraryService(dbPath);
+            await library.AddToLibraryAsync(new Manga { Source = 111, Url = "https://example.test/m1", Title = "Before Clear" });
+
+            await library.ClearDatabaseAsync();
+
+            using var verify = new MangaDbContext(dbPath);
+            Assert.Empty(await verify.Mangas.ToListAsync());
+        }
+        finally
+        {
+            CleanupTempDir(tempDir);
+        }
+    }
+
+    [Fact]
+    public async Task ExtensionRepositoryService_UninstallExtension_HandlesDotJsFilenameAndExactSourceNameMatch()
+    {
+        string tempDir = CreateTempDir("ext_dotjs_exact");
+        string localDir = Path.Combine(tempDir, "local");
+        string userDir = Path.Combine(tempDir, "user");
+        string settingsPath = Path.Combine(tempDir, "settings.json");
+        try
+        {
+            Directory.CreateDirectory(localDir);
+            Directory.CreateDirectory(userDir);
+
+            string mirrorPath = Path.Combine(userDir, "komikumirror.js");
+            string exactPath = Path.Combine(userDir, "mycustom.js");
+            await File.WriteAllTextAsync(mirrorPath, @"
+var source = {
+    name: 'Komiku Mirror',
+    baseUrl: 'https://mirror.example',
+    language: 'id',
+    version: '1.0.0',
+    getPopularManga: function() { return { items: [], totalPages: 1 }; },
+    getSearchManga: function() { return { items: [], totalPages: 1 }; },
+    getMangaDetails: function(u) { return { title: 'T', url: u }; },
+    getChapterList: function() { return []; },
+    getPageList: function() { return []; }
+};", Encoding.UTF8);
+            await File.WriteAllTextAsync(exactPath, @"
+var source = {
+    name: 'Komiku',
+    baseUrl: 'https://exact.example',
+    language: 'id',
+    version: '1.0.0',
+    getPopularManga: function() { return { items: [], totalPages: 1 }; },
+    getSearchManga: function() { return { items: [], totalPages: 1 }; },
+    getMangaDetails: function(u) { return { title: 'T', url: u }; },
+    getChapterList: function() { return []; },
+    getPageList: function() { return []; }
+};", Encoding.UTF8);
+
+            using var settings = new SettingsService(settingsPath);
+            using var network = new NetworkService(settings);
+            using var sm = new SourceManager(localDir, userDir, deferExtensionLoad: false);
+
+            // Exact match must win over earlier substring match "Komiku Mirror"
+            var resolved = sm.GetSourceByName("Komiku");
+            Assert.NotNull(resolved);
+            Assert.Equal("Komiku", resolved!.Name);
+
+            // Uninstalling a non-catalog plugin by .js filename must succeed
+            var status = new SourceStatusService(sm, settings, network);
+            using var repo = new ExtensionRepositoryService(sm, settings, status);
+            var (ok, _) = repo.UninstallExtension("mycustom.js");
+            Assert.True(ok);
+            Assert.False(File.Exists(exactPath));
+            Assert.DoesNotContain(sm.GetSources(), s => s.Name == "Komiku");
+        }
+        finally
+        {
+            CleanupTempDir(tempDir);
+        }
+    }
+
+    [Fact]
+    public async Task OfflineMode_BlocksMalServiceUpdateServiceAndPublicIpLiteralGuard()
+    {
+        string tempDir = CreateTempDir("offline_guards");
+        string settingsPath = Path.Combine(tempDir, "settings.json");
+        var prevOffline = HttpSource.IsOfflineModeProvider;
+        try
+        {
+            using var settings = new SettingsService(settingsPath);
+            settings.IsOfflineMode = true;
+            settings.MalAccessToken = "dummy-token-offline-test";
+            HttpSource.IsOfflineModeProvider = () => true;
+
+            using var mal = new MyAnimeListService(settings);
+            Assert.Empty(await mal.SearchMangaAsync("Solo Leveling"));
+            Assert.False(await mal.UpdateMangaStatusAsync(12345, "reading", 10, 8));
+            Assert.Equal(string.Empty, await mal.FetchUserProfileNameAsync());
+
+            using var updater = new UpdateService();
+            bool installOk = await updater.DownloadAndInstallUpdateAsync("https://github.com/ArisaAkiyama/yomic/releases/download/v2.4.0/Yomic_Setup_v2.4.0.exe");
+            Assert.False(installOk);
+
+            // Public IP literal must ALSO be blocked when Offline Mode is active
+            bool literalSafe = await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync("https://93.184.216.34/page.jpg", bypassCache: true);
+            Assert.False(literalSafe);
+        }
+        finally
+        {
+            HttpSource.IsOfflineModeProvider = prevOffline;
+            CleanupTempDir(tempDir);
+        }
+    }
 }

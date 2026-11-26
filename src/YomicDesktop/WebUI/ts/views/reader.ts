@@ -115,8 +115,8 @@ function getDualSpreadPages(currentPage: number, totalPages: number): {
 }
 
 function getDualPageImgStyle(zoomPercent: number): string {
-  const scale = Math.max(0.6, Math.min(1.5, zoomPercent / 100));
-  return `max-height:calc((100vh - 28px) * ${scale});max-width:calc((50vw - 20px) * ${scale});width:auto;height:auto;object-fit:contain;display:block;`;
+  const scale = Math.max(0.25, Math.min(3.0, (Number(zoomPercent) || 100) / 100));
+  return `max-height:calc((100vh - 28px) * ${scale.toFixed(3)});max-width:calc((50vw - 20px) * ${scale.toFixed(3)});width:auto;height:auto;object-fit:contain;display:block;`;
 }
 
 export function prefetchReaderPagesAround(this: YomicApp, currentPage: number): void {

@@ -100,6 +100,8 @@ namespace Yomic.Core.Sources
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (List<System.Net.IPAddress> Ips, DateTime ExpiresUtc)> _dohDnsCache =
             new(StringComparer.OrdinalIgnoreCase);
 
+        internal static void ClearDnsCache() => _dohDnsCache.Clear();
+
         protected HttpSource()
         {
             // Client will be created lazily on first access via the Client property

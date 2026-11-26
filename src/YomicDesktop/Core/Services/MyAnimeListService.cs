@@ -62,6 +62,7 @@ namespace Yomic.Core.Services
 
         public async Task<bool> AuthenticateAsync(string authCode, string codeVerifier)
         {
+            if (_settingsService.IsOfflineMode) return false;
             try
             {
                 var values = new Dictionary<string, string>
@@ -134,7 +135,7 @@ namespace Yomic.Core.Services
 
         public async Task<string> FetchUserProfileNameAsync()
         {
-            if (!IsConnected) return "";
+            if (!IsConnected || _settingsService.IsOfflineMode) return "";
             int capturedEpoch = System.Threading.Volatile.Read(ref _authEpoch);
 
             try
@@ -174,7 +175,7 @@ namespace Yomic.Core.Services
 
         private async Task EnsureValidTokenAsync()
         {
-            if (!IsConnected) return;
+            if (!IsConnected || _settingsService.IsOfflineMode) return;
 
             // Refresh token 5 minutes before it expires (serialized to prevent concurrent refresh_token rotation failure)
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -268,7 +269,7 @@ namespace Yomic.Core.Services
         public async Task<List<MalSearchResult>> SearchMangaAsync(string query)
         {
             var results = new List<MalSearchResult>();
-            if (!IsConnected) return results;
+            if (!IsConnected || _settingsService.IsOfflineMode) return results;
 
             try
             {
@@ -339,7 +340,7 @@ namespace Yomic.Core.Services
         // Fetch User List Status for a specific MAL Manga ID
         public async Task<MangaTrack?> FetchMangaStatusAsync(long malId, long localMangaId)
         {
-            if (!IsConnected) return null;
+            if (!IsConnected || _settingsService.IsOfflineMode) return null;
 
             try
             {
@@ -398,7 +399,7 @@ namespace Yomic.Core.Services
         // Update User List Status for a Manga on MyAnimeList
         public async Task<bool> UpdateMangaStatusAsync(long malId, string status, int numChaptersRead, int score)
         {
-            if (!IsConnected) return false;
+            if (!IsConnected || _settingsService.IsOfflineMode) return false;
 
             try
             {

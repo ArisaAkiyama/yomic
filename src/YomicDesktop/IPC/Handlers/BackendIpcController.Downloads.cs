@@ -111,7 +111,7 @@ namespace YomicDesktop.IPC
                 {
                     sizeText = $"{req.Progress}%";
                 }
-                float chNum = req.Chapter.ChapterNumber > 0 ? req.Chapter.ChapterNumber : 1;
+                float chNum = req.Chapter.ChapterNumber >= 0 ? req.Chapter.ChapterNumber : 1;
                 return new DownloadQueueDto
                 {
                     Id = MakeDownloadQueueItemId(req.Manga.Source, req.Chapter.Url),
@@ -239,6 +239,16 @@ namespace YomicDesktop.IPC
                         }
                     }
                 }
+                else if (req.Manga != null && req.Chapter != null)
+                {
+                    // Also clean up any partial .tmp folder left behind by a previously paused download
+                    try
+                    {
+                        var tempDir = DownloadPathService.GetChapterTempDirectory(req.Manga, req.Chapter);
+                        if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+                    }
+                    catch { }
+                }
             }
             return GetDownloadsQueueList();
         }
@@ -308,12 +318,22 @@ namespace YomicDesktop.IPC
                 {
                     try { Directory.Delete(mangaDir, true); } catch { }
                 }
-                if (manga.Chapters != null)
+                if (manga.Chapters != null && manga.Chapters.Count > 0)
                 {
                     foreach (var ch in manga.Chapters)
                     {
                         ch.IsDownloaded = false;
-                        await LibraryService.UpdateChapterDownloadStatusByUrlAsync(ch.Url, false, manga.Id);
+                    }
+                    if (manga.Id > 0)
+                    {
+                        await LibraryService.MarkAllChaptersNotDownloadedAsync(manga.Id);
+                    }
+                    else
+                    {
+                        foreach (var ch in manga.Chapters)
+                        {
+                            await LibraryService.UpdateChapterDownloadStatusByUrlAsync(ch.Url, false, 0);
+                        }
                     }
                 }
             }

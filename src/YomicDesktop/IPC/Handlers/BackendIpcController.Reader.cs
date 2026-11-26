@@ -165,7 +165,7 @@ namespace YomicDesktop.IPC
                         {
                             MangaId = frontendMangaId,
                             ChapterUrl = targetChUrl,
-                            ChapterNumber = chapter.ChapterNumber > 0 ? chapter.ChapterNumber : chapterNumber,
+                            ChapterNumber = chapter.ChapterNumber >= 0 ? chapter.ChapterNumber : chapterNumber,
                             ChapterTitle = chTitle,
                             IsOffline = true,
                             LastPageRead = resolvedPage,
@@ -275,7 +275,7 @@ namespace YomicDesktop.IPC
                             {
                                 MangaId = frontendMangaId,
                                 ChapterUrl = targetChUrl,
-                                ChapterNumber = chapter?.ChapterNumber > 0 ? chapter.ChapterNumber : chapterNumber,
+                                ChapterNumber = chapter != null && chapter.ChapterNumber >= 0 ? chapter.ChapterNumber : chapterNumber,
                                 ChapterTitle = chTitle,
                                 IsOffline = false,
                                 LastPageRead = resolvedPage,
@@ -347,7 +347,7 @@ namespace YomicDesktop.IPC
             {
                 _chapterLastPageReadCache[MakeChapterCacheKey(cacheSourceId, chapterUrl)] = storedValue;
             }
-            if (chapterNumber > 0)
+            if (chapterNumber >= 0)
             {
                 _chapterLastPageReadCache[$"{mangaId}_{chapterNumber}"] = storedValue;
                 if (!string.IsNullOrEmpty(mangaUrl))

@@ -713,4 +713,29 @@ var source = {
         // Default RELAUNCH behavior in silent mode should relaunch unless explicitly /RELAUNCH=0
         Assert.Contains("{param:RELAUNCH|1}", iss, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void CatalogRuntime_Batch27_PipeHeaderDelimiterAndMangalaySinglePageGuard()
+    {
+        string catalogDir = FindCatalogDirectory();
+        var badDelimPlugins = new List<string>();
+        foreach (var jsPath in Directory.GetFiles(catalogDir, "*.js"))
+        {
+            string txt = File.ReadAllText(jsPath, Encoding.UTF8);
+            if (System.Text.RegularExpressions.Regex.IsMatch(txt, @"\|(?:Referer|Origin|User-Agent|Cookie)=[^""'\r\n]*&(?:Origin|Referer|User-Agent|Cookie)=", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                badDelimPlugins.Add(Path.GetFileName(jsPath));
+            }
+        }
+        Assert.True(badDelimPlugins.Count == 0, "Malformed &Origin=/&Referer= pipe header delimiters found in: " + string.Join(", ", badDelimPlugins));
+
+        // Verify mangalay.js sets isHasMorePages: false and stops on page 2
+        var engine = new Jint.Engine(opts => opts.TimeoutInterval(TimeSpan.FromSeconds(5)).LimitRecursion(64));
+        engine.SetValue("log", new Action<object?>(_ => { }));
+        engine.SetValue("fetch", new Func<string, object?, object>((_, _) => new { status = 200, body = "<html></html>" }));
+        engine.SetValue("Html", new { parse = new Func<string, string, Yomic.Core.Sources.JsDocument>(Yomic.Core.Sources.HtmlParser.parse) });
+        engine.Execute(File.ReadAllText(Path.Combine(catalogDir, "mangalay.js"), Encoding.UTF8));
+        Assert.False(engine.Evaluate("Boolean(source.isHasMorePages)").AsBoolean());
+        Assert.Equal(0, engine.Evaluate("source.getPopularManga(2).items.length").AsNumber());
+    }
 }

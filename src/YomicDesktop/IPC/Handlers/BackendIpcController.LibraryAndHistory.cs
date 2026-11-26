@@ -168,7 +168,7 @@ namespace YomicDesktop.IPC
                     Id = $"upd-{latest.Id}",
                     MangaId = MakeMangaFrontendId(manga),
                     MangaTitle = manga.Title,
-                    ChapterNumber = (float)Math.Round(targetChapter.ChapterNumber > 0 ? targetChapter.ChapterNumber : 1, 2),
+                    ChapterNumber = (float)Math.Round(targetChapter.ChapterNumber >= 0 ? targetChapter.ChapterNumber : 1, 2),
                     ChapterTitle = CleanChapterSubTitle(targetChapter.Name, targetChapter.ChapterNumber),
                     ChapterUrl = targetChapter.Url,
                     SourceName = sourceName,
@@ -177,7 +177,7 @@ namespace YomicDesktop.IPC
                     IsNew = ordered.Any(c => !c.Read),
                     ExtraChaptersCount = Math.Max(0, ordered.Count - 1),
                     CoverUrl = WebResourceImageProxy.BuildCoverProxyUrl(manga.Id, manga.ThumbnailUrl, manga.Source),
-                    FirstUnreadChapterNumber = (float)Math.Round(targetChapter.ChapterNumber > 0 ? targetChapter.ChapterNumber : 1, 2),
+                    FirstUnreadChapterNumber = (float)Math.Round(targetChapter.ChapterNumber >= 0 ? targetChapter.ChapterNumber : 1, 2),
                     FirstUnreadChapterTitle = CleanChapterSubTitle(targetChapter.Name, targetChapter.ChapterNumber),
                     FirstUnreadChapterUrl = targetChapter.Url
                 });
@@ -230,6 +230,11 @@ namespace YomicDesktop.IPC
         private async Task<object> HandleClearAllHistoryAsync()
         {
             await LibraryService.ClearAllHistoryAndProgressAsync();
+            // Clear in-memory reader progress & image caches so reopening previously read chapters starts at page 1
+            _chapterLastPageReadCache.Clear();
+            _chapterTotalPagesCache.Clear();
+            _mangaLastTotalPagesCache.Clear();
+            ImageProxy.ClearRamCache();
             try
             {
                 var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);

@@ -26,6 +26,68 @@ namespace Yomic.Core.Services
             return match.Success ? match.Groups[1].Value.ToLowerInvariant() : null;
         }
 
+        private static bool IsTrustedUpdateDownloadUri(Uri candidate)
+        {
+            if (!string.Equals(candidate.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                !candidate.IsDefaultPort)
+            {
+                return false;
+            }
+            string host = candidate.IdnHost.TrimEnd('.');
+            return (host.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
+                    candidate.AbsolutePath.StartsWith(ALLOWED_RELEASE_PATH_PREFIX, StringComparison.OrdinalIgnoreCase)) ||
+                   host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+                   host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static HttpClient CreateUpdateHttpClient(TimeSpan timeout)
+        {
+            var handler = new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+                ConnectCallback = async (context, token) =>
+                {
+                    if (Yomic.Core.Sources.HttpSource.IsOfflineModeProvider?.Invoke() == true)
+                    {
+                        throw new HttpRequestException("Offline Mode is enabled.");
+                    }
+
+                    string host = context.DnsEndPoint.Host;
+                    var publicIps = await Yomic.Core.Helpers.UrlSecurityHelper.ResolvePublicIpsWithDoHAsync(host, token).ConfigureAwait(false);
+                    if (publicIps.Count == 0)
+                    {
+                        throw new HttpRequestException($"Blocked or unresolved update host: {host}");
+                    }
+
+                    Exception? lastEx = null;
+                    foreach (var ip in publicIps)
+                    {
+                        var socket = new System.Net.Sockets.Socket(ip.AddressFamily, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+                        try
+                        {
+                            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                            attemptCts.CancelAfter(TimeSpan.FromSeconds(5));
+                            await socket.ConnectAsync(ip, context.DnsEndPoint.Port, attemptCts.Token).ConfigureAwait(false);
+                            return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                        }
+                        catch (Exception ex)
+                        {
+                            socket.Dispose();
+                            lastEx = ex;
+                            if (token.IsCancellationRequested) throw;
+                        }
+                    }
+
+                    throw lastEx ?? new HttpRequestException($"Failed to connect to update host: {host}");
+                }
+            };
+            var client = new HttpClient(handler) { Timeout = timeout };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
+            return client;
+        }
+
         private async Task<string?> TryFetchSidecarSha256Async(HttpClient client, string exeDownloadUrl, CancellationToken ct)
         {
             string sidecarUrl = exeDownloadUrl + ".sha256";
@@ -35,24 +97,34 @@ namespace Yomic.Core.Services
             }
             try
             {
-                using var resp = await client.GetAsync(sidecarUri, HttpCompletionOption.ResponseHeadersRead, ct);
-                if (!resp.IsSuccessStatusCode) return null;
-                var finalUri = resp.RequestMessage?.RequestUri;
-                if (finalUri == null) return null;
-                string finalHost = finalUri.IdnHost.TrimEnd('.');
-                bool allowed =
-                    (finalHost.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
-                     finalUri.AbsolutePath.StartsWith(ALLOWED_RELEASE_PATH_PREFIX, StringComparison.OrdinalIgnoreCase)) ||
-                    finalHost.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
-                    finalHost.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
-                if (!string.Equals(finalUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-                    !finalUri.IsDefaultPort ||
-                    !allowed)
+                Uri currentUri = sidecarUri;
+                const int maxRedirects = 5;
+                for (int hop = 0; hop <= maxRedirects; hop++)
                 {
-                    return null;
+                    if (!IsTrustedUpdateDownloadUri(currentUri))
+                    {
+                        return null;
+                    }
+                    var hopResp = await client.GetAsync(currentUri, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                    int status = (int)hopResp.StatusCode;
+                    if (status is 301 or 302 or 303 or 307 or 308 && hopResp.Headers.Location != null)
+                    {
+                        var location = hopResp.Headers.Location;
+                        var nextUri = location.IsAbsoluteUri ? location : new Uri(currentUri, location);
+                        hopResp.Dispose();
+                        if (hop == maxRedirects) return null;
+                        currentUri = nextUri;
+                        continue;
+                    }
+
+                    using (hopResp)
+                    {
+                        if (!hopResp.IsSuccessStatusCode) return null;
+                        var bytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(hopResp.Content, 16 * 1024, ct).ConfigureAwait(false);
+                        return ParseSha256SidecarText(System.Text.Encoding.UTF8.GetString(bytes));
+                    }
                 }
-                var bytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(resp.Content, 16 * 1024, ct);
-                return ParseSha256SidecarText(System.Text.Encoding.UTF8.GetString(bytes));
+                return null;
             }
             catch
             {
@@ -152,7 +224,7 @@ namespace Yomic.Core.Services
             {
                 var ver = Assembly.GetExecutingAssembly().GetName().Version;
                 if (ver == null || (ver.Major == 1 && ver.Minor == 0 && ver.Build == 0))
-                    return "2.5.0";
+                    return "2.6.0";
                 return ver.ToString(3);
             }
         }
@@ -255,8 +327,7 @@ namespace Yomic.Core.Services
             }
             try
             {
-                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
+                using var client = CreateUpdateHttpClient(TimeSpan.FromSeconds(10));
 
                 var response = await client.GetStringAsync(GITHUB_API_URL);
                 var json = JsonNode.Parse(response);
@@ -340,6 +411,13 @@ namespace Yomic.Core.Services
             Action<double>? onProgress = null,
             Action<double, long, long, string>? onDetailedProgress = null)
         {
+            if (Yomic.Core.Sources.HttpSource.IsOfflineModeProvider?.Invoke() == true)
+            {
+                LogService.Info("UpdateService", "Skipped update download because Offline Mode is enabled.");
+                onDetailedProgress?.Invoke(0.0, 0L, 0L, "error");
+                return false;
+            }
+
             if (!IsTrustedInstallUrl(downloadUrl, out var parsedUri) || parsedUri == null)
             {
                 LogService.Warning("UpdateService", $"Blocked untrusted update URL: {downloadUrl}");
@@ -394,25 +472,8 @@ namespace Yomic.Core.Services
                 byte[] streamedHash;
 
                 using var overallCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
-                using var handler = new HttpClientHandler { AllowAutoRedirect = false };
-                using (var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan })
+                using (var client = CreateUpdateHttpClient(Timeout.InfiniteTimeSpan))
                 {
-                    client.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
-
-                    static bool IsTrustedUpdateDownloadUri(Uri candidate)
-                    {
-                        if (!string.Equals(candidate.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-                            !candidate.IsDefaultPort)
-                        {
-                            return false;
-                        }
-                        string host = candidate.IdnHost.TrimEnd('.');
-                        return (host.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
-                                candidate.AbsolutePath.StartsWith(ALLOWED_RELEASE_PATH_PREFIX, StringComparison.OrdinalIgnoreCase)) ||
-                               host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
-                               host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
-                    }
-
                     // Follow redirects manually and validate EVERY hop BEFORE connecting
                     Uri currentUri = parsedUri;
                     HttpResponseMessage? response = null;
@@ -541,8 +602,7 @@ namespace Yomic.Core.Services
                     : null;
                 if (string.IsNullOrWhiteSpace(pinnedSha))
                 {
-                    using var sidecarClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-                    sidecarClient.DefaultRequestHeaders.UserAgent.ParseAdd("Yomic-Desktop-App");
+                    using var sidecarClient = CreateUpdateHttpClient(TimeSpan.FromSeconds(15));
                     pinnedSha = await TryFetchSidecarSha256Async(sidecarClient, downloadUrl.Trim(), overallCts.Token);
                 }
                 if (string.IsNullOrWhiteSpace(pinnedSha))

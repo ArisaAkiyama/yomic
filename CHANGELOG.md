@@ -2,6 +2,23 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [2.6.0] - 2026-11-26
+
+Update Details：
+◆ Add shared DoH-first public IP resolver (UrlSecurityHelper.ResolvePublicIpsWithDoHAsync with 5-minute cache, parallel A+AAAA resolution, socket-level SSRF protection, and Offline Mode enforcement before literal IP fast-path) wired into UpdateService (CreateUpdateHttpClient) and unified DNS cache clearing across NetworkService, HttpSource, ExtensionRepositoryService, and UrlSecurityHelper.
+◆ Add bulk single-query chapter download status reset (LibraryService.MarkAllChaptersNotDownloadedAsync) invoked by BackendIpcController.Downloads.cs when deleting all downloaded chapters of a manga, and exclusive DB maintenance barrier protection during SQLite file reset/recreation in LibraryService.
+◆ Add expanded CI pipeline checks in .github/workflows/ci-desktop.yml enforcing 9-surface version parity (csproj Version/FileVersion/AssemblyVersion, app.manifest, Installer/Yomic.iss, UpdateService.cs, index.html, main.css, settings.ts, and compiled settings.js) plus automated Inno Setup 6 installer script compilation validation.
+◆ Add expanded regression test coverage across BehavioralServicesTests.cs, IntegrityAndCatalogTests.cs, and tests/WebUI.Tests/webui.test.mjs covering Chapter 0 preservation, DownloadService cancel-during-finalize & resume-while-unwinding races, UpdateService DoH/Offline Mode, SQLite maintenance lease disposal, and dual-page zoom centering.
+◆ Improve UpdateService security and resilience with Offline Mode guard on update downloads, manual per-hop redirect validation on .sha256 sidecar fetches (TryFetchSidecarSha256Async), and unified DoH-protected Update HttpClient across API checks, installer downloads, and sidecar requests.
+◆ Improve MangaDbContext maintenance barrier lifecycle with explicit Dispose/DisposeAsync lease cleanup (SqlitePragmaInterceptor.ReleaseLeaseIfAttached), EF Core-managed connection opening (context.Database.OpenConnection) so raw connections never bypass the barrier, and internal bypassMaintenanceBarrier support for maintenance self-checks.
+◆ Improve NetworkService DNS resilience by adding Cloudflare 1.1.1.1 failover to Google DoH & default profiles, immediately reflecting Offline Mode when toggled mid-probe, and re-checking IsOfflineMode after HTTP/ICMP probes complete so offline state is never overwritten by in-flight probes.
+◆ Improve Dual Page Reader zoom range and horizontal centering (getDualPageImgStyle supporting 25%-300% scale in reader.ts + safe center flex alignment with width: max-content in 07-refinements-updater.css) and clipped hover-unblur transitions on list/update thumbnails in 06-modals-dark-stats.css.
+◆ Fix Chapter 0 (Prologue / Ch. 0) being coerced into Chapter 1 across Downloads queue (BackendIpcController.Downloads.cs & downloads.ts), Updates feed (BackendIpcController.LibraryAndHistory.cs), and Reader page progress caching (BackendIpcController.Reader.cs) by checking ChapterNumber >= 0 instead of > 0.
+◆ Fix DownloadService concurrency edge cases: prevent cancellation during CBZ packaging/directory move from leaving orphaned files (rolling back promoted files cleanly), preserve ResumeRequestedWhileUnwinding so resuming a still-unwinding paused chapter auto-queues cleanly, and clean up leftover .tmp folders when cancelling paused downloads in BackendIpcController.Downloads.cs.
+◆ Fix CloudflareBypassService interception race condition by attaching page.Request handler BEFORE calling SetRequestInterceptionAsync(true) and immediately closing unexpected JS-spawned popups (args.Target.Opener != null) to eliminate window.open SSRF races.
+◆ Fix SourceManager.GetSourceByName substring shadowing (preferring exact case-insensitive match first so "Komiku.com" never shadows "Komiku") and ExtensionRepositoryService custom .js stem extraction (stripping .js before splitting on '.' so "mycustom.js" resolves to "mycustom" instead of "js").
+◆ Fix bundled extensions (MaidManga v1.2.0, MangaDex v1.2.0, Mangalay v1.2.0, WeebCentral v1.2.0): fix pipe-header |Origin= delimiter, add WeebCentral lazy-load image priority & placeholder filtering, and prevent duplicate infinite-scroll pages in Mangalay.
+
 ## [2.5.0] - 2026-11-26
 
 Update Details：

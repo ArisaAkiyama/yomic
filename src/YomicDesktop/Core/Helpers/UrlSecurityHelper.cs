@@ -314,12 +314,72 @@ namespace Yomic.Core.Helpers
         private static readonly HttpClient _dnsGuardClient = new() { Timeout = TimeSpan.FromSeconds(3) };
         private static readonly ConcurrentDictionary<string, (IPAddress[] Ips, bool IsSafe, DateTime ExpiresUtc)> _resolvedHostSafetyCache =
             new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, (List<IPAddress> Ips, DateTime ExpiresUtc)> _sharedDohCache =
+            new(StringComparer.OrdinalIgnoreCase);
 
         // Internal seams for deterministic unit testing of split-horizon DNS & DNS-rebinding guards
         internal static Func<string, CancellationToken, Task<IPAddress[]>>? SystemDnsResolverOverride { get; set; }
         internal static Func<string, int, CancellationToken, Task<IPAddress[]>>? DoHResolverOverride { get; set; }
 
         internal static void ClearResolvedHostSafetyCache() => _resolvedHostSafetyCache.Clear();
+
+        internal static void ClearAllDnsCaches()
+        {
+            _resolvedHostSafetyCache.Clear();
+            _sharedDohCache.Clear();
+        }
+
+        /// <summary>
+        /// Shared DoH-first host resolver (cached 5m, parallel A+AAAA, system DNS fallback only when DoH yields 0 IPs)
+        /// used by UpdateService and any service needing DoH + socket-level SSRF protection.
+        /// </summary>
+        internal static async Task<List<IPAddress>> ResolvePublicIpsWithDoHAsync(string host, CancellationToken cancellationToken = default)
+        {
+            var result = new List<IPAddress>();
+            if (string.IsNullOrWhiteSpace(host)) return result;
+
+            if (IPAddress.TryParse(host, out var literalIp))
+            {
+                if (!IsPrivateOrLoopbackIp(literalIp)) result.Add(literalIp);
+                return result;
+            }
+
+            int dohProvider = Yomic.Core.Sources.HttpSource.DnsOverHttpsProviderGetter?.Invoke() ?? 2;
+            string cacheKey = $"{dohProvider}:{host}";
+            if (dohProvider != 0 &&
+                _sharedDohCache.TryGetValue(cacheKey, out var cached) &&
+                cached.ExpiresUtc > DateTime.UtcNow &&
+                cached.Ips.Count > 0)
+            {
+                return cached.Ips.Where(ip => !IsPrivateOrLoopbackIp(ip)).ToList();
+            }
+
+            if (dohProvider != 0)
+            {
+                var dohIps = await ResolveViaConfiguredDoHAsync(host, dohProvider, cancellationToken).ConfigureAwait(false);
+                foreach (var ip in dohIps)
+                {
+                    if (!result.Contains(ip)) result.Add(ip);
+                }
+            }
+
+            if (result.Count == 0)
+            {
+                var sysIps = await ResolveViaSystemDnsAsync(host, cancellationToken).ConfigureAwait(false);
+                foreach (var ip in sysIps)
+                {
+                    if (!result.Contains(ip)) result.Add(ip);
+                }
+            }
+
+            if (dohProvider != 0 && result.Count > 0)
+            {
+                if (_sharedDohCache.Count >= 256) _sharedDohCache.Clear();
+                _sharedDohCache[cacheKey] = (new List<IPAddress>(result), DateTime.UtcNow.AddMinutes(5));
+            }
+
+            return result.Where(ip => !IsPrivateOrLoopbackIp(ip)).ToList();
+        }
 
         private static string[] GetDoHGuardTemplates(int dohProvider) => dohProvider switch
         {
@@ -431,15 +491,16 @@ namespace Yomic.Core.Helpers
                 return (Array.Empty<IPAddress>(), false);
             }
 
+            // Enforce Offline Mode BEFORE literal IP fast-path so public IP literals cannot bypass Offline Mode
+            if (Yomic.Core.Sources.HttpSource.IsOfflineModeProvider?.Invoke() == true)
+            {
+                return (Array.Empty<IPAddress>(), false);
+            }
+
             host = host.Trim().TrimEnd('.').Trim('[', ']');
             if (IPAddress.TryParse(host, out var literalIp))
             {
                 return (new[] { literalIp }, !IsPrivateOrLoopbackIp(literalIp));
-            }
-
-            if (Yomic.Core.Sources.HttpSource.IsOfflineModeProvider?.Invoke() == true)
-            {
-                return (Array.Empty<IPAddress>(), false);
             }
 
             int dohProvider = Yomic.Core.Sources.HttpSource.DnsOverHttpsProviderGetter?.Invoke() ?? 2;

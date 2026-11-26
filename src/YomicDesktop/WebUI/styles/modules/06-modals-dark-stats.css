@@ -720,19 +720,21 @@
 .v1-lib-list-thumb.is-blurred,
 .v1-update-cover.is-blurred {
   filter: blur(8px);
-  transform: scale(1.06);
-  transition: filter 0.25s ease, transform 0.25s ease;
+  clip-path: inset(0 round 5px);
+  transition: filter 0.25s ease;
 }
 .manga-cover-img.is-blurred:hover,
 .manga-card:hover .manga-cover-img.is-blurred,
 .v1-cover-img.is-blurred:hover,
-.v1-cover-border:hover .v1-cover-img.is-blurred,
+.v1-cover-border:hover .v1-cover-img.is-blurred {
+  filter: blur(0);
+  transform: scale(1);
+}
 .v1-lib-list-thumb.is-blurred:hover,
 .v1-lib-list-row:hover .v1-lib-list-thumb.is-blurred,
 .v1-update-cover.is-blurred:hover,
 .v1-update-row:hover .v1-update-cover.is-blurred {
   filter: blur(0);
-  transform: scale(1);
 }
 
 .v1-filter-modal-section-title {

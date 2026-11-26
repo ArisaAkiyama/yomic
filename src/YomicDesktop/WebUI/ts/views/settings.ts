@@ -756,7 +756,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Versi', 'Version')}</span>
               </div>
-              <span class="v1-setting-desc">Stable 2.5.0 (Windows Desktop)</span>
+              <span class="v1-setting-desc">Stable 2.6.0 (Windows Desktop)</span>
             </div>
           </div>
 
@@ -774,32 +774,29 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Catatan rilis', 'Release notes')}</span>
               </div>
-              <span class="v1-setting-desc">v2.5.0</span>
+              <span class="v1-setting-desc">v2.6.0</span>
             </div>
             <span id="aboutReleaseNotesChevron" class="v1-about-release-chevron">
               ${getIconSvg('alt-arrow-down-linear', { size: 18 })}
             </span>
           </button>
           <div id="aboutReleaseNotesPanel" class="v1-about-release-notes" style="display:none;">
-            <div class="v1-about-release-head">[2.5.0] - Major Update</div>
+            <div class="v1-about-release-head">[2.6.0] - Major Update</div>
             <div class="v1-about-release-subhead">Update Details:</div>
             <ul class="v1-about-release-list">
-              <li>Add per-database reader/writer maintenance barrier (DbMaintenanceState, ConnectionLease, EnterExclusiveMaintenanceAsync, and SqlitePragmaInterceptor connection lifecycle hooks) in MangaDbContext.cs so BackupService.RestoreBackupAsync drains and pauses both concurrent writers and concurrent readers before ClearAllPools(), WAL/SHM deletion, and file swap.</li>
-              <li>Add split-horizon DNS &amp; hosts-file SSRF defense (ResolveAndValidateHostForBrowserAsync, ResolveViaConfiguredDoHAsync, ResolveViaSystemDnsAsync) in UrlSecurityHelper.cs querying both System DNS and the configured DoH provider in parallel and failing closed if any resolved IP is private/loopback/link-local, with a 5s cache and cache-bypass on top-level navigations in CloudflareBypassService and WebViewPageExtractorWindow.</li>
-              <li>Add atomic single-transaction history and reading progress reset (LibraryService.ClearAllHistoryAndProgressAsync) clearing chapter read flags, partial page progress, LastViewed timestamps, and history entries in one lock/transaction, paired with full UI state snapshot rollback on backend errors in updates-history.ts.</li>
-              <li>Add consistent 18+ explicit cover blurring (blurExplicitCovers via CSS blur class) across Source Catalog Feed (browse.ts), Manga Detail (manga-detail.ts), Updates (updates-history.ts), History Grid &amp; List (updates-history.ts), Downloads (downloads.ts), and Library (library.ts).</li>
-              <li>Add URL deduplication and zero-new-item infinite-scroll circuit breaker in Browse Source Catalog (fetchSourceCatalogFeed in browse.ts) alongside explicit plugin totalPages handling in BackendIpcController.SourcesAndExtensions.cs to stop duplicate-card infinite scroll loops.</li>
-              <li>Add deterministic LF line-ending pinning in .gitattributes for bundled Plugins/Catalog/*.js and index.min.json so SHA-256 digests stay 100% identical across local Windows checkouts, CI runners, and GitHub raw/CDN.</li>
-              <li>Add expanded automated regression test coverage in BehavioralServicesTests.cs, IntegrityAndCatalogTests.cs, and tests/WebUI.Tests/webui.test.mjs covering split-horizon DNS SSRF guards, DB maintenance barriers, DoH failover, explicit cover blur, and plugin catalog integrity.</li>
-              <li>Improve bundled extension catalog with minor version bumps across 101 updated extensions (e.g. 1.0.0 -&gt; 1.1.0, 1.0.3 -&gt; 1.1.0, 1.0.4 -&gt; 1.1.0, 1.11.2 -&gt; 1.12.0), Blogger paginated chapter feeds up to 1,500 chapters, lazy-load image priority &amp; placeholder filtering in kiryuu.js, graceful empty-list handling in softkomik.js, and synced Git-blob SHA-256 manifests.</li>
-              <li>Improve ExtensionRepositoryService.UninstallExtension with strict identifier validation, fallback catalog merging (LoadFallbackCatalogEntriesSync), and atomic source path registration inside _sourcesLock before firing OnSourcesChanged in SourceManager.cs.</li>
-              <li>Improve DownloadService cancellation and resource lifecycle by guarding terminal failure status updates under _processingLock (preventing overwrites of concurrent Pause/Cancel) and disposing CancellationTokenSource instances across completed, cancelled, queued, and history download requests.</li>
-              <li>Improve real-time download badge synchronization in backend-sync.ts and downloads.ts (matching deleted chapter downloads by normalized chapterUrl or mangaId+chapterNumber and computing completedCountByMangaId accurately) plus CSS polish across Reader, Modals/Dark Stats, and Updater modules.</li>
-              <li>Fix silent in-app auto-update failing to relaunch Yomic after installation in Installer/Yomic.iss by removing the postinstall flag from the /SILENT relaunch entry (Inno Setup skips postinstall in /SILENT mode) and defaulting ShouldRelaunchAfterSilentUpdate to relaunch unless /RELAUNCH=0 is explicitly passed.</li>
-              <li>Fix active download file-handle locks and IsDownloaded race conditions in BackendIpcController.Downloads.cs by cancelling active/queued chapter downloads before deleting files on disk.</li>
-              <li>Fix Reader refresh cache-busting corrupting inline data: and blob: image URIs in reader.ts by introducing appendCacheBustParam to safely update query timestamps only on HTTP/HTTPS URLs.</li>
-              <li>Fix premature DoH failover termination in NetworkService.cs and HttpSource.cs (only stopping failover when IPs are resolved or both A &amp; AAAA queries succeed cleanly, and appending StringBuilder logs sequentially after Task.WhenAll for thread safety).</li>
-              <li>Fix one-time v1 -&gt; v2 SourceIdMigrationService repeatedly re-running on every launch when orphaned rows from uninstalled extensions remain by always marking migration complete once run with loaded sources.</li>
+              <li>Add shared DoH-first public IP resolver (UrlSecurityHelper.ResolvePublicIpsWithDoHAsync with 5-minute cache, parallel A+AAAA resolution, socket-level SSRF protection, and Offline Mode enforcement before literal IP fast-path) wired into UpdateService (CreateUpdateHttpClient) and unified DNS cache clearing across NetworkService, HttpSource, ExtensionRepositoryService, and UrlSecurityHelper.</li>
+              <li>Add bulk single-query chapter download status reset (LibraryService.MarkAllChaptersNotDownloadedAsync) invoked by BackendIpcController.Downloads.cs when deleting all downloaded chapters of a manga, and exclusive DB maintenance barrier protection during SQLite file reset/recreation in LibraryService.</li>
+              <li>Add expanded CI pipeline checks in .github/workflows/ci-desktop.yml enforcing 9-surface version parity (csproj Version/FileVersion/AssemblyVersion, app.manifest, Installer/Yomic.iss, UpdateService.cs, index.html, main.css, settings.ts, and compiled settings.js) plus automated Inno Setup 6 installer script compilation validation.</li>
+              <li>Add expanded regression test coverage across BehavioralServicesTests.cs, IntegrityAndCatalogTests.cs, and tests/WebUI.Tests/webui.test.mjs covering Chapter 0 preservation, DownloadService cancel-during-finalize &amp; resume-while-unwinding races, UpdateService DoH/Offline Mode, SQLite maintenance lease disposal, and dual-page zoom centering.</li>
+              <li>Improve UpdateService security and resilience with Offline Mode guard on update downloads, manual per-hop redirect validation on .sha256 sidecar fetches (TryFetchSidecarSha256Async), and unified DoH-protected Update HttpClient across API checks, installer downloads, and sidecar requests.</li>
+              <li>Improve MangaDbContext maintenance barrier lifecycle with explicit Dispose/DisposeAsync lease cleanup (SqlitePragmaInterceptor.ReleaseLeaseIfAttached), EF Core-managed connection opening (context.Database.OpenConnection) so raw connections never bypass the barrier, and internal bypassMaintenanceBarrier support for maintenance self-checks.</li>
+              <li>Improve NetworkService DNS resilience by adding Cloudflare 1.1.1.1 failover to Google DoH &amp; default profiles, immediately reflecting Offline Mode when toggled mid-probe, and re-checking IsOfflineMode after HTTP/ICMP probes complete so offline state is never overwritten by in-flight probes.</li>
+              <li>Improve Dual Page Reader zoom range and horizontal centering (getDualPageImgStyle supporting 25%-300% scale in reader.ts + safe center flex alignment with width: max-content in 07-refinements-updater.css) and clipped hover-unblur transitions on list/update thumbnails in 06-modals-dark-stats.css.</li>
+              <li>Fix Chapter 0 (Prologue / Ch. 0) being coerced into Chapter 1 across Downloads queue (BackendIpcController.Downloads.cs &amp; downloads.ts), Updates feed (BackendIpcController.LibraryAndHistory.cs), and Reader page progress caching (BackendIpcController.Reader.cs) by checking ChapterNumber &gt;= 0 instead of &gt; 0.</li>
+              <li>Fix DownloadService concurrency edge cases: prevent cancellation during CBZ packaging/directory move from leaving orphaned files (rolling back promoted files cleanly), preserve ResumeRequestedWhileUnwinding so resuming a still-unwinding paused chapter auto-queues cleanly, and clean up leftover .tmp folders when cancelling paused downloads in BackendIpcController.Downloads.cs.</li>
+              <li>Fix CloudflareBypassService interception race condition by attaching page.Request handler BEFORE calling SetRequestInterceptionAsync(true) and immediately closing unexpected JS-spawned popups (args.Target.Opener != null) to eliminate window.open SSRF races.</li>
+              <li>Fix SourceManager.GetSourceByName substring shadowing (preferring exact case-insensitive match first so "Komiku.com" never shadows "Komiku") and ExtensionRepositoryService custom .js stem extraction (stripping .js before splitting on '.' so "mycustom.js" resolves to "mycustom" instead of "js").</li>
+              <li>Fix bundled extensions (MaidManga v1.2.0, MangaDex v1.2.0, Mangalay v1.2.0, WeebCentral v1.2.0): fix pipe-header |Origin= delimiter, add WeebCentral lazy-load image priority &amp; placeholder filtering, and prevent duplicate infinite-scroll pages in Mangalay.</li>
             </ul>
           </div>
         </div>
@@ -2066,7 +2063,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
 
     // Immediately open the full-screen Updater UI when Check for Updates is clicked
     openAppUpdateOverlay({
-      version: '2.5.0',
+      version: '2.6.0',
       releaseNotes: '',
       isEn,
       mode: 'checking'
@@ -2075,7 +2072,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     if (!this.bridge.isWebViewHost) {
       window.setTimeout(() => {
         openAppUpdateOverlay({
-          version: '2.5.0',
+          version: '2.6.0',
           releaseNotes: '',
           isEn,
           mode: 'uptodate'
@@ -2097,7 +2094,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         if (btn) btn.disabled = false;
         // If user already dismissed the checking overlay, do not forcibly pop it back open
         if (!document.getElementById('appUpdateOverlay')?.classList.contains('open')) return;
-        const ver = info?.latestVersion || info?.currentVersion || '2.5.0';
+        const ver = info?.latestVersion || info?.currentVersion || '2.6.0';
         const notes = info?.releaseNotes || '';
         if (info?.isUpdateAvailable && info.downloadUrl) {
           openAppUpdateOverlay({
@@ -2120,7 +2117,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         if (btn) btn.disabled = false;
         if (!document.getElementById('appUpdateOverlay')?.classList.contains('open')) return;
         openAppUpdateOverlay({
-          version: '2.5.0',
+          version: '2.6.0',
           releaseNotes: '',
           isEn,
           mode: 'error'
@@ -2239,7 +2236,7 @@ export function openAppUpdateOverlay(opts: {
   const verEl = document.getElementById('appUpdateVersionText');
   const startBtn = document.getElementById('btnStartAppUpdateNow') as HTMLButtonElement | null;
   const closeBtn = document.getElementById('btnCloseAppUpdateOverlay') as HTMLButtonElement | null;
-  const cleanVer = (opts.version || '2.5.0').replace(/^v/i, '');
+  const cleanVer = (opts.version || '2.6.0').replace(/^v/i, '');
 
   if (barFill) {
     barFill.classList.toggle('indeterminate', mode === 'checking');

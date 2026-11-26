@@ -115,8 +115,11 @@ namespace Yomic.Core.Services
             if (string.IsNullOrWhiteSpace(name)) return null;
             lock (_sourcesLock)
             {
+                // Prefer exact name match first so substring matches (e.g. "Komiku.com") never shadow "Komiku"
+                var exact = _sources.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (exact != null) return exact;
+
                 return _sources.FirstOrDefault(s =>
-                    string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase) ||
                     s.Name.Contains(name, StringComparison.OrdinalIgnoreCase) ||
                     (!string.IsNullOrEmpty(s.BaseUrl) && s.BaseUrl.Contains(name, StringComparison.OrdinalIgnoreCase)));
             }
