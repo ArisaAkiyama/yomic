@@ -15,11 +15,7 @@ var source = {
 
     token: null,
 
-    genres: [
-        "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror",
-        "Mystery", "Romance", "Sci-Fi", "Slice of Life", "Sports",
-        "Supernatural", "Thriller"
-    ],
+    genres: [],
 
     getPopularManga: function(page) {
         return this.getMangaListInternal(page, "TOTAL_VIEW_COUNT", "");
@@ -33,8 +29,9 @@ var source = {
         return this.getMangaListInternal(page, "", query || "");
     },
 
-    getMangaList: function(page, status, genre, type) {
-        return this.getMangaListInternal(page, "TOTAL_VIEW_COUNT", "");
+    getMangaList: function(page, status, genre, type, sort) {
+        let order = sort === "latest" ? "UPDATED_AT" : "TOTAL_VIEW_COUNT";
+        return this.getMangaListInternal(page, order, "");
     },
 
     getMangaListInternal: function(page, order, query) {
@@ -181,7 +178,7 @@ var source = {
                                     name: name,
                                     url: "/en/title/" + titleId + "/chapter/" + chapId,
                                     dateUpload: 0,
-                                    chapterNumber: chapters.length + 1
+                                    chapterNumber: (function(n, fb) { var m = n && n.match(/#?(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : fb; })(name, chapters.length + 1)
                                 });
                             }
                         }

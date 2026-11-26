@@ -28,6 +28,8 @@ namespace Yomic.Core.Services
         // Simple in-memory cache: Key -> Entry
         private readonly ConcurrentDictionary<string, SourceCacheEntry> _cache = new();
         private readonly TimeSpan _cacheDuration = TimeSpan.FromMinutes(30);
+        private readonly Task _initialLoadTask;
+        private int _bulkLoadDepth;
 
         public event Action? OnSourcesChanged;
 
@@ -41,20 +43,44 @@ namespace Yomic.Core.Services
 
         public void LoadPlugins() => LoadExtensions();
 
-        public SourceManager()
+        /// <summary>
+        /// Awaits completion of background extension loading when constructed with <c>deferExtensionLoad: true</c>.
+        /// </summary>
+        public Task EnsureExtensionsLoadedAsync() => _initialLoadTask;
+
+        public SourceManager(bool deferExtensionLoad = false)
+            : this(
+                System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Plugins"),
+                System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Yomic", "Plugins"),
+                deferExtensionLoad)
+        {
+        }
+
+        internal SourceManager(string localPluginsDir, string userPluginsDir, bool deferExtensionLoad = false)
         {
             _sources = new List<IMangaSource>();
 
-            // 1. Define Bundled Plugins Path (App Directory)
-            _localPluginsDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Plugins");
+            // 1. Define Bundled Plugins Path
+            _localPluginsDir = localPluginsDir;
             if (!System.IO.Directory.Exists(_localPluginsDir)) System.IO.Directory.CreateDirectory(_localPluginsDir);
 
-            // 2. Define User Plugins Path (AppData)
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            _userPluginsDir = System.IO.Path.Combine(appData, "Yomic", "Plugins");
+            // 2. Define User Plugins Path
+            _userPluginsDir = userPluginsDir;
             if (!System.IO.Directory.Exists(_userPluginsDir)) System.IO.Directory.CreateDirectory(_userPluginsDir);
 
-            LoadExtensions();
+            if (deferExtensionLoad)
+            {
+                _initialLoadTask = Task.Run(() =>
+                {
+                    try { LoadExtensions(); }
+                    catch (Exception ex) { LogService.Error("SourceManager", $"Deferred extension load failed: {ex.Message}"); }
+                });
+            }
+            else
+            {
+                LoadExtensions();
+                _initialLoadTask = Task.CompletedTask;
+            }
         }
 
         #region Core Management (Thread Safe)
@@ -115,8 +141,12 @@ namespace Yomic.Core.Services
                 }
             }
             try { replacedDisposable?.Dispose(); } catch { }
-            // Invoke event strictly outside _sourcesLock to prevent AB-BA deadlocks
-            OnSourcesChanged?.Invoke();
+            // Invoke event strictly outside _sourcesLock to prevent AB-BA deadlocks,
+            // and suppress per-plugin bursts during bulk LoadExtensions()
+            if (System.Threading.Volatile.Read(ref _bulkLoadDepth) == 0)
+            {
+                OnSourcesChanged?.Invoke();
+            }
         }
 
         private void SafeDeleteFile(string path)
@@ -166,10 +196,11 @@ namespace Yomic.Core.Services
                     if (_sourceIdToPath.TryGetValue(id, out var path))
                     {
                         _sourceIdToPath.Remove(id);
+                        string? candidateDelete = null;
                         // NEVER delete bundled system plugins inside _localPluginsDir — only delete user plugins
                         if (Yomic.Core.Helpers.UrlSecurityHelper.IsPathInsideDirectory(path, _userPluginsDir))
                         {
-                            fileToDelete = System.IO.Path.GetFullPath(path);
+                            candidateDelete = System.IO.Path.GetFullPath(path);
                         }
                         else
                         {
@@ -179,8 +210,33 @@ namespace Yomic.Core.Services
                                 var userCopy = System.IO.Path.Combine(_userPluginsDir, jsName);
                                 if (Yomic.Core.Helpers.UrlSecurityHelper.IsPathInsideDirectory(userCopy, _userPluginsDir))
                                 {
-                                    fileToDelete = userCopy;
+                                    candidateDelete = System.IO.Path.GetFullPath(userCopy);
                                 }
+                            }
+                        }
+
+                        // Guard against upgrade ID-change self-deletion: if another active source already owns
+                        // this exact file path on disk (e.g. upgraded plugin with a new Id), NEVER delete it!
+                        if (!string.IsNullOrEmpty(candidateDelete))
+                        {
+                            bool stillOwnedByAnotherSource = _sourceIdToPath.Values.Any(otherPath =>
+                            {
+                                try
+                                {
+                                    return string.Equals(
+                                        System.IO.Path.GetFullPath(otherPath),
+                                        candidateDelete,
+                                        StringComparison.OrdinalIgnoreCase);
+                                }
+                                catch
+                                {
+                                    return false;
+                                }
+                            });
+
+                            if (!stillOwnedByAnotherSource)
+                            {
+                                fileToDelete = candidateDelete;
                             }
                         }
                     }
@@ -242,6 +298,8 @@ namespace Yomic.Core.Services
 
         private void LoadExtensions()
         {
+            bool anyLoaded = false;
+            System.Threading.Interlocked.Increment(ref _bulkLoadDepth);
             try
             {
                 // Clean up .deleted files first
@@ -264,7 +322,7 @@ namespace Yomic.Core.Services
                     var jss = System.IO.Directory.GetFiles(_localPluginsDir, "*.js", System.IO.SearchOption.TopDirectoryOnly);
                     foreach (var js in jss)
                     {
-                        LoadJsExtension(js);
+                        if (LoadJsExtension(js) != null) anyLoaded = true;
                     }
                 }
 
@@ -276,13 +334,20 @@ namespace Yomic.Core.Services
                     foreach (var js in jss)
                     {
                         TryUpgradeUserPluginFromCatalog(js, catalogDir);
-                        LoadJsExtension(js);
+                        if (LoadJsExtension(js) != null) anyLoaded = true;
                     }
                 }
             }
             catch (Exception ex)
             {
                 LogService.Error("SourceManager", $"Failed to load extensions", ex);
+            }
+            finally
+            {
+                if (System.Threading.Interlocked.Decrement(ref _bulkLoadDepth) == 0 && anyLoaded)
+                {
+                    OnSourcesChanged?.Invoke();
+                }
             }
         }
 
@@ -316,7 +381,9 @@ namespace Yomic.Core.Services
 
                 if (catalogCode > userCode)
                 {
-                    System.IO.File.WriteAllText(userJsPath, catalogText);
+                    string tempPath = $"{userJsPath}.{Guid.NewGuid():N}.tmp";
+                    System.IO.File.WriteAllText(tempPath, catalogText);
+                    System.IO.File.Move(tempPath, userJsPath, overwrite: true);
                     LogService.Info("SourceManager", $"Auto-upgraded installed extension '{fileName}' from bundled catalog ({userCode} -> {catalogCode}).");
                 }
             }

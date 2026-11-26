@@ -310,14 +310,17 @@
 }
 
 .v1-synopsis-toggle:hover,
-.v1-synopsis-toggle:focus:not(:focus-visible),
 .v1-synopsis-toggle:active {
   background: transparent !important;
   background-color: transparent !important;
   border: none !important;
-  outline: none !important;
   box-shadow: none !important;
   color: #5AB0FF;
+}
+
+.v1-synopsis-toggle:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* Chapters Divider */

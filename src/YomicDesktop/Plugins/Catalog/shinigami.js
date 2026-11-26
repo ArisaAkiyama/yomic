@@ -94,7 +94,9 @@ var source = {
             });
         }
         let totalPages = 1;
-        if (json.meta && json.meta.totalPage) totalPages = json.meta.totalPage;
+        if (json.meta) {
+            totalPages = json.meta.total_page || json.meta.totalPage || 1;
+        }
         return { items: items, totalPages: totalPages };
     },
 
@@ -130,13 +132,16 @@ var source = {
         if (d.status === 1) status = 1; // Ongoing
         else if (d.status === 2) status = 2; // Completed
 
-        let desc = d.description || "";
-        if (d.altTitle) desc += "\n\nAlternatif: " + d.altTitle;
+        let desc = d.description || d.synopsis || "";
+        let altTitle = d.alt_title || d.altTitle || "";
+        if (altTitle) desc += "\n\nAlternatif: " + altTitle;
+
+        let thumb = d.cover_image_url || d.cover_portrait_url || d.thumbnail || "";
 
         return {
             title: (d.title || "").trim(),
             url: url,
-            thumbnailUrl: d.thumbnail || "",
+            thumbnailUrl: thumb,
             author: author,
             status: status,
             description: desc.trim(),
@@ -154,14 +159,18 @@ var source = {
         let list = json.data || json.chapterList || [];
         let chapters = [];
         for (let obj of list) {
-            let chId = obj.chapterId || "";
+            let chId = obj.chapter_id || obj.chapterId || "";
             if (!chId) continue;
-            let name = "Chapter " + (obj.name || "").toString().replace(/\.0$/, "");
-            if (obj.title) name += " " + obj.title;
+            let rawNum = (obj.chapter_number !== undefined && obj.chapter_number !== null)
+                ? obj.chapter_number
+                : (obj.name !== undefined && obj.name !== null ? obj.name : "");
+            let name = "Chapter " + String(rawNum).replace(/\.0$/, "");
+            let subTitle = obj.chapter_title || obj.title || "";
+            if (subTitle) name += " " + subTitle;
             chapters.push({
                 name: name.trim(),
                 url: "/chapter/" + chId,
-                uploadDate: obj.date || ""
+                uploadDate: obj.release_date || obj.created_at || obj.date || ""
             });
         }
         return chapters;
@@ -174,13 +183,42 @@ var source = {
         if (!res || res.status !== 200 || !res.body) return [];
 
         let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
+        let d = json.data || {};
         let pages = [];
-        let pl = (json.data && json.data.pageList) ? json.data.pageList : null;
-        if (pl && pl.chapterPage && pl.chapterPage.pages) {
-            let base = pl.baseUrl || "";
-            let path = pl.chapterPage.path || "";
+
+        function joinUrl(base, segPath, file) {
+            if (!file) return "";
+            let f = String(file).trim();
+            if (/^https?:\/\//i.test(f)) return f;
+            let b = String(base || "").replace(/\/+$/, "");
+            let p = String(segPath || "").replace(/^\/+|\/+$/g, "");
+            let cleanFile = f.replace(/^\/+/, "");
+            let parts = [];
+            if (b) parts.push(b);
+            if (p) parts.push(p);
+            parts.push(cleanFile);
+            return parts.join("/");
+        }
+
+        // 1. Primary api.shngm.io/v1 snake_case schema: data.base_url + data.chapter.path + data.chapter.data[]
+        let baseUrl = d.base_url || d.baseUrl || "https://storage.shngm.id";
+        if (d.chapter && Array.isArray(d.chapter.data) && d.chapter.data.length > 0) {
+            let segPath = d.chapter.path || "";
+            for (let img of d.chapter.data) {
+                let full = joinUrl(baseUrl, segPath, img);
+                if (full) pages.push(full);
+            }
+            return pages;
+        }
+
+        // 2. Fallback legacy camelCase schema: data.pageList.chapterPage.pages
+        let pl = d.pageList || d.page_list || null;
+        if (pl && pl.chapterPage && Array.isArray(pl.chapterPage.pages)) {
+            let base = pl.baseUrl || pl.base_url || baseUrl;
+            let segPath = pl.chapterPage.path || "";
             for (let img of pl.chapterPage.pages) {
-                pages.push(base + path + img);
+                let full = joinUrl(base, segPath, img);
+                if (full) pages.push(full);
             }
         }
         return pages;

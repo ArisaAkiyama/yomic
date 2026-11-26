@@ -12,6 +12,20 @@ namespace Yomic.Core.Services
 {
     public class LibraryService
     {
+        private readonly string? _customDbPath;
+
+        public LibraryService()
+        {
+        }
+
+        internal LibraryService(string customDbPath)
+        {
+            _customDbPath = customDbPath;
+        }
+
+        private MangaDbContext CreateDbContext() =>
+            _customDbPath != null ? new MangaDbContext(_customDbPath) : new MangaDbContext();
+
         // Event triggered when new chapters are found
         public event EventHandler<int>? UpdatesFound;
 
@@ -47,7 +61,7 @@ namespace Yomic.Core.Services
 
         public async Task<List<Manga>> GetLibraryMangaAsync()
         {
-            using var context = new MangaDbContext();
+            using var context = CreateDbContext();
             MangaDbContext.EnsureMangaColumnsExist(context);
             var mangas = await context.Mangas
                                 .Include(m => m.Chapters)
@@ -57,24 +71,38 @@ namespace Yomic.Core.Services
                                 .OrderBy(m => m.Title)
                                 .ToListAsync();
 
-            bool repaired = false;
+            var repairedItems = new List<(long Id, string Title)>();
             foreach (var m in mangas)
             {
                 if (string.IsNullOrWhiteSpace(m.Title))
                 {
                     m.Title = FormatTitleFromUrl(m.Url);
-                    repaired = true;
+                    repairedItems.Add((m.Id, m.Title));
                 }
             }
 
-            if (repaired)
+            if (repairedItems.Count > 0)
             {
+                await _dbLock.WaitAsync();
                 try
                 {
-                    await context.SaveChangesAsync();
+                    using var repairCtx = CreateDbContext();
+                    foreach (var (id, title) in repairedItems)
+                    {
+                        var dbm = await repairCtx.Mangas.FindAsync(id);
+                        if (dbm != null && string.IsNullOrWhiteSpace(dbm.Title))
+                        {
+                            dbm.Title = title;
+                        }
+                    }
+                    await repairCtx.SaveChangesAsync();
                     LogService.Info("LibraryService", "Repaired missing titles in library database.");
                 }
                 catch { }
+                finally
+                {
+                    _dbLock.Release();
+                }
             }
 
             return mangas;
@@ -82,7 +110,7 @@ namespace Yomic.Core.Services
 
         public async Task<List<Manga>> GetHistoryMangaAsync()
         {
-            using var context = new MangaDbContext();
+            using var context = CreateDbContext();
             // Fetch non-favorite items that have been read/viewed
             return await context.Mangas
                                 .Include(m => m.Chapters)
@@ -93,13 +121,13 @@ namespace Yomic.Core.Services
 
         public async Task<int> GetLibraryCountAsync()
         {
-            using var context = new MangaDbContext();
+            using var context = CreateDbContext();
             return await context.Mangas.CountAsync(m => m.Favorite);
         }
 
         public async Task<Manga?> GetMangaAsync(long id)
         {
-            using var context = new MangaDbContext();
+            using var context = CreateDbContext();
             return await context.Mangas
                 .Include(m => m.Chapters)
                 .FirstOrDefaultAsync(m => m.Id == id);
@@ -107,7 +135,7 @@ namespace Yomic.Core.Services
 
         public async Task<Manga?> GetMangaByUrlAsync(string url, long sourceId)
         {
-            using var context = new MangaDbContext();
+            using var context = CreateDbContext();
             return await context.Mangas
                 .Include(m => m.Chapters)
                 .FirstOrDefaultAsync(m => m.Url == url && m.Source == sourceId);
@@ -129,54 +157,63 @@ namespace Yomic.Core.Services
 
                 LogService.Info("Library", $"Saving to database: {manga.Title}");
 
-                using var context = new MangaDbContext();
-                
-                // Check if exists
-                var existing = await context.Mangas.Include(m => m.Categories).FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
-                if (existing != null)
+                await _dbLock.WaitAsync();
+                try
                 {
-                    existing.Favorite = true;
-                    // Update other fields safely (never overwrite valid existing title with empty string)
-                    if (!string.IsNullOrWhiteSpace(manga.Title)) existing.Title = manga.Title;
-                    if (!string.IsNullOrWhiteSpace(manga.ThumbnailUrl)) existing.ThumbnailUrl = manga.ThumbnailUrl;
-                    if (!string.IsNullOrWhiteSpace(manga.Author)) existing.Author = manga.Author;
-                    if (!string.IsNullOrWhiteSpace(manga.Artist)) existing.Artist = manga.Artist;
-                    if (manga.Genre != null && manga.Genre.Count > 0) existing.Genre = manga.Genre;
-                    if (manga.Status > 0) existing.Status = manga.Status;
-                    if (!string.IsNullOrWhiteSpace(manga.Description)) existing.Description = manga.Description;
-                    existing.Initialized = true;
-                    
-                    // Assign default category if it has no categories yet
-                    if (existing.Categories.Count == 0)
+                    using var context = CreateDbContext();
+
+                    // Check if exists
+                    var existing = await context.Mangas.Include(m => m.Categories).FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
+                    if (existing != null)
                     {
+                        existing.Favorite = true;
+                        // Update other fields safely (never overwrite valid existing title with empty string)
+                        if (!string.IsNullOrWhiteSpace(manga.Title)) existing.Title = manga.Title;
+                        if (!string.IsNullOrWhiteSpace(manga.ThumbnailUrl)) existing.ThumbnailUrl = manga.ThumbnailUrl;
+                        if (!string.IsNullOrWhiteSpace(manga.Author)) existing.Author = manga.Author;
+                        if (!string.IsNullOrWhiteSpace(manga.Artist)) existing.Artist = manga.Artist;
+                        if (manga.Genre != null && manga.Genre.Count > 0) existing.Genre = manga.Genre;
+                        if (manga.Status > 0) existing.Status = manga.Status;
+                        if (!string.IsNullOrWhiteSpace(manga.Description)) existing.Description = manga.Description;
+                        existing.Initialized = true;
+
+                        // Assign default category if it has no categories yet
+                        if (existing.Categories.Count == 0)
+                        {
+                            var defaultCat = await context.Categories.FirstOrDefaultAsync(c => c.IsDefault);
+                            if (defaultCat != null)
+                            {
+                                existing.Categories.Add(defaultCat);
+                            }
+                        }
+
+                        context.Update(existing);
+                        manga.Id = existing.Id;
+                        LogService.Info("Library", $"Updated existing manga: {manga.Title}");
+                    }
+                    else
+                    {
+                        manga.Favorite = true;
+                        manga.DateAdded = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+
+                        // Assign default category
                         var defaultCat = await context.Categories.FirstOrDefaultAsync(c => c.IsDefault);
                         if (defaultCat != null)
                         {
-                            existing.Categories.Add(defaultCat);
+                            manga.Categories.Add(defaultCat);
                         }
+
+                        await context.Mangas.AddAsync(manga);
+                        LogService.Success("Library", $"Added new manga: {manga.Title}");
                     }
 
-                    context.Update(existing);
-                    LogService.Info("Library", $"Updated existing manga: {manga.Title}");
+                    await context.SaveChangesAsync();
+                    LogService.Debug("Library", "Saved changes to DB.");
                 }
-                else
+                finally
                 {
-                    manga.Favorite = true;
-                    manga.DateAdded = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                    
-                    // Assign default category
-                    var defaultCat = await context.Categories.FirstOrDefaultAsync(c => c.IsDefault);
-                    if (defaultCat != null)
-                    {
-                        manga.Categories.Add(defaultCat);
-                    }
-
-                    await context.Mangas.AddAsync(manga);
-                    LogService.Success("Library", $"Added new manga: {manga.Title}");
+                    _dbLock.Release();
                 }
-                
-                await context.SaveChangesAsync();
-                LogService.Debug("Library", "Saved changes to DB.");
             }
             catch (Exception ex)
             {
@@ -188,40 +225,49 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
-                
-                // Check if exists
-                var existing = await context.Mangas.FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
-                
-                if (existing != null)
+                await _dbLock.WaitAsync();
+                try
                 {
-                    existing.LastViewed = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                    // Update details — always update ThumbnailUrl if a new valid one is provided
-                    if (!string.IsNullOrEmpty(manga.ThumbnailUrl) && existing.ThumbnailUrl != manga.ThumbnailUrl) 
+                    using var context = CreateDbContext();
+
+                    // Check if exists
+                    var existing = await context.Mangas.FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
+
+                    if (existing != null)
                     {
-                        LogService.Debug("LibraryService", $"Updating cover for {manga.Title}");
-                        existing.ThumbnailUrl = manga.ThumbnailUrl;
+                        existing.LastViewed = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                        // Update details — always update ThumbnailUrl if a new valid one is provided
+                        if (!string.IsNullOrEmpty(manga.ThumbnailUrl) && existing.ThumbnailUrl != manga.ThumbnailUrl)
+                        {
+                            LogService.Debug("LibraryService", $"Updating cover for {manga.Title}");
+                            existing.ThumbnailUrl = manga.ThumbnailUrl;
+                        }
+                        if (!string.IsNullOrEmpty(manga.Title) && manga.Title != "Unknown")
+                        {
+                            existing.Title = manga.Title;
+                        }
+
+                        context.Update(existing);
+                        manga.Id = existing.Id;
                     }
-                    if (!string.IsNullOrEmpty(manga.Title) && manga.Title != "Unknown") 
+                    else
                     {
-                        existing.Title = manga.Title;
+                        // Add new non-favorite entry
+                        manga.Favorite = false;
+                        manga.LastViewed = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                        manga.DateAdded = 0; // Not added to library
+                        manga.Initialized = false; // Details might be partial
+
+                        await context.Mangas.AddAsync(manga);
                     }
-                    
-                    context.Update(existing);
+
+                    await context.SaveChangesAsync();
+                    LogService.Info("Library", $"History updated for: {manga.Title}");
                 }
-                else
+                finally
                 {
-                    // Add new non-favorite entry
-                    manga.Favorite = false;
-                    manga.LastViewed = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                    manga.DateAdded = 0; // Not added to library
-                    manga.Initialized = false; // Details might be partial
-                    
-                    await context.Mangas.AddAsync(manga);
+                    _dbLock.Release();
                 }
-                
-                await context.SaveChangesAsync();
-                LogService.Info("Library", $"History updated for: {manga.Title}");
             }
             catch (Exception ex)
             {
@@ -231,12 +277,20 @@ namespace Yomic.Core.Services
 
         public async Task MarkMangaAsSeenAsync(long mangaId)
         {
-            using var context = new MangaDbContext();
-            var manga = await context.Mangas.FindAsync(mangaId);
-            if (manga != null && manga.HasNewChapters)
+            await _dbLock.WaitAsync();
+            try
             {
-                manga.HasNewChapters = false;
-                await context.SaveChangesAsync();
+                using var context = CreateDbContext();
+                var manga = await context.Mangas.FindAsync(mangaId);
+                if (manga != null && manga.HasNewChapters)
+                {
+                    manga.HasNewChapters = false;
+                    await context.SaveChangesAsync();
+                }
+            }
+            finally
+            {
+                _dbLock.Release();
             }
         }
         public async Task MarkMangaAsSeenAsync(string url, long sourceId)
@@ -251,44 +305,51 @@ namespace Yomic.Core.Services
         {
              try
              {
-                 using var context = new MangaDbContext();
-                 Manga? existing = null;
+                 await _dbLock.WaitAsync();
+                 try
+                 {
+                     using var context = CreateDbContext();
+                     Manga? existing = null;
 
-                 // Prioritize ID lookup if available
-                 if (manga.Id > 0)
-                 {
-                     existing = await context.Mangas.Include(m => m.Categories).FirstOrDefaultAsync(m => m.Id == manga.Id);
-                 }
-                 
-                 // Fallback to URL lookup if ID not found or invalid
-                 if (existing == null)
-                 {
-                     existing = await context.Mangas.Include(m => m.Categories).FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
-                 }
-
-                 if (existing != null)
-                 {
-                     if (deleteFiles)
+                     // Prioritize ID lookup if available
+                     if (manga.Id > 0)
                      {
-                         await DeleteMangaFilesInternalAsync(context, existing);
+                         existing = await context.Mangas.Include(m => m.Categories).FirstOrDefaultAsync(m => m.Id == manga.Id);
                      }
                      
-                     // If user has viewed or read this manga, preserve it for History (Riwayat)
-                     if (existing.LastViewed > 0)
+                     // Fallback to URL lookup if ID not found or invalid
+                     if (existing == null)
                      {
-                         existing.Favorite = false;
-                         existing.DateAdded = 0;
-                         existing.Categories?.Clear();
-                         context.Update(existing);
-                         await context.SaveChangesAsync();
-                         LogService.Info("Library", $"Removed from library (preserved in history): {existing.Title}");
+                         existing = await context.Mangas.Include(m => m.Categories).FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
                      }
-                     else
+
+                     if (existing != null)
                      {
-                         context.Mangas.Remove(existing);
-                         await context.SaveChangesAsync();
-                         LogService.Info("Library", $"Completely deleted manga from database: {existing.Title}");
+                         if (deleteFiles)
+                         {
+                             await DeleteMangaFilesInternalAsync(context, existing);
+                         }
+                         
+                         // If user has viewed or read this manga, preserve it for History (Riwayat)
+                         if (existing.LastViewed > 0)
+                         {
+                             existing.Favorite = false;
+                             existing.DateAdded = 0;
+                             existing.Categories?.Clear();
+                             await context.SaveChangesAsync();
+                             LogService.Info("Library", $"Removed from library (preserved in history): {existing.Title}");
+                         }
+                         else
+                         {
+                             context.Mangas.Remove(existing);
+                             await context.SaveChangesAsync();
+                             LogService.Info("Library", $"Completely deleted manga from database: {existing.Title}");
+                         }
                      }
+                 }
+                 finally
+                 {
+                     _dbLock.Release();
                  }
              }
              catch (Exception ex)
@@ -299,21 +360,29 @@ namespace Yomic.Core.Services
 
         public async Task DeleteMangaDownloadsAsync(Manga manga)
         {
-             using var context = new MangaDbContext();
-             Manga? existing = null;
-             if (manga.Id > 0)
+             await _dbLock.WaitAsync();
+             try
              {
-                 existing = await context.Mangas.FindAsync(manga.Id);
-             }
-             if (existing == null)
-             {
-                 existing = await context.Mangas.FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
-             }
+                 using var context = CreateDbContext();
+                 Manga? existing = null;
+                 if (manga.Id > 0)
+                 {
+                     existing = await context.Mangas.FindAsync(manga.Id);
+                 }
+                 if (existing == null)
+                 {
+                     existing = await context.Mangas.FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
+                 }
 
-             if (existing != null)
+                 if (existing != null)
+                 {
+                     await DeleteMangaFilesInternalAsync(context, existing);
+                     await context.SaveChangesAsync();
+                 }
+             }
+             finally
              {
-                 await DeleteMangaFilesInternalAsync(context, existing);
-                 await context.SaveChangesAsync();
+                 _dbLock.Release();
              }
         }
 
@@ -321,25 +390,36 @@ namespace Yomic.Core.Services
         {
              try 
              {
-                var mangaDir = DownloadPathService.GetMangaDirectory(existing);
-
-                if (System.IO.Directory.Exists(mangaDir))
+                if (_customDbPath == null)
                 {
-                    System.IO.Directory.Delete(mangaDir, true);
-                    LogService.Success("Library", $"Deleted files for: {existing.Title}");
+                    var mangaDir = DownloadPathService.GetMangaDirectory(existing);
+                    if (System.IO.Directory.Exists(mangaDir))
+                    {
+                        try
+                        {
+                            System.IO.Directory.Delete(mangaDir, true);
+                            LogService.Success("Library", $"Deleted files for: {existing.Title}");
+                        }
+                        catch (Exception ioEx)
+                        {
+                            LogService.Warning("Library", $"Failed to delete folder '{mangaDir}': {ioEx.Message}");
+                        }
+                    }
                 }
 
-                // Mark all chapters as not downloaded in the DB and remove both folder & .cbz downloads
+                // Always mark chapters as not downloaded in the DB even if one file was locked
                 var dbChapters = await context.Chapters.Where(c => c.MangaId == existing.Id).ToListAsync();
                 foreach (var c in dbChapters)
                 {
-                    DownloadPathService.DeleteDownloadedChapter(existing, c);
+                    if (_customDbPath == null)
+                    {
+                        try { DownloadPathService.DeleteDownloadedChapter(existing, c); } catch { }
+                    }
                     if (c.IsDownloaded)
                     {
                         c.IsDownloaded = false;
                     }
                 }
-                context.Chapters.UpdateRange(dbChapters);
              }
              catch (Exception ex)
              {
@@ -352,35 +432,45 @@ namespace Yomic.Core.Services
             try
             {
                 // 1. Update DB First (to prevent "Ghost" downloaded status if file delete succeeds but DB fails)
-                using var context = new MangaDbContext();
-                var dbManga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
-                if (dbManga != null)
+                await _dbLock.WaitAsync();
+                try
                 {
-                    var dbChapter = await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == dbManga.Id && c.Url == chapter.Url);
-                    if (dbChapter != null)
+                    using var context = CreateDbContext();
+                    var dbManga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
+                    if (dbManga != null)
                     {
-                        dbChapter.IsDownloaded = false;
-                        context.Update(dbChapter);
-                        await context.SaveChangesAsync();
+                        var dbChapter = await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == dbManga.Id && c.Url == chapter.Url);
+                        if (dbChapter != null)
+                        {
+                            dbChapter.IsDownloaded = false;
+                            await context.SaveChangesAsync();
+                        }
                     }
+                }
+                finally
+                {
+                    _dbLock.Release();
                 }
 
                 // 2. Delete both folder and .cbz files via centralized DownloadPathService
-                bool deleted = DownloadPathService.DeleteDownloadedChapter(manga, chapter);
-                var tempDir = DownloadPathService.GetChapterTempDirectory(manga, chapter);
-                if (System.IO.Directory.Exists(tempDir))
+                if (_customDbPath == null)
                 {
-                    try
+                    bool deleted = DownloadPathService.DeleteDownloadedChapter(manga, chapter);
+                    var tempDir = DownloadPathService.GetChapterTempDirectory(manga, chapter);
+                    if (System.IO.Directory.Exists(tempDir))
                     {
-                        System.IO.Directory.Delete(tempDir, true);
-                        deleted = true;
+                        try
+                        {
+                            System.IO.Directory.Delete(tempDir, true);
+                            deleted = true;
+                        }
+                        catch { }
                     }
-                    catch { }
-                }
 
-                if (deleted)
-                {
-                    LogService.Success("Library", $"Deleted chapter download: {chapter.Name}");
+                    if (deleted)
+                    {
+                        LogService.Success("Library", $"Deleted chapter download: {chapter.Name}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -389,28 +479,36 @@ namespace Yomic.Core.Services
             }
         }
 
-        // Global lock for Database writes to prevent SQLite "database is locked" errors during parallel updates
-        private static readonly System.Threading.SemaphoreSlim _dbLock = new(1, 1);
+        // Global lock for Database writes (shared with IPC and BackupService restore barrier)
+        private static readonly System.Threading.SemaphoreSlim _dbLock = MangaDbContext.DatabaseWriteGate;
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<long, System.Threading.SemaphoreSlim> _sourceSemaphores = new();
 
         public async Task<int> UpdateChaptersAsync(Manga manga, List<Chapter> chapters, bool isInitialLoad = false, bool skipPrune = false)
         {
             try
             {
-                using var context = new MangaDbContext();
-                var dbManga = await context.Mangas
-                    .Include(m => m.Chapters)
-                    .FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
-                
-                if (dbManga != null)
+                await _dbLock.WaitAsync();
+                try
                 {
-                    long now = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                    int newCount = SyncChaptersInternal(context, dbManga, chapters, isInitialLoad, skipPrune, now);
-                    UpdateMangaUpdateSchedule(dbManga, now);
-                    await context.SaveChangesAsync();
-                    return newCount;
+                    using var context = CreateDbContext();
+                    var dbManga = await context.Mangas
+                        .Include(m => m.Chapters)
+                        .FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
+
+                    if (dbManga != null)
+                    {
+                        long now = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                        int newCount = SyncChaptersInternal(context, dbManga, chapters, isInitialLoad, skipPrune, now);
+                        UpdateMangaUpdateSchedule(dbManga, now);
+                        await context.SaveChangesAsync();
+                        return newCount;
+                    }
+                    return 0;
                 }
-                return 0;
+                finally
+                {
+                    _dbLock.Release();
+                }
             }
             catch (Exception ex)
             {
@@ -625,12 +723,20 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
-                var manga = await context.Mangas.FindAsync(mangaId);
-                if (manga != null && manga.NextUpdate != nextUpdateEpoch)
+                await _dbLock.WaitAsync();
+                try
                 {
-                    manga.NextUpdate = nextUpdateEpoch;
-                    await context.SaveChangesAsync();
+                    using var context = CreateDbContext();
+                    var manga = await context.Mangas.FindAsync(mangaId);
+                    if (manga != null && manga.NextUpdate != nextUpdateEpoch)
+                    {
+                        manga.NextUpdate = nextUpdateEpoch;
+                        await context.SaveChangesAsync();
+                    }
+                }
+                finally
+                {
+                    _dbLock.Release();
                 }
             }
             catch (Exception ex)
@@ -644,7 +750,7 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
+                using var context = CreateDbContext();
                 // Get chapters fetched recently (DateFetch > 0), from Favorite mangas
                 // We need to Includes Manga to get Title/Cover
                 var recent = await context.Chapters
@@ -665,24 +771,42 @@ namespace Yomic.Core.Services
 
         public async Task UpdateChapterDownloadStatusAsync(long chapterId, bool isDownloaded)
         {
-            using var context = new MangaDbContext();
-            var chapter = await context.Chapters.FindAsync(chapterId);
-            if (chapter != null)
+            await _dbLock.WaitAsync();
+            try
             {
-                chapter.IsDownloaded = isDownloaded;
-                await context.SaveChangesAsync();
+                using var context = CreateDbContext();
+                var chapter = await context.Chapters.FindAsync(chapterId);
+                if (chapter != null)
+                {
+                    chapter.IsDownloaded = isDownloaded;
+                    await context.SaveChangesAsync();
+                }
+            }
+            finally
+            {
+                _dbLock.Release();
             }
         }
 
-        public async Task UpdateChapterDownloadStatusByUrlAsync(string chapterUrl, bool isDownloaded)
+        public async Task UpdateChapterDownloadStatusByUrlAsync(string chapterUrl, bool isDownloaded, long mangaId = 0)
         {
-            using var context = new MangaDbContext();
-            var chapter = await context.Chapters.FirstOrDefaultAsync(c => c.Url == chapterUrl);
-            if (chapter != null)
+            await _dbLock.WaitAsync();
+            try
             {
-                chapter.IsDownloaded = isDownloaded;
-                await context.SaveChangesAsync();
-                System.Diagnostics.Debug.WriteLine($"[LibraryService] Updated download status for: {chapter.Name}");
+                using var context = CreateDbContext();
+                var chapter = mangaId > 0
+                    ? await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == mangaId && c.Url == chapterUrl)
+                    : await context.Chapters.FirstOrDefaultAsync(c => c.Url == chapterUrl);
+                if (chapter != null)
+                {
+                    chapter.IsDownloaded = isDownloaded;
+                    await context.SaveChangesAsync();
+                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Updated download status for: {chapter.Name}");
+                }
+            }
+            finally
+            {
+                _dbLock.Release();
             }
         }
 
@@ -690,88 +814,94 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
-                Chapter? chapter = null;
-                if (sourceId != 0 && !string.IsNullOrEmpty(mangaUrl))
+                await _dbLock.WaitAsync();
+                try
                 {
-                    var scopedManga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
-                    if (scopedManga != null)
+                    using var context = CreateDbContext();
+                    Chapter? chapter = null;
+                    Manga? scopedManga = null;
+                    bool hasScope = sourceId != 0 && !string.IsNullOrEmpty(mangaUrl);
+                    if (hasScope)
                     {
-                        chapter = await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == scopedManga.Id && c.Url == chapterUrl);
-                    }
-                }
-                if (chapter == null && !string.IsNullOrEmpty(chapterUrl))
-                {
-                    chapter = await context.Chapters.FirstOrDefaultAsync(c => c.Url == chapterUrl);
-                }
-                
-                if (chapter != null)
-                {
-                    long nowMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                    chapter.Read = isRead;
-                    if (isRead)
-                    {
-                        chapter.IsNew = false; // Clear "New" badge when read
-                        var hist = await context.History.FirstOrDefaultAsync(h => h.ChapterId == chapter.Id);
-                        if (hist != null)
+                        scopedManga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
+                        if (scopedManga != null)
                         {
-                            hist.LastRead = nowMs;
-                            if (hist.MangaId == 0) hist.MangaId = chapter.MangaId;
+                            chapter = await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == scopedManga.Id && c.Url == chapterUrl);
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(chapterUrl))
+                    {
+                        chapter = await context.Chapters.FirstOrDefaultAsync(c => c.Url == chapterUrl);
+                    }
+                    
+                    if (chapter != null)
+                    {
+                        long nowMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                        chapter.Read = isRead;
+                        if (isRead)
+                        {
+                            chapter.IsNew = false; // Clear "New" badge when read
+                            var hist = await context.History.FirstOrDefaultAsync(h => h.ChapterId == chapter.Id);
+                            if (hist != null)
+                            {
+                                hist.LastRead = nowMs;
+                                if (hist.MangaId == 0) hist.MangaId = chapter.MangaId;
+                            }
+                            else
+                            {
+                                await context.History.AddAsync(new History { ChapterId = chapter.Id, MangaId = chapter.MangaId, LastRead = nowMs, TimeRead = 0 });
+                            }
                         }
                         else
                         {
-                            await context.History.AddAsync(new History { ChapterId = chapter.Id, MangaId = chapter.MangaId, LastRead = nowMs, TimeRead = 0 });
+                            var existingHist = await context.History.Where(h => h.ChapterId == chapter.Id).ToListAsync();
+                            if (existingHist.Count > 0)
+                            {
+                                context.History.RemoveRange(existingHist);
+                            }
                         }
-                    }
-                    else
-                    {
-                        var existingHist = await context.History.Where(h => h.ChapterId == chapter.Id).ToListAsync();
-                        if (existingHist.Count > 0)
-                        {
-                            context.History.RemoveRange(existingHist);
-                        }
-                    }
 
-                    var manga = await context.Mangas.Include(m => m.Chapters).FirstOrDefaultAsync(m => m.Id == chapter.MangaId);
-                    if (manga != null)
-                    {
-                        if (isRead)
+                        var manga = await context.Mangas.Include(m => m.Chapters).FirstOrDefaultAsync(m => m.Id == chapter.MangaId);
+                        if (manga != null)
                         {
-                            manga.LastViewed = nowMs;
+                            if (isRead)
+                            {
+                                manga.LastViewed = nowMs;
+                            }
+                            else if (manga.Chapters != null && !manga.Chapters.Any(c => c.Id != chapter.Id && c.Read))
+                            {
+                                manga.LastViewed = 0;
+                            }
                         }
-                        else if (manga.Chapters != null && !manga.Chapters.Any(c => c.Id != chapter.Id && c.Read))
-                        {
-                            manga.LastViewed = 0;
-                        }
-                    }
 
-                    await context.SaveChangesAsync();
-                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Set chapter read status to {isRead}: {chapter.Name}");
+                        await context.SaveChangesAsync();
+                        System.Diagnostics.Debug.WriteLine($"[LibraryService] Set chapter read status to {isRead}: {chapter.Name}");
+                    }
+                    else if (isRead && hasScope && scopedManga != null)
+                    {
+                        // Fallback: Chapter doesn't exist (Online reading), create it ONLY if marking as Read
+                        long nowMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                        scopedManga.LastViewed = nowMs;
+                        var newChapter = new Chapter
+                        {
+                            MangaId = scopedManga.Id,
+                            Url = chapterUrl,
+                            Name = chapterTitle,
+                            ChapterNumber = chapterNumber,
+                            Read = true,
+                            DateFetch = 0,
+                            DateUpload = 0 // Unknown
+                        };
+                        await context.Chapters.AddAsync(newChapter);
+                        await context.SaveChangesAsync();
+                        await context.History.AddAsync(new History { ChapterId = newChapter.Id, MangaId = scopedManga.Id, LastRead = nowMs, TimeRead = 0 });
+                        await context.SaveChangesAsync();
+                        System.Diagnostics.Debug.WriteLine($"[LibraryService] Created and marked online chapter as read: {chapterTitle}");
+                    }
                 }
-                else if (isRead && sourceId != 0 && !string.IsNullOrEmpty(mangaUrl)) 
+                finally
                 {
-                    // Fallback: Chapter doesn't exist (Online reading), create it ONLY if marking as Read
-                     var manga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
-                     if (manga != null)
-                     {
-                         long nowMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                         manga.LastViewed = nowMs;
-                         var newChapter = new Chapter
-                         {
-                             MangaId = manga.Id,
-                             Url = chapterUrl,
-                             Name = chapterTitle,
-                             ChapterNumber = chapterNumber,
-                             Read = true,
-                             DateFetch = 0,
-                             DateUpload = 0 // Unknown
-                         };
-                         await context.Chapters.AddAsync(newChapter);
-                         await context.SaveChangesAsync();
-                         await context.History.AddAsync(new History { ChapterId = newChapter.Id, MangaId = manga.Id, LastRead = nowMs, TimeRead = 0 });
-                         await context.SaveChangesAsync();
-                         System.Diagnostics.Debug.WriteLine($"[LibraryService] Created and marked online chapter as read: {chapterTitle}");
-                     }
+                    _dbLock.Release();
                 }
             }
             catch (Exception ex)
@@ -784,30 +914,38 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
-                Chapter? chapter = null;
-                if (mangaId > 0 && !string.IsNullOrEmpty(chapterUrl))
+                await _dbLock.WaitAsync();
+                try
                 {
-                    chapter = await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == mangaId && c.Url == chapterUrl);
-                }
-                if (chapter == null && mangaId > 0 && chapterNumber >= 0)
-                {
-                    chapter = await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == mangaId && Math.Abs(c.ChapterNumber - chapterNumber) < 0.01f);
-                }
-                if (chapter == null && mangaId <= 0 && !string.IsNullOrEmpty(chapterUrl))
-                {
-                    chapter = await context.Chapters.FirstOrDefaultAsync(c => c.Url == chapterUrl);
-                }
-                if (chapter != null)
-                {
-                    chapter.LastPageRead = value;
-                    var manga = await context.Mangas.FirstOrDefaultAsync(m => m.Id == chapter.MangaId);
-                    if (manga != null)
+                    using var context = CreateDbContext();
+                    Chapter? chapter = null;
+                    if (mangaId > 0 && !string.IsNullOrEmpty(chapterUrl))
                     {
-                        manga.LastViewed = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                        chapter = await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == mangaId && c.Url == chapterUrl);
                     }
-                    await context.SaveChangesAsync();
-                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Saved scroll position ({value}) for chapter: {chapter.Name}");
+                    if (chapter == null && mangaId > 0 && chapterNumber >= 0)
+                    {
+                        chapter = await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == mangaId && Math.Abs(c.ChapterNumber - chapterNumber) < 0.01f);
+                    }
+                    if (chapter == null && mangaId <= 0 && !string.IsNullOrEmpty(chapterUrl))
+                    {
+                        chapter = await context.Chapters.FirstOrDefaultAsync(c => c.Url == chapterUrl);
+                    }
+                    if (chapter != null)
+                    {
+                        chapter.LastPageRead = value;
+                        var manga = await context.Mangas.FirstOrDefaultAsync(m => m.Id == chapter.MangaId);
+                        if (manga != null)
+                        {
+                            manga.LastViewed = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                        }
+                        await context.SaveChangesAsync();
+                        System.Diagnostics.Debug.WriteLine($"[LibraryService] Saved scroll position ({value}) for chapter: {chapter.Name}");
+                    }
+                }
+                finally
+                {
+                    _dbLock.Release();
                 }
             }
             catch (Exception ex)
@@ -820,18 +958,26 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
-                var chapter = context.Chapters.FirstOrDefault(c => c.Url == chapterUrl);
-                if (chapter != null)
+                _dbLock.Wait();
+                try
                 {
-                    chapter.LastPageRead = value;
-                    var manga = context.Mangas.FirstOrDefault(m => m.Id == chapter.MangaId);
-                    if (manga != null)
+                    using var context = CreateDbContext();
+                    var chapter = context.Chapters.FirstOrDefault(c => c.Url == chapterUrl);
+                    if (chapter != null)
                     {
-                        manga.LastViewed = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                        chapter.LastPageRead = value;
+                        var manga = context.Mangas.FirstOrDefault(m => m.Id == chapter.MangaId);
+                        if (manga != null)
+                        {
+                            manga.LastViewed = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                        }
+                        context.SaveChanges();
+                        System.Diagnostics.Debug.WriteLine($"[LibraryService] Saved scroll position ({value}) for chapter: {chapter.Name}");
                     }
-                    context.SaveChanges();
-                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Saved scroll position ({value}) for chapter: {chapter.Name}");
+                }
+                finally
+                {
+                    _dbLock.Release();
                 }
             }
             catch (Exception ex)
@@ -844,7 +990,7 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
+                using var context = CreateDbContext();
                 var chapter = await context.Chapters.FirstOrDefaultAsync(c => c.Url == chapterUrl);
                 if (chapter != null)
                 {
@@ -862,7 +1008,7 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
+                using var context = CreateDbContext();
                 Chapter? chapter = null;
                 if (mangaId > 0 && !string.IsNullOrEmpty(chapterUrl))
                 {
@@ -892,47 +1038,53 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
-                Chapter? chapter = null;
-                if (sourceId != 0 && !string.IsNullOrEmpty(mangaUrl))
+                await _dbLock.WaitAsync();
+                try
                 {
-                    var scopedManga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
-                    if (scopedManga != null)
+                    using var context = CreateDbContext();
+                    Chapter? chapter = null;
+                    Manga? scopedManga = null;
+                    bool hasScope = sourceId != 0 && !string.IsNullOrEmpty(mangaUrl);
+                    if (hasScope)
                     {
-                        chapter = await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == scopedManga.Id && c.Url == chapterUrl);
+                        scopedManga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
+                        if (scopedManga != null)
+                        {
+                            chapter = await context.Chapters.FirstOrDefaultAsync(c => c.MangaId == scopedManga.Id && c.Url == chapterUrl);
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(chapterUrl))
+                    {
+                        chapter = await context.Chapters.FirstOrDefaultAsync(c => c.Url == chapterUrl);
+                    }
+                    
+                    if (chapter != null)
+                    {
+                        chapter.Bookmark = isBookmarked;
+                        await context.SaveChangesAsync();
+                        System.Diagnostics.Debug.WriteLine($"[LibraryService] Set chapter bookmark status to {isBookmarked}: {chapter.Name}");
+                    }
+                    else if (isBookmarked && hasScope && scopedManga != null)
+                    {
+                        // Fallback: Chapter doesn't exist, create it ONLY if marking as Bookmarked
+                        var newChapter = new Chapter
+                        {
+                            MangaId = scopedManga.Id,
+                            Url = chapterUrl,
+                            Name = chapterTitle,
+                            ChapterNumber = chapterNumber,
+                            Bookmark = true,
+                            DateFetch = 0,
+                            DateUpload = 0
+                        };
+                        await context.Chapters.AddAsync(newChapter);
+                        await context.SaveChangesAsync();
+                        System.Diagnostics.Debug.WriteLine($"[LibraryService] Created and marked online chapter as bookmarked: {chapterTitle}");
                     }
                 }
-                if (chapter == null && !string.IsNullOrEmpty(chapterUrl))
+                finally
                 {
-                    chapter = await context.Chapters.FirstOrDefaultAsync(c => c.Url == chapterUrl);
-                }
-                
-                if (chapter != null)
-                {
-                    chapter.Bookmark = isBookmarked;
-                    await context.SaveChangesAsync();
-                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Set chapter bookmark status to {isBookmarked}: {chapter.Name}");
-                }
-                else if (isBookmarked && sourceId != 0 && !string.IsNullOrEmpty(mangaUrl)) 
-                {
-                    // Fallback: Chapter doesn't exist, create it ONLY if marking as Bookmarked
-                     var manga = await context.Mangas.FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
-                     if (manga != null)
-                     {
-                         var newChapter = new Chapter
-                         {
-                             MangaId = manga.Id,
-                             Url = chapterUrl,
-                             Name = chapterTitle,
-                             ChapterNumber = chapterNumber,
-                             Bookmark = true,
-                             DateFetch = 0,
-                             DateUpload = 0
-                         };
-                         await context.Chapters.AddAsync(newChapter);
-                         await context.SaveChangesAsync();
-                         System.Diagnostics.Debug.WriteLine($"[LibraryService] Created and marked online chapter as bookmarked: {chapterTitle}");
-                     }
+                    _dbLock.Release();
                 }
             }
             catch (Exception ex)
@@ -943,73 +1095,89 @@ namespace Yomic.Core.Services
 
         public async Task MarkChaptersAsReadAsync(Manga manga)
         {
-            using var context = new MangaDbContext();
-            Manga? existing = null;
-            
-            if (manga.Id > 0) existing = await context.Mangas.Include(m => m.Chapters).FirstOrDefaultAsync(m => m.Id == manga.Id);
-            
-            if (existing == null)
+            await _dbLock.WaitAsync();
+            try
             {
-                existing = await context.Mangas.Include(m => m.Chapters)
-                                       .FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
-            }
-            
-            if (existing != null && existing.Chapters != null)
-            {
-                long nowMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                var chIds = existing.Chapters.Select(c => c.Id).ToList();
-                var existingHistoryIds = new HashSet<long>(
-                    await context.History
-                        .Where(h => chIds.Contains(h.ChapterId))
-                        .Select(h => h.ChapterId)
-                        .ToListAsync()
-                );
-
-                foreach (var ch in existing.Chapters)
+                using var context = CreateDbContext();
+                Manga? existing = null;
+                
+                if (manga.Id > 0) existing = await context.Mangas.Include(m => m.Chapters).FirstOrDefaultAsync(m => m.Id == manga.Id);
+                
+                if (existing == null)
                 {
-                    ch.Read = true;
-                    ch.IsNew = false;
-                    if (!existingHistoryIds.Contains(ch.Id))
-                    {
-                        await context.History.AddAsync(new History { ChapterId = ch.Id, MangaId = existing.Id, LastRead = nowMs, TimeRead = 0 });
-                    }
+                    existing = await context.Mangas.Include(m => m.Chapters)
+                                           .FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
                 }
-                existing.HasNewChapters = false;
-                existing.LastViewed = nowMs;
-                await context.SaveChangesAsync();
-                System.Diagnostics.Debug.WriteLine($"[LibraryService] Marked all chapters read for: {existing.Title}");
+                
+                if (existing != null && existing.Chapters != null)
+                {
+                    long nowMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                    var chIds = existing.Chapters.Select(c => c.Id).ToList();
+                    var existingHistoryIds = new HashSet<long>(
+                        await context.History
+                            .Where(h => chIds.Contains(h.ChapterId))
+                            .Select(h => h.ChapterId)
+                            .ToListAsync()
+                    );
+
+                    foreach (var ch in existing.Chapters)
+                    {
+                        ch.Read = true;
+                        ch.IsNew = false;
+                        if (!existingHistoryIds.Contains(ch.Id))
+                        {
+                            await context.History.AddAsync(new History { ChapterId = ch.Id, MangaId = existing.Id, LastRead = nowMs, TimeRead = 0 });
+                        }
+                    }
+                    existing.HasNewChapters = false;
+                    existing.LastViewed = nowMs;
+                    await context.SaveChangesAsync();
+                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Marked all chapters read for: {existing.Title}");
+                }
+            }
+            finally
+            {
+                _dbLock.Release();
             }
         }
 
         public async Task MarkChaptersAsUnreadAsync(Manga manga)
         {
-            using var context = new MangaDbContext();
-            Manga? existing = null;
-            
-            if (manga.Id > 0) existing = await context.Mangas.Include(m => m.Chapters).FirstOrDefaultAsync(m => m.Id == manga.Id);
-            
-            if (existing == null)
+            await _dbLock.WaitAsync();
+            try
             {
-                existing = await context.Mangas.Include(m => m.Chapters)
-                                       .FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
-            }
-            
-            if (existing != null && existing.Chapters != null)
-            {
-                var chIds = existing.Chapters.Select(c => c.Id).ToList();
-                var histToRemove = await context.History.Where(h => chIds.Contains(h.ChapterId)).ToListAsync();
-                if (histToRemove.Count > 0)
+                using var context = CreateDbContext();
+                Manga? existing = null;
+                
+                if (manga.Id > 0) existing = await context.Mangas.Include(m => m.Chapters).FirstOrDefaultAsync(m => m.Id == manga.Id);
+                
+                if (existing == null)
                 {
-                    context.History.RemoveRange(histToRemove);
+                    existing = await context.Mangas.Include(m => m.Chapters)
+                                           .FirstOrDefaultAsync(m => m.Url == manga.Url && m.Source == manga.Source);
                 }
+                
+                if (existing != null && existing.Chapters != null)
+                {
+                    var chIds = existing.Chapters.Select(c => c.Id).ToList();
+                    var histToRemove = await context.History.Where(h => chIds.Contains(h.ChapterId)).ToListAsync();
+                    if (histToRemove.Count > 0)
+                    {
+                        context.History.RemoveRange(histToRemove);
+                    }
 
-                foreach (var ch in existing.Chapters)
-                {
-                    ch.Read = false;
+                    foreach (var ch in existing.Chapters)
+                    {
+                        ch.Read = false;
+                    }
+                    existing.LastViewed = 0;
+                    await context.SaveChangesAsync();
+                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Marked all chapters UNREAD for: {existing.Title}");
                 }
-                existing.LastViewed = 0;
-                await context.SaveChangesAsync();
-                System.Diagnostics.Debug.WriteLine($"[LibraryService] Marked all chapters UNREAD for: {existing.Title}");
+            }
+            finally
+            {
+                _dbLock.Release();
             }
         }
 
@@ -1017,41 +1185,49 @@ namespace Yomic.Core.Services
         {
              try
              {
-                 using var context = new MangaDbContext();
-                 // Find Manga ID first
-                 var dbManga = await context.Mangas.FirstOrDefaultAsync(m => m.Id == manga.Id || (m.Url == manga.Url && m.Source == manga.Source));
-
-                 if (dbManga != null)
+                 await _dbLock.WaitAsync();
+                 try
                  {
-                     // Get all unread chapters strictly before this number (exclude -1 unparsed sentinels)
-                     var chapters = await context.Chapters
-                         .Where(c => c.MangaId == dbManga.Id && c.ChapterNumber >= 0 && c.ChapterNumber < chapterNumber && !c.Read)
-                         .ToListAsync();
-                     
-                     if (chapters.Any())
-                     {
-                         long nowMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                         var chIds = chapters.Select(c => c.Id).ToList();
-                         var existingHistoryIds = new HashSet<long>(
-                             await context.History
-                                 .Where(h => chIds.Contains(h.ChapterId))
-                                 .Select(h => h.ChapterId)
-                                 .ToListAsync()
-                         );
+                     using var context = CreateDbContext();
+                     // Find Manga ID first
+                     var dbManga = await context.Mangas.FirstOrDefaultAsync(m => m.Id == manga.Id || (m.Url == manga.Url && m.Source == manga.Source));
 
-                         foreach(var c in chapters)
+                     if (dbManga != null)
+                     {
+                         // Get all unread chapters strictly before this number (exclude -1 unparsed sentinels)
+                         var chapters = await context.Chapters
+                             .Where(c => c.MangaId == dbManga.Id && c.ChapterNumber >= 0 && c.ChapterNumber < chapterNumber && !c.Read)
+                             .ToListAsync();
+                         
+                         if (chapters.Any())
                          {
-                             c.Read = true;
-                             c.IsNew = false;
-                             if (!existingHistoryIds.Contains(c.Id))
+                             long nowMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                             var chIds = chapters.Select(c => c.Id).ToList();
+                             var existingHistoryIds = new HashSet<long>(
+                                 await context.History
+                                     .Where(h => chIds.Contains(h.ChapterId))
+                                     .Select(h => h.ChapterId)
+                                     .ToListAsync()
+                             );
+
+                             foreach(var c in chapters)
                              {
-                                 await context.History.AddAsync(new History { ChapterId = c.Id, MangaId = dbManga.Id, LastRead = nowMs, TimeRead = 0 });
+                                 c.Read = true;
+                                 c.IsNew = false;
+                                 if (!existingHistoryIds.Contains(c.Id))
+                                 {
+                                     await context.History.AddAsync(new History { ChapterId = c.Id, MangaId = dbManga.Id, LastRead = nowMs, TimeRead = 0 });
+                                 }
                              }
+                             dbManga.LastViewed = nowMs;
+                             await context.SaveChangesAsync();
+                             System.Diagnostics.Debug.WriteLine($"[LibraryService] Marked {chapters.Count} previous chapters as read for {dbManga.Title}");
                          }
-                         dbManga.LastViewed = nowMs;
-                         await context.SaveChangesAsync();
-                         System.Diagnostics.Debug.WriteLine($"[LibraryService] Marked {chapters.Count} previous chapters as read for {dbManga.Title}");
                      }
+                 }
+                 finally
+                 {
+                     _dbLock.Release();
                  }
              }
              catch (Exception ex)
@@ -1332,7 +1508,7 @@ namespace Yomic.Core.Services
             await _dbLock.WaitAsync();
             try
             {
-                using var context = new MangaDbContext();
+                using var context = CreateDbContext();
                 var urls = batch.Select(b => b.manga.Url).ToList();
                 var dbMangas = await context.Mangas
                     .Include(m => m.Chapters)
@@ -1397,26 +1573,38 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
-                await context.Database.EnsureDeletedAsync();
-                await context.Database.EnsureCreatedAsync();
-                System.Diagnostics.Debug.WriteLine("[LibraryService] Database cleared and recreated.");
-
-                // Also delete downloaded files
-                var appData = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
-                var downloadsFolder = System.IO.Path.Combine(appData, "Yomic", "Downloads");
-                var coversFolder = System.IO.Path.Combine(appData, "Yomic", "covers");
-
-                if (System.IO.Directory.Exists(downloadsFolder))
+                await _dbLock.WaitAsync();
+                try
                 {
-                    System.IO.Directory.Delete(downloadsFolder, true);
-                    System.Diagnostics.Debug.WriteLine("[LibraryService] Downloads folder deleted.");
+                    using var context = CreateDbContext();
+                    await context.Database.EnsureDeletedAsync();
+                    await context.Database.EnsureCreatedAsync();
+                    MangaDbContext.ResetColumnCheck();
+                    System.Diagnostics.Debug.WriteLine("[LibraryService] Database cleared and recreated.");
+                }
+                finally
+                {
+                    _dbLock.Release();
                 }
 
-                if (System.IO.Directory.Exists(coversFolder))
+                // Only delete real AppData downloads/covers when operating on the live DB (never when isolated with _customDbPath)
+                if (_customDbPath == null)
                 {
-                    System.IO.Directory.Delete(coversFolder, true);
-                    System.Diagnostics.Debug.WriteLine("[LibraryService] Covers cache folder deleted.");
+                    var appData = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
+                    var downloadsFolder = System.IO.Path.Combine(appData, "Yomic", "Downloads");
+                    var coversFolder = System.IO.Path.Combine(appData, "Yomic", "covers");
+
+                    if (System.IO.Directory.Exists(downloadsFolder))
+                    {
+                        System.IO.Directory.Delete(downloadsFolder, true);
+                        System.Diagnostics.Debug.WriteLine("[LibraryService] Downloads folder deleted.");
+                    }
+
+                    if (System.IO.Directory.Exists(coversFolder))
+                    {
+                        System.IO.Directory.Delete(coversFolder, true);
+                        System.Diagnostics.Debug.WriteLine("[LibraryService] Covers cache folder deleted.");
+                    }
                 }
             }
             catch (Exception ex)
@@ -1430,16 +1618,24 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
-                
-                // Get all mangas that are NOT favorite
-                var nonFavorites = await context.Mangas.Where(m => !m.Favorite).ToListAsync();
-                
-                if (nonFavorites.Count > 0)
+                await _dbLock.WaitAsync();
+                try
                 {
-                    context.Mangas.RemoveRange(nonFavorites);
-                    await context.SaveChangesAsync();
-                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Cleared {nonFavorites.Count} non-library mangas from database.");
+                    using var context = CreateDbContext();
+                    
+                    // Get all mangas that are NOT favorite
+                    var nonFavorites = await context.Mangas.Where(m => !m.Favorite).ToListAsync();
+                    
+                    if (nonFavorites.Count > 0)
+                    {
+                        context.Mangas.RemoveRange(nonFavorites);
+                        await context.SaveChangesAsync();
+                        System.Diagnostics.Debug.WriteLine($"[LibraryService] Cleared {nonFavorites.Count} non-library mangas from database.");
+                    }
+                }
+                finally
+                {
+                    _dbLock.Release();
                 }
             }
             catch (Exception ex)
@@ -1456,16 +1652,24 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
-                var readChapters = await context.Chapters.Where(c => c.Read).ToListAsync();
-                
-                foreach (var chapter in readChapters)
+                await _dbLock.WaitAsync();
+                try
                 {
-                    chapter.Read = false;
+                    using var context = CreateDbContext();
+                    var readChapters = await context.Chapters.Where(c => c.Read).ToListAsync();
+                    
+                    foreach (var chapter in readChapters)
+                    {
+                        chapter.Read = false;
+                    }
+                    
+                    await context.SaveChangesAsync();
+                    System.Diagnostics.Debug.WriteLine($"[LibraryService] Cleared read status for {readChapters.Count} chapters.");
                 }
-                
-                await context.SaveChangesAsync();
-                System.Diagnostics.Debug.WriteLine($"[LibraryService] Cleared read status for {readChapters.Count} chapters.");
+                finally
+                {
+                    _dbLock.Release();
+                }
             }
             catch (Exception ex)
             {
@@ -1479,7 +1683,7 @@ namespace Yomic.Core.Services
             await _dbLock.WaitAsync();
             try
             {
-                using var context = new MangaDbContext();
+                using var context = CreateDbContext();
                 // "Updates" are defined as chapters with DateFetch > 0 in GetRecentChaptersAsync
                 
                 var recentChapters = await context.Chapters
@@ -1530,7 +1734,7 @@ namespace Yomic.Core.Services
             await _dbLock.WaitAsync();
             try
             {
-                using var context = new MangaDbContext();
+                using var context = CreateDbContext();
                 var unreadUpdates = await context.Chapters
                     .Where(c => c.DateFetch > 0 && !c.Read)
                     .ToListAsync();
@@ -1576,7 +1780,7 @@ namespace Yomic.Core.Services
 
         public async Task<List<Category>> GetCategoriesAsync()
         {
-            using var context = new MangaDbContext();
+            using var context = CreateDbContext();
             return await context.Categories
                                 .OrderBy(c => c.SortOrder)
                                 .ToListAsync();
@@ -1584,60 +1788,83 @@ namespace Yomic.Core.Services
 
         public async Task AddCategoryAsync(Category category)
         {
-            using var context = new MangaDbContext();
-            // Assign next sort order
-            int maxOrder = 0;
-            if (await context.Categories.AnyAsync())
+            await _dbLock.WaitAsync();
+            try
             {
-                maxOrder = await context.Categories.MaxAsync(c => c.SortOrder);
-            }
-            category.SortOrder = maxOrder + 1;
+                using var context = CreateDbContext();
+                // Assign next sort order
+                int maxOrder = 0;
+                if (await context.Categories.AnyAsync())
+                {
+                    maxOrder = await context.Categories.MaxAsync(c => c.SortOrder);
+                }
+                category.SortOrder = maxOrder + 1;
 
-            if (category.IsDefault)
+                if (category.IsDefault)
+                {
+                    // Reset other default categories
+                    var defaults = await context.Categories.Where(c => c.IsDefault).ToListAsync();
+                    foreach (var d in defaults) d.IsDefault = false;
+                }
+
+                await context.Categories.AddAsync(category);
+                await context.SaveChangesAsync();
+            }
+            finally
             {
-                // Reset other default categories
-                var defaults = await context.Categories.Where(c => c.IsDefault).ToListAsync();
-                foreach (var d in defaults) d.IsDefault = false;
+                _dbLock.Release();
             }
-
-            await context.Categories.AddAsync(category);
-            await context.SaveChangesAsync();
         }
 
         public async Task UpdateCategoryAsync(Category category)
         {
-            using var context = new MangaDbContext();
-            var existing = await context.Categories.FindAsync(category.Id);
-            if (existing != null)
+            await _dbLock.WaitAsync();
+            try
             {
-                existing.Name = category.Name;
-                existing.Color = category.Color;
-                
-                if (category.IsDefault && !existing.IsDefault)
+                using var context = CreateDbContext();
+                var existing = await context.Categories.FindAsync(category.Id);
+                if (existing != null)
                 {
-                    // Reset other default categories
-                    var defaults = await context.Categories.Where(c => c.IsDefault && c.Id != category.Id).ToListAsync();
-                    foreach (var d in defaults) d.IsDefault = false;
-                    existing.IsDefault = true;
-                }
-                else if (!category.IsDefault && existing.IsDefault)
-                {
-                    existing.IsDefault = false;
-                }
+                    existing.Name = category.Name;
+                    existing.Color = category.Color;
+                    
+                    if (category.IsDefault && !existing.IsDefault)
+                    {
+                        // Reset other default categories
+                        var defaults = await context.Categories.Where(c => c.IsDefault && c.Id != category.Id).ToListAsync();
+                        foreach (var d in defaults) d.IsDefault = false;
+                        existing.IsDefault = true;
+                    }
+                    else if (!category.IsDefault && existing.IsDefault)
+                    {
+                        existing.IsDefault = false;
+                    }
 
-                context.Categories.Update(existing);
-                await context.SaveChangesAsync();
+                    await context.SaveChangesAsync();
+                }
+            }
+            finally
+            {
+                _dbLock.Release();
             }
         }
 
         public async Task DeleteCategoryAsync(long categoryId)
         {
-            using var context = new MangaDbContext();
-            var category = await context.Categories.FindAsync(categoryId);
-            if (category != null)
+            await _dbLock.WaitAsync();
+            try
             {
-                context.Categories.Remove(category);
-                await context.SaveChangesAsync();
+                using var context = CreateDbContext();
+                var category = await context.Categories.FindAsync(categoryId);
+                if (category != null)
+                {
+                    context.Categories.Remove(category);
+                    await context.SaveChangesAsync();
+                }
+            }
+            finally
+            {
+                _dbLock.Release();
             }
         }
 
@@ -1645,19 +1872,26 @@ namespace Yomic.Core.Services
         {
             try
             {
-                using var context = new MangaDbContext();
-                var categories = await context.Categories.Where(c => categoryIds.Contains(c.Id)).ToListAsync();
-                var categoryDict = categories.ToDictionary(c => c.Id);
-                for (int i = 0; i < categoryIds.Count; i++)
+                await _dbLock.WaitAsync();
+                try
                 {
-                    var id = categoryIds[i];
-                    if (categoryDict.TryGetValue(id, out var cat))
+                    using var context = CreateDbContext();
+                    var categories = await context.Categories.Where(c => categoryIds.Contains(c.Id)).ToListAsync();
+                    var categoryDict = categories.ToDictionary(c => c.Id);
+                    for (int i = 0; i < categoryIds.Count; i++)
                     {
-                        cat.SortOrder = i + 1;
-                        context.Categories.Update(cat);
+                        var id = categoryIds[i];
+                        if (categoryDict.TryGetValue(id, out var cat))
+                        {
+                            cat.SortOrder = i + 1;
+                        }
                     }
+                    await context.SaveChangesAsync();
                 }
-                await context.SaveChangesAsync();
+                finally
+                {
+                    _dbLock.Release();
+                }
             }
             catch (Exception ex)
             {
@@ -1667,62 +1901,83 @@ namespace Yomic.Core.Services
 
         public async Task<Category?> GetDefaultCategoryAsync()
         {
-            using var context = new MangaDbContext();
+            using var context = CreateDbContext();
             return await context.Categories.FirstOrDefaultAsync(c => c.IsDefault);
         }
 
         public async Task SetDefaultCategoryAsync(long categoryId)
         {
-            using var context = new MangaDbContext();
-            var categories = await context.Categories.ToListAsync();
-            foreach (var c in categories)
+            await _dbLock.WaitAsync();
+            try
             {
-                c.IsDefault = (c.Id == categoryId);
-                context.Categories.Update(c);
+                using var context = CreateDbContext();
+                var categories = await context.Categories.ToListAsync();
+                foreach (var c in categories)
+                {
+                    c.IsDefault = (c.Id == categoryId);
+                }
+                await context.SaveChangesAsync();
             }
-            await context.SaveChangesAsync();
+            finally
+            {
+                _dbLock.Release();
+            }
         }
 
         public async Task SetCategoryExcludeAsync(long categoryId, bool isExcluded)
         {
-            using var context = new MangaDbContext();
-            var category = await context.Categories.FindAsync(categoryId);
-            if (category != null)
+            await _dbLock.WaitAsync();
+            try
             {
-                category.UpdateExcluded = isExcluded;
-                context.Categories.Update(category);
-                await context.SaveChangesAsync();
+                using var context = CreateDbContext();
+                var category = await context.Categories.FindAsync(categoryId);
+                if (category != null)
+                {
+                    category.UpdateExcluded = isExcluded;
+                    await context.SaveChangesAsync();
+                }
+            }
+            finally
+            {
+                _dbLock.Release();
             }
         }
 
         public async Task SetMangaCategoriesAsync(string mangaUrl, long sourceId, List<long> categoryIds)
         {
-            using var context = new MangaDbContext();
-            var manga = await context.Mangas
-                                     .Include(m => m.Categories)
-                                     .FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
-            
-            if (manga != null)
+            await _dbLock.WaitAsync();
+            try
             {
-                manga.Categories.Clear();
-                if (categoryIds != null && categoryIds.Any())
+                using var context = CreateDbContext();
+                var manga = await context.Mangas
+                                         .Include(m => m.Categories)
+                                         .FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
+                
+                if (manga != null)
                 {
-                    var selectedCategories = await context.Categories
-                                                          .Where(c => categoryIds.Contains(c.Id))
-                                                          .ToListAsync();
-                    foreach (var cat in selectedCategories)
+                    manga.Categories.Clear();
+                    if (categoryIds != null && categoryIds.Any())
                     {
-                        manga.Categories.Add(cat);
+                        var selectedCategories = await context.Categories
+                                                              .Where(c => categoryIds.Contains(c.Id))
+                                                              .ToListAsync();
+                        foreach (var cat in selectedCategories)
+                        {
+                            manga.Categories.Add(cat);
+                        }
                     }
+                    await context.SaveChangesAsync();
                 }
-                context.Update(manga);
-                await context.SaveChangesAsync();
+            }
+            finally
+            {
+                _dbLock.Release();
             }
         }
 
         public async Task<List<long>> GetMangaCategoryIdsAsync(string mangaUrl, long sourceId)
         {
-            using var context = new MangaDbContext();
+            using var context = CreateDbContext();
             var manga = await context.Mangas
                                      .Include(m => m.Categories)
                                      .FirstOrDefaultAsync(m => m.Url == mangaUrl && m.Source == sourceId);
@@ -1763,7 +2018,7 @@ namespace Yomic.Core.Services
             var dto = new ReadingStatisticsDto();
             try
             {
-                using var context = new MangaDbContext();
+                using var context = CreateDbContext();
                 MangaDbContext.EnsureMangaColumnsExist(context);
 
                 var allMangas = await context.Mangas

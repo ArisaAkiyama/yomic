@@ -117,7 +117,7 @@ function doPost(e) {
 
     const categoryCode = sanitizeSpreadsheetCell_(data.category || 'bug', 40);
     const categoryLabel = sanitizeSpreadsheetCell_(data.categoryLabel || mapCategoryLabel_(categoryCode), 80);
-    const appVersion = sanitizeSpreadsheetCell_(data.appVersion || '2.3.0', 32);
+    const appVersion = sanitizeSpreadsheetCell_(data.appVersion || '2.4.0', 32);
     const osVersion = sanitizeSpreadsheetCell_(data.osVersion || 'Windows', 120);
     const language = sanitizeSpreadsheetCell_(data.language || 'id', 16);
     const clientId = String(data.clientId || '').trim();

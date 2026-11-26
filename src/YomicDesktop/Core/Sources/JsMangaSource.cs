@@ -312,6 +312,11 @@ namespace Yomic.Core.Sources
         {
             try
             {
+                if (HttpSource.IsOfflineModeProvider?.Invoke() == true)
+                {
+                    return new JsResponse { body = "Offline Mode is enabled.", status = 503 };
+                }
+
                 if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out var validatedUri) || validatedUri == null)
                 {
                     return new JsResponse { body = "Blocked unsafe URL.", status = 403 };
@@ -374,97 +379,93 @@ namespace Yomic.Core.Sources
                     }
                 }
 
-                if (Yomic.Core.Services.CloudflareBypassService.IsInstanceCreated)
-                {
-                    var cfBypass = Yomic.Core.Services.CloudflareBypassService.Instance;
-                    var savedCookies = cfBypass.SavedCookies;
-                    bool matchedHostCookies = false;
-                    if (savedCookies.Count > 0 && !headers.ContainsKey("Cookie"))
-                    {
-                        var matchingCookies = savedCookies
-                            .Where(c => Yomic.Core.Helpers.UrlSecurityHelper.CookieMatchesRequest(validatedUri, c.Domain, c.Secure ?? false))
-                            .Select(c => $"{c.Name}={c.Value}")
-                            .ToList();
-                        if (matchingCookies.Count > 0)
-                        {
-                            headers["Cookie"] = string.Join("; ", matchingCookies);
-                            matchedHostCookies = true;
-                        }
-                    }
-                    // Only override User-Agent with CF bypass UA when this host actually uses CF cookies (never clobber MangaDex custom UA)
-                    if (matchedHostCookies && !string.IsNullOrEmpty(cfBypass.BypassUserAgent) && !headers.ContainsKey("User-Agent"))
-                    {
-                        headers["User-Agent"] = cfBypass.BypassUserAgent;
-                    }
-                }
-
                 const long MaxJsFetchBytes = 25L * 1024 * 1024;
                 using var reqCts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
 
-                // If it's a GET and no custom headers, check media type or binary bytes cleanly
-                if (method == HttpMethod.Get && headers.Count == 0)
-                {
-                    using var responseNoHead = Client.GetAsync(validatedUri, HttpCompletionOption.ResponseHeadersRead, reqCts.Token).GetAwaiter().GetResult();
-                    if (responseNoHead.StatusCode == System.Net.HttpStatusCode.NotModified)
+                using var response = SendWithSafeRedirectsAsync(
+                    validatedUri,
+                    method,
+                    (hopUri, hopMethod, isCrossOrigin) =>
                     {
-                        if (cacheCtx != null) cacheCtx.Was304 = true;
-                        return new JsResponse { body = "", status = 304 };
-                    }
+                        var request = new HttpRequestMessage(hopMethod, hopUri)
+                        {
+                            Version = System.Net.HttpVersion.Version20,
+                            VersionPolicy = System.Net.Http.HttpVersionPolicy.RequestVersionOrLower
+                        };
 
-                    if (responseNoHead.StatusCode == System.Net.HttpStatusCode.OK && cacheCtx != null)
-                    {
-                        if (responseNoHead.Headers.ETag != null) cacheCtx.ExtractedETag = responseNoHead.Headers.ETag.Tag;
-                        if (responseNoHead.Content.Headers.LastModified != null) cacheCtx.ExtractedLastModified = responseNoHead.Content.Headers.LastModified.Value.ToString("r");
-                    }
+                        string? requestedContentType = null;
+                        bool hasExplicitCookie = false;
+                        bool hasExplicitUserAgent = false;
 
-                    var bytesNoHead = Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(
-                        responseNoHead.Content, MaxJsFetchBytes, reqCts.Token).GetAwaiter().GetResult();
-                    var mediaTypeNoHead = responseNoHead.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "";
-                    string content;
-                    if (mediaTypeNoHead.Contains("protobuf") || mediaTypeNoHead.Contains("octet-stream") || Array.IndexOf(bytesNoHead, (byte)0) >= 0)
-                    {
-                        content = System.Text.Encoding.Latin1.GetString(bytesNoHead);
-                    }
-                    else
-                    {
-                        content = System.Text.Encoding.UTF8.GetString(bytesNoHead);
-                    }
-                    return new JsResponse { body = content, status = (int)responseNoHead.StatusCode };
-                }
+                        foreach (var h in headers)
+                        {
+                            if (string.Equals(h.Key, "Content-Type", StringComparison.OrdinalIgnoreCase))
+                            {
+                                requestedContentType = h.Value;
+                                continue;
+                            }
+                            // Never leak raw Cookie or Authorization headers across origins on 302 redirects
+                            if (isCrossOrigin &&
+                                (string.Equals(h.Key, "Cookie", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(h.Key, "Authorization", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                continue;
+                            }
+                            if (string.Equals(h.Key, "Cookie", StringComparison.OrdinalIgnoreCase))
+                            {
+                                hasExplicitCookie = true;
+                            }
+                            if (string.Equals(h.Key, "User-Agent", StringComparison.OrdinalIgnoreCase))
+                            {
+                                hasExplicitUserAgent = true;
+                            }
+                            request.Headers.TryAddWithoutValidation(h.Key, h.Value);
+                        }
 
-                // Otherwise make a custom request using our client, properly preserving Content-Type
-                using var request = new HttpRequestMessage(method, validatedUri)
-                {
-                    Version = System.Net.HttpVersion.Version20,
-                    VersionPolicy = System.Net.Http.HttpVersionPolicy.RequestVersionOrLower
-                };
-                string? requestedContentType = null;
-                foreach (var h in headers)
-                {
-                    if (string.Equals(h.Key, "Content-Type", StringComparison.OrdinalIgnoreCase))
-                    {
-                        requestedContentType = h.Value;
-                        continue;
-                    }
-                    request.Headers.TryAddWithoutValidation(h.Key, h.Value);
-                }
-                if (postBody != null)
-                {
-                    string mediaTypeOnly = "application/json";
-                    if (!string.IsNullOrWhiteSpace(requestedContentType))
-                    {
-                        mediaTypeOnly = requestedContentType.Split(';')[0].Trim();
-                    }
-                    request.Content = new StringContent(postBody, System.Text.Encoding.UTF8, mediaTypeOnly);
-                    if (!string.IsNullOrWhiteSpace(requestedContentType) && requestedContentType.Contains(';'))
-                    {
-                        // Remove default Content-Type before re-adding full parameterized header to prevent duplicates
-                        request.Content.Headers.Remove("Content-Type");
-                        request.Content.Headers.TryAddWithoutValidation("Content-Type", requestedContentType);
-                    }
-                }
+                        // Inject host-scoped Cloudflare cookies per hop (prevents cross-origin cookie leaks on 302)
+                        if (Yomic.Core.Services.CloudflareBypassService.IsInstanceCreated)
+                        {
+                            var cfBypass = Yomic.Core.Services.CloudflareBypassService.Instance;
+                            var savedCookies = cfBypass.SavedCookies;
+                            bool matchedHostCookies = false;
+                            if (savedCookies.Count > 0 && !hasExplicitCookie)
+                            {
+                                var matchingCookies = savedCookies
+                                    .Where(c => Yomic.Core.Helpers.UrlSecurityHelper.CookieMatchesRequest(hopUri, c.Domain, c.Secure ?? false))
+                                    .Select(c => $"{c.Name}={c.Value}")
+                                    .ToList();
+                                if (matchingCookies.Count > 0)
+                                {
+                                    request.Headers.TryAddWithoutValidation("Cookie", string.Join("; ", matchingCookies));
+                                    matchedHostCookies = true;
+                                }
+                            }
+                            // Only override User-Agent with CF bypass UA when this hop actually uses CF cookies (never clobber MangaDex custom UA)
+                            if (matchedHostCookies && !string.IsNullOrEmpty(cfBypass.BypassUserAgent) && !hasExplicitUserAgent)
+                            {
+                                request.Headers.TryAddWithoutValidation("User-Agent", cfBypass.BypassUserAgent);
+                            }
+                        }
 
-                using var response = Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, reqCts.Token).GetAwaiter().GetResult();
+                        if (postBody != null && hopMethod != HttpMethod.Get && hopMethod != HttpMethod.Head)
+                        {
+                            string mediaTypeOnly = "application/json";
+                            if (!string.IsNullOrWhiteSpace(requestedContentType))
+                            {
+                                mediaTypeOnly = requestedContentType.Split(';')[0].Trim();
+                            }
+                            request.Content = new StringContent(postBody, System.Text.Encoding.UTF8, mediaTypeOnly);
+                            if (!string.IsNullOrWhiteSpace(requestedContentType) && requestedContentType.Contains(';'))
+                            {
+                                // Remove default Content-Type before re-adding full parameterized header to prevent duplicates
+                                request.Content.Headers.Remove("Content-Type");
+                                request.Content.Headers.TryAddWithoutValidation("Content-Type", requestedContentType);
+                            }
+                        }
+
+                        return request;
+                    },
+                    reqCts.Token).GetAwaiter().GetResult();
 
                 if (response.StatusCode == System.Net.HttpStatusCode.NotModified)
                 {
@@ -730,8 +731,12 @@ namespace Yomic.Core.Sources
                 var val = obj.Get(fallbackKey);
                 if (val.IsNumber())
                 {
-                    long num = (long)val.AsNumber();
-                    if (num > 0) return num < 100_000_000_000L ? num * 1000L : num;
+                    double rawDouble = val.AsNumber();
+                    if (!double.IsNaN(rawDouble) && !double.IsInfinity(rawDouble) && rawDouble > 0)
+                    {
+                        long num = (long)rawDouble;
+                        return num < 100_000_000_000L ? num * 1000L : num;
+                    }
                 }
                 else if (val.IsString())
                 {
@@ -929,7 +934,15 @@ namespace Yomic.Core.Sources
         {
             if (obj == null) return defaultValue;
             var val = obj.Get(propertyName);
-            return val.IsNumber() ? val.AsNumber() : defaultValue;
+            if (val.IsNumber())
+            {
+                double num = val.AsNumber();
+                if (!double.IsNaN(num) && !double.IsInfinity(num))
+                {
+                    return num;
+                }
+            }
+            return defaultValue;
         }
 
         private static readonly System.Text.RegularExpressions.Regex _chapterNumberRegex = 

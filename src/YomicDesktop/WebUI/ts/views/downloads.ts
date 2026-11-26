@@ -490,7 +490,8 @@ export function enqueueDownload(
       .catch(() => {
         // Revert optimistic queued rows if backend enqueue failed
         for (let i = this.downloads.length - 1; i >= 0; i--) {
-          if (this.downloads[i].id.startsWith('opt-') && this.downloads[i].mangaId === manga.id) {
+          const itemId = this.downloads[i].id;
+          if ((itemId.startsWith('dl-opt-') || itemId.startsWith('opt-')) && this.downloads[i].mangaId === manga.id) {
             this.downloads.splice(i, 1);
           }
         }

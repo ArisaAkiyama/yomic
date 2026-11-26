@@ -88,9 +88,10 @@ namespace YomicDesktop.IPC
             {
                 savedRaw = chapter.LastPageRead;
             }
+            long cacheSourceId = manga?.Source ?? sourceId;
             if (savedRaw <= 0)
             {
-                if (!string.IsNullOrEmpty(targetChUrl) && _chapterLastPageReadCache.TryGetValue(targetChUrl, out long cachedRaw))
+                if (!string.IsNullOrEmpty(targetChUrl) && _chapterLastPageReadCache.TryGetValue(MakeChapterCacheKey(cacheSourceId, targetChUrl), out long cachedRaw))
                 {
                     savedRaw = cachedRaw;
                 }
@@ -98,7 +99,7 @@ namespace YomicDesktop.IPC
                 {
                     savedRaw = cachedNum;
                 }
-                else if (!string.IsNullOrEmpty(mangaUrl) && _chapterLastPageReadCache.TryGetValue($"{mangaUrl}_{chapterNumber}", out long cachedUrlNum))
+                else if (!string.IsNullOrEmpty(mangaUrl) && _chapterLastPageReadCache.TryGetValue($"{cacheSourceId}|{mangaUrl}_{chapterNumber}", out long cachedUrlNum))
                 {
                     savedRaw = cachedUrlNum;
                 }
@@ -118,12 +119,20 @@ namespace YomicDesktop.IPC
             {
                 try
                 {
-                    using var db = new MangaDbContext();
-                    var dbManga = await db.Mangas.FindAsync(manga.Id);
-                    if (dbManga != null)
+                    await MangaDbContext.DatabaseWriteGate.WaitAsync();
+                    try
                     {
-                        dbManga.LastViewed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                        await db.SaveChangesAsync();
+                        using var db = new MangaDbContext();
+                        var dbManga = await db.Mangas.FindAsync(manga.Id);
+                        if (dbManga != null)
+                        {
+                            dbManga.LastViewed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                            await db.SaveChangesAsync();
+                        }
+                    }
+                    finally
+                    {
+                        MangaDbContext.DatabaseWriteGate.Release();
                     }
                 }
                 catch { }
@@ -189,8 +198,18 @@ namespace YomicDesktop.IPC
                 {
                     try
                     {
+                        string preloadKey = $"{source.Id}|{targetChUrl}";
+                        if (forceRefresh)
+                        {
+                            _preloadedPageListCache.TryRemove(preloadKey, out _);
+                        }
+
                         List<string> rawPages;
-                        if (source is JsMangaSource jsSource)
+                        if (!forceRefresh && TryGetPreloadedPageList(preloadKey, out var cachedPreloaded))
+                        {
+                            rawPages = cachedPreloaded;
+                        }
+                        else if (source is JsMangaSource jsSource)
                         {
                             var statusRes = await jsSource.GetPageListWithStatusAsync(targetChUrl);
                             rawPages = statusRes.Pages;
@@ -222,6 +241,10 @@ namespace YomicDesktop.IPC
                         else
                         {
                             rawPages = await source.GetPageListAsync(targetChUrl);
+                        }
+                        if (rawPages.Count > 0)
+                        {
+                            StorePreloadedPageList(preloadKey, rawPages);
                         }
                         var proxiedPages = rawPages
                             .Where(p => !string.IsNullOrWhiteSpace(p))
@@ -319,23 +342,24 @@ namespace YomicDesktop.IPC
             {
                 chapterUrl = manga.Chapters?.FirstOrDefault(c => Math.Abs(c.ChapterNumber - chapterNumber) < 0.01f)?.Url ?? string.Empty;
             }
+            long cacheSourceId = manga.Source != 0 ? manga.Source : sourceId;
             if (!string.IsNullOrEmpty(chapterUrl))
             {
-                _chapterLastPageReadCache[chapterUrl] = storedValue;
+                _chapterLastPageReadCache[MakeChapterCacheKey(cacheSourceId, chapterUrl)] = storedValue;
             }
             if (chapterNumber > 0)
             {
                 _chapterLastPageReadCache[$"{mangaId}_{chapterNumber}"] = storedValue;
                 if (!string.IsNullOrEmpty(mangaUrl))
                 {
-                    _chapterLastPageReadCache[$"{mangaUrl}_{chapterNumber}"] = storedValue;
+                    _chapterLastPageReadCache[$"{cacheSourceId}|{mangaUrl}_{chapterNumber}"] = storedValue;
                 }
             }
             if (!string.IsNullOrEmpty(chapterUrl) || (manga != null && manga.Id > 0))
             {
                 if (totalPages > 1 && !string.IsNullOrEmpty(chapterUrl))
                 {
-                    _chapterTotalPagesCache[chapterUrl] = totalPages;
+                    _chapterTotalPagesCache[MakeChapterCacheKey(cacheSourceId, chapterUrl)] = totalPages;
                 }
                 if (manga != null && manga.Id > 0 && totalPages > 1)
                 {
@@ -368,7 +392,7 @@ namespace YomicDesktop.IPC
                                 finishedChapter.IsDownloaded = false;
                                 if (!string.IsNullOrEmpty(finishedChapter.Url))
                                 {
-                                    await LibraryService.UpdateChapterDownloadStatusByUrlAsync(finishedChapter.Url, false);
+                                    await LibraryService.UpdateChapterDownloadStatusByUrlAsync(finishedChapter.Url, false, manga.Id);
                                 }
                             }
                         }
@@ -443,7 +467,7 @@ namespace YomicDesktop.IPC
                     var sync = pendingMalSync.Value;
                     _ = MalService.UpdateMangaStatusAsync(sync.RemoteId, sync.Status, sync.ChaptersRead, sync.Score);
                 }
-                // Preload Next Chapter when within 3 pages of the end of current chapter (Tahap 4.4)
+                // Preload Next Chapter once (cached + single-flight deduped) when within 3 pages of the end of current chapter
                 if (SettingsService.PreloadNextChapter && !SettingsService.IsOfflineMode && currentPage >= Math.Max(1, totalPages - 2) && manga?.Chapters != null)
                 {
                     var nextCh = manga.Chapters
@@ -455,10 +479,26 @@ namespace YomicDesktop.IPC
                         var source = ResolveSourceSafely(manga.Source, manga.Url, manga: manga);
                         if (source != null)
                         {
-                            _ = Task.Run(async () =>
+                            string nextPreloadKey = $"{source.Id}|{nextCh.Url}";
+                            if (!TryGetPreloadedPageList(nextPreloadKey, out _) && _preloadingChapterUrls.TryAdd(nextPreloadKey, 0))
                             {
-                                try { await source.GetPageListAsync(nextCh.Url); } catch { }
-                            });
+                                _ = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        var pages = await source.GetPageListAsync(nextCh.Url);
+                                        if (pages != null && pages.Count > 0)
+                                        {
+                                            StorePreloadedPageList(nextPreloadKey, pages);
+                                        }
+                                    }
+                                    catch { }
+                                    finally
+                                    {
+                                        _preloadingChapterUrls.TryRemove(nextPreloadKey, out _);
+                                    }
+                                });
+                            }
                         }
                     }
                 }

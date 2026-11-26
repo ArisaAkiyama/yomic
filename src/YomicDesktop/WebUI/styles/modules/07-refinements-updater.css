@@ -319,7 +319,12 @@ body.dark-mode .v1-settings-group > .v1-setting-card:hover {
 }
 
 .v1-setting-row.is-danger-row .v1-setting-title {
-  color: #F43F5E !important;
+  color: #BE123C !important;
+}
+
+:root[data-theme="dark"] .v1-setting-row.is-danger-row .v1-setting-title,
+body.dark-mode .v1-setting-row.is-danger-row .v1-setting-title {
+  color: #FB7185 !important;
 }
 
 .v1-about-release-chevron {
@@ -1388,6 +1393,11 @@ body.dark-mode .v1-filter-modal-dialog .v1-flyout-genre-chip.active {
   color: #D4D4D8;
 }
 
+.v1-reader-dock-sheet .v1-reader-mode-item:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #FFFFFF !important;
+}
+
 .v1-reader-dock-sheet .v1-reader-mode-item.active {
   background: #242429 !important;
   color: #FFFFFF !important;
@@ -1738,7 +1748,6 @@ body.dark-mode .toast-pill .toast-icon {
   background: rgba(255, 255, 255, 0.14) !important;
   -webkit-appearance: none;
   appearance: none;
-  outline: none;
   cursor: pointer;
 }
 
@@ -1818,6 +1827,11 @@ body.dark-mode .reader-display-sheet .v1-reader-image-row {
 
 .reader-display-sheet .v1-reader-image-row:hover {
   background: transparent !important;
+}
+
+/* Keep toggle-switch OFF track dark inside always-dark reader display sheet even in Light Mode */
+.reader-display-sheet .toggle-switch:not(.on) {
+  background: #3F3F46 !important;
 }
 
 .reader-display-sheet .v1-reader-image-info {
@@ -2161,7 +2175,18 @@ body.dark-mode .yomic-confirm-message {
   gap: 10px !important;
 }
 
-.yomic-confirm-btn.cancel,
+.yomic-confirm-btn.cancel {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #3F3F46 !important;
+  height: 40px !important;
+  padding: 0 14px !important;
+  border-radius: 10px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+}
+
 :root[data-theme="dark"] .yomic-confirm-btn.cancel,
 body.dark-mode .yomic-confirm-btn.cancel {
   background: transparent !important;
@@ -2183,7 +2208,7 @@ body.dark-mode .yomic-confirm-btn.cancel:hover {
 }
 
 .yomic-confirm-btn.confirm.danger {
-  background: #F43F5E !important;
+  background: #BE123C !important;
   color: #FFFFFF !important;
   border: none !important;
   border-radius: 12px !important;
@@ -2195,13 +2220,13 @@ body.dark-mode .yomic-confirm-btn.cancel:hover {
 }
 
 .yomic-confirm-btn.confirm.danger:hover {
-  background: #E11D48 !important;
+  background: #9F1239 !important;
   box-shadow: none !important;
 }
 
 .yomic-confirm-btn.confirm.primary {
-  background: #FFFFFF !important;
-  color: #09090B !important;
+  background: #18181B !important;
+  color: #FFFFFF !important;
   border: none !important;
   border-radius: 12px !important;
   height: 40px !important;
@@ -2209,6 +2234,21 @@ body.dark-mode .yomic-confirm-btn.cancel:hover {
   font-size: 13.5px !important;
   font-weight: 700 !important;
   box-shadow: none !important;
+}
+
+.yomic-confirm-btn.confirm.primary:hover {
+  background: #27272A !important;
+}
+
+:root[data-theme="dark"] .yomic-confirm-btn.confirm.primary,
+body.dark-mode .yomic-confirm-btn.confirm.primary {
+  background: #FFFFFF !important;
+  color: #09090B !important;
+}
+
+:root[data-theme="dark"] .yomic-confirm-btn.confirm.primary:hover,
+body.dark-mode .yomic-confirm-btn.confirm.primary:hover {
+  background: #E4E4E7 !important;
 }
 
 
@@ -2323,7 +2363,12 @@ body.dark-mode .v1-ch-icon-btn.is-downloaded:hover {
   font-size: 10.5px;
   font-weight: 600;
   background: rgba(16, 185, 129, 0.14);
-  color: #10B981;
+  color: #047857;
+}
+
+:root[data-theme="dark"] .v1-mal-inlist-badge,
+body.dark-mode .v1-mal-inlist-badge {
+  color: #34D399;
 }
 
 
@@ -2892,10 +2937,24 @@ body.dark-mode .v1-filter-modal-check::after {
 
   .v1-header-grid .v1-cover-border {
     max-width: 190px;
+    height: auto !important;
+    aspect-ratio: 2 / 3;
   }
 
   .announcement-body {
     grid-template-columns: 1fr !important;
+    grid-template-rows: minmax(140px, 38%) 1fr !important;
+    overflow: hidden !important;
+  }
+
+  .announcement-list-col {
+    border-right: none !important;
+    border-bottom: 1px solid var(--border-subtle) !important;
+    overflow-y: auto !important;
+  }
+
+  .announcement-detail-col {
+    overflow-y: auto !important;
   }
 }
 

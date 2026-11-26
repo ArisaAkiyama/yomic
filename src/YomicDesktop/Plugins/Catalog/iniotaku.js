@@ -13,7 +13,7 @@ var source = {
     isHasMorePages: true,
     pageSize: 14,
     genres: ['Action', 'Adult', 'Adventure', 'Comedy', 'Cooking', 'Crime', 'Cultivation', 'Demon', 'Demons', 'Drama', 'Ecchi', 'Fantasy', 'Game', 'Gender Bender', 'Gore', 'Harem', 'Historical', 'Horror', 'Isekai', 'Josei', 'Magic', 'Martial Arts', 'Mature', 'Mecha', 'Medical', 'Military', 'Music', 'Mystery', 'Psychological', 'Reincarnation', 'Romance', 'School', 'School Life', 'Sci-Fi', 'Seinen', 'Shoujo', 'Shounen', 'Slice of Life', 'Smut', 'Sports', 'Super Power', 'Supernatural', 'Survival', 'Thriller', 'Time Travel', 'Tragedy', 'Webtoon'],
-    formats: ['Manga', 'Manhwa', 'Manhua'],
+    formats: [],
     mirrorUrls: [],
     chapterCategory: "Chapter",
 
@@ -78,7 +78,7 @@ var source = {
 
         let entries = json.feed.entry || [];
         let totalResults = (json.feed.openSearch$totalResults && json.feed.openSearch$totalResults.$t) ? parseInt(json.feed.openSearch$totalResults.$t) : 0;
-        let totalPages = totalResults > 0 ? Math.ceil(totalResults / appPageSize) : (page + 1);
+        let totalPages = totalResults > 0 ? Math.ceil(totalResults / appPageSize) : (page || 1);
 
         let items = [];
         for (let entry of entries) {
@@ -150,7 +150,7 @@ var source = {
         };
     },
 
-    getMangaList: function(page, status, genre, type) {
+    getMangaList: function(page, status, genre, type, sort) {
         let label = "Series";
         if (status === 1) {
             label = "Ongoing";
@@ -161,7 +161,8 @@ var source = {
             let g = Array.isArray(genre) ? genre[0] : genre;
             if (g) label = g;
         }
-        return this.getBloggerMangaPage(page, label, null, null, true);
+        let orderby = sort === "latest" ? "updated" : "published";
+        return this.getBloggerMangaPage(page, label, null, orderby, true);
     },
 
     getMangaDetails: function(url) {
@@ -350,7 +351,7 @@ var source = {
 
             let dateUpload = 0;
             if (entry.published && entry.published.$t) {
-                dateUpload = new Date(entry.published.$t).getTime();
+                dateUpload = ((ts => isNaN(ts) ? 0 : ts)(new Date(entry.published.$t).getTime()));
             }
 
             if (relativeUrl) {

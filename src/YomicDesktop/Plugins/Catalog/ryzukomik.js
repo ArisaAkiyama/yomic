@@ -53,7 +53,7 @@ var source = {
     // MANGA LIST
     // API: GET /ki-browse?ajax=1&genre={genre}&page={page}
     // -------------------------
-    getMangaList: function(page, status, genres, formats) {
+    getMangaList: function(page, status, genres, formats, sort) {
         let currentPage = Math.max(1, page || 1);
         let url = this.apiUrl + "/ki-browse?ajax=1&page=" + currentPage;
 

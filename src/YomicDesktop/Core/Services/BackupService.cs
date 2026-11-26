@@ -39,6 +39,30 @@ namespace Yomic.Core.Services
             sourceConn.BackupDatabase(destConn);
         }
 
+        private static void ReplaceSqliteFileWithRetry(string sourceDbPath, string targetDbPath)
+        {
+            var walPath = targetDbPath + "-wal";
+            var shmPath = targetDbPath + "-shm";
+            const int maxAttempts = 5;
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+                    // NEVER ignore locked WAL/SHM — leaving old WAL next to a restored DB causes SQLITE_CORRUPT!
+                    if (File.Exists(walPath)) File.Delete(walPath);
+                    if (File.Exists(shmPath)) File.Delete(shmPath);
+                    File.Copy(sourceDbPath, targetDbPath, overwrite: true);
+                    return;
+                }
+                catch (IOException) when (attempt < maxAttempts)
+                {
+                    System.Threading.Thread.Sleep(100 * attempt);
+                }
+            }
+        }
+
         private static bool IsValidSqliteDatabaseFile(string candidateDbPath)
         {
             if (!File.Exists(candidateDbPath)) return false;
@@ -174,6 +198,7 @@ namespace Yomic.Core.Services
                 string stagingDir = Path.Combine(Path.GetTempPath(), $"YomicRestore_{Guid.NewGuid():N}");
                 string? rollbackDbPath = null;
                 string? rollbackSettingsPath = null;
+                bool dbGateHeld = false;
                 try
                 {
                     if (!File.Exists(sourceZipPath))
@@ -236,6 +261,11 @@ namespace Yomic.Core.Services
 
                     Directory.CreateDirectory(_appDataFolder);
 
+                    // Acquire exclusive DB maintenance gate so no background LibraryService/DownloadService/Reader
+                    // write can race with ClearAllPools(), WAL deletion, file swap, or rollback.
+                    MangaDbContext.DatabaseWriteGate.Wait();
+                    dbGateHeld = true;
+
                     // 2. Replace manga.db safely with WAL-preserving rollback snapshot BEFORE removing live WAL/SHM
                     if (hasDbEntry)
                     {
@@ -246,16 +276,7 @@ namespace Yomic.Core.Services
                             CopyLiveSqliteDatabaseOnline(_dbPath, rollbackDbPath);
                         }
 
-                        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-
-                        var walPath = _dbPath + "-wal";
-                        var shmPath = _dbPath + "-shm";
-
-                        // NEVER ignore locked WAL/SHM — leaving old WAL next to a restored DB causes SQLITE_CORRUPT!
-                        if (File.Exists(walPath)) File.Delete(walPath);
-                        if (File.Exists(shmPath)) File.Delete(shmPath);
-
-                        File.Copy(stagedDbPath, _dbPath, overwrite: true);
+                        ReplaceSqliteFileWithRetry(stagedDbPath, _dbPath);
                         MangaDbContext.ResetColumnCheck();
                     }
 
@@ -283,26 +304,28 @@ namespace Yomic.Core.Services
                     {
                         if (rollbackDbPath != null && File.Exists(rollbackDbPath))
                         {
-                            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-                            var walPath = _dbPath + "-wal";
-                            var shmPath = _dbPath + "-shm";
-                            if (File.Exists(walPath)) File.Delete(walPath);
-                            if (File.Exists(shmPath)) File.Delete(shmPath);
-                            File.Copy(rollbackDbPath, _dbPath, overwrite: true);
-                            File.Delete(rollbackDbPath);
+                            ReplaceSqliteFileWithRetry(rollbackDbPath, _dbPath);
+                            try { File.Delete(rollbackDbPath); } catch { }
                             MangaDbContext.ResetColumnCheck();
                         }
                         if (rollbackSettingsPath != null && File.Exists(rollbackSettingsPath))
                         {
                             File.Copy(rollbackSettingsPath, _settingsPath, overwrite: true);
-                            File.Delete(rollbackSettingsPath);
+                            try { File.Delete(rollbackSettingsPath); } catch { }
                         }
                     }
-                    catch { }
+                    catch (Exception rollbackEx)
+                    {
+                        LogService.Error("BackupService", "Critical: rollback after failed restore also failed", rollbackEx);
+                    }
                     return false;
                 }
                 finally
                 {
+                    if (dbGateHeld)
+                    {
+                        MangaDbContext.DatabaseWriteGate.Release();
+                    }
                     if (Directory.Exists(stagingDir))
                     {
                         try { Directory.Delete(stagingDir, recursive: true); } catch { }

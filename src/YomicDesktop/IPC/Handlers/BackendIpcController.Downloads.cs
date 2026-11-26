@@ -114,7 +114,7 @@ namespace YomicDesktop.IPC
                 float chNum = req.Chapter.ChapterNumber > 0 ? req.Chapter.ChapterNumber : 1;
                 return new DownloadQueueDto
                 {
-                    Id = $"dl-{ComputeShortHash(req.Chapter.Url)}",
+                    Id = MakeDownloadQueueItemId(req.Manga.Source, req.Chapter.Url),
                     MangaId = MakeMangaFrontendId(req.Manga),
                     MangaTitle = req.Manga.Title,
                     ChapterLabel = !string.IsNullOrWhiteSpace(req.Chapter.Name) ? req.Chapter.Name : $"Chapter {chNum}",
@@ -177,6 +177,7 @@ namespace YomicDesktop.IPC
             string id = GetString(payload, "id");
             string chapterUrl = GetString(payload, "chapterUrl");
             var req = DownloadService.AllDownloads.FirstOrDefault(r =>
+                MakeDownloadQueueItemId(r.Manga?.Source ?? 0, r.Chapter.Url) == id ||
                 $"dl-{ComputeShortHash(r.Chapter.Url)}" == id ||
                 (!string.IsNullOrEmpty(chapterUrl) && string.Equals(r.Chapter.Url, chapterUrl, StringComparison.OrdinalIgnoreCase)));
             if (req != null)
@@ -206,6 +207,7 @@ namespace YomicDesktop.IPC
             string id = GetString(payload, "id");
             string chapterUrl = GetString(payload, "chapterUrl");
             var req = DownloadService.AllDownloads.FirstOrDefault(r =>
+                MakeDownloadQueueItemId(r.Manga?.Source ?? 0, r.Chapter.Url) == id ||
                 $"dl-{ComputeShortHash(r.Chapter.Url)}" == id ||
                 (!string.IsNullOrEmpty(chapterUrl) && string.Equals(r.Chapter.Url, chapterUrl, StringComparison.OrdinalIgnoreCase)));
             if (req != null)
@@ -225,7 +227,7 @@ namespace YomicDesktop.IPC
                         req.Chapter.IsDownloaded = false;
                         if (!string.IsNullOrEmpty(req.Chapter.Url))
                         {
-                            await LibraryService.UpdateChapterDownloadStatusByUrlAsync(req.Chapter.Url, false);
+                            await LibraryService.UpdateChapterDownloadStatusByUrlAsync(req.Chapter.Url, false, req.Manga?.Id ?? 0);
                         }
                     }
                 }
@@ -255,10 +257,10 @@ namespace YomicDesktop.IPC
                 {
                     DownloadPathService.DeleteDownloadedChapter(manga, ch);
                     ch.IsDownloaded = false;
-                    await LibraryService.UpdateChapterDownloadStatusByUrlAsync(ch.Url, false);
+                    await LibraryService.UpdateChapterDownloadStatusByUrlAsync(ch.Url, false, manga.Id);
                     // Sinkronisasi dengan antrean DownloadService agar hilang dari daftar unduhan
                     var matchReq = DownloadService.AllDownloads.FirstOrDefault(r =>
-                        string.Equals(r.Chapter.Url, ch.Url, StringComparison.OrdinalIgnoreCase) ||
+                        (r.Manga?.Source == manga.Source && string.Equals(r.Chapter.Url, ch.Url, StringComparison.OrdinalIgnoreCase)) ||
                         (r.Manga?.Id == manga.Id && Math.Abs(r.Chapter.ChapterNumber - ch.ChapterNumber) < 0.01f));
                     if (matchReq != null)
                     {
@@ -274,6 +276,19 @@ namespace YomicDesktop.IPC
             var manga = await ResolveMangaAsync(mangaId);
             if (manga != null)
             {
+                // Cancel active/queued downloads for this manga FIRST so file handles are released before Directory.Delete
+                var mangaReqs = DownloadService.AllDownloads
+                    .Where(r => r.Manga?.Id == manga.Id || (r.Manga?.Url != null && r.Manga.Url == manga.Url && r.Manga.Source == manga.Source))
+                    .ToList();
+                foreach (var mr in mangaReqs)
+                {
+                    DownloadService.Cancel(mr);
+                }
+                if (mangaReqs.Count > 0)
+                {
+                    await DownloadService.WaitForActiveDownloadsToStopAsync(TimeSpan.FromSeconds(3));
+                }
+
                 var mangaDir = DownloadPathService.GetMangaDirectory(manga);
                 if (Directory.Exists(mangaDir))
                 {
@@ -284,16 +299,8 @@ namespace YomicDesktop.IPC
                     foreach (var ch in manga.Chapters)
                     {
                         ch.IsDownloaded = false;
-                        await LibraryService.UpdateChapterDownloadStatusByUrlAsync(ch.Url, false);
+                        await LibraryService.UpdateChapterDownloadStatusByUrlAsync(ch.Url, false, manga.Id);
                     }
-                }
-                // Sinkronisasi dengan antrean DownloadService untuk seluruh bab komik terkait
-                var mangaReqs = DownloadService.AllDownloads
-                    .Where(r => r.Manga?.Id == manga.Id || (r.Manga?.Url != null && r.Manga.Url == manga.Url))
-                    .ToList();
-                foreach (var mr in mangaReqs)
-                {
-                    DownloadService.Cancel(mr);
                 }
             }
             return new { ok = true, downloads = GetDownloadsQueueList() };

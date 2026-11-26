@@ -509,7 +509,8 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
   container.querySelectorAll<HTMLButtonElement>('[data-install-ext]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const ext = this.extensions.find((e) => e.id === btn.dataset.installExt);
-      if (!ext || this.downloadingExtProgress.has(ext.id)) return;
+      if (!ext || this.downloadingExtProgress.has(ext.id) || this.busyExtOps.has(ext.id)) return;
+      this.busyExtOps.add(ext.id);
       this.downloadingExtProgress.set(ext.id, 35);
       this.renderExtensionsView(container);
       if (this.bridge.isWebViewHost) {
@@ -527,14 +528,17 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
             if (current && current.installed) {
               this.showToast(this.l(`Ekstensi ${ext.name} berhasil dipasang.`, `Extension ${ext.name} installed.`));
             } else {
-              this.showToast(this.l(`Gagal memasang ekstensi ${ext.name}.`, `Failed to install extension ${ext.name}.`));
+              this.showToast(this.l(`Gagal memasang ekstensi ${ext.name}.`, `Failed to install extension ${ext.name}.`), 'warning');
             }
             if (this.currentTab === 'extensions') this.renderExtensionsView(container);
           })
           .catch(() => {
             this.downloadingExtProgress.delete(ext.id);
-            this.showToast(this.l(`Gagal memasang ekstensi ${ext.name}. Periksa koneksi lalu coba lagi.`, `Failed to install extension ${ext.name}. Check your connection and try again.`));
+            this.showToast(this.l(`Gagal memasang ekstensi ${ext.name}. Periksa koneksi lalu coba lagi.`, `Failed to install extension ${ext.name}. Check your connection and try again.`), 'warning');
             if (this.currentTab === 'extensions') this.renderExtensionsView(container);
+          })
+          .finally(() => {
+            this.busyExtOps.delete(ext.id);
           });
         return;
       }
@@ -543,6 +547,7 @@ export function renderExtensionsView(this: YomicApp, container: HTMLElement): vo
         if (this.currentTab === 'extensions') this.renderExtensionsView(container);
       }, 180);
       window.setTimeout(() => {
+        this.busyExtOps.delete(ext.id);
         this.downloadingExtProgress.delete(ext.id);
         ext.installed = true;
         if (this.currentTab === 'extensions') this.renderExtensionsView(container);

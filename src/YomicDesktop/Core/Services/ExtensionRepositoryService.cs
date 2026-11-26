@@ -150,6 +150,9 @@ namespace Yomic.Core.Services
 
         private static readonly HttpClient _dohClient = new() { Timeout = TimeSpan.FromSeconds(4) };
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (List<IPAddress> Ips, DateTime ExpiresUtc)> _repoDohCache =
+            new(StringComparer.OrdinalIgnoreCase);
+
         private const string RepoOwner = "ArisaAkiyama";
 
         private const string RepoName = "extension-yomic";
@@ -197,61 +200,95 @@ namespace Yomic.Core.Services
                 PooledConnectionLifetime = TimeSpan.FromMinutes(2),
 
                 ConnectCallback = async (context, token) =>
-
                 {
+                    if (_settingsService.IsOfflineMode)
+                    {
+                        throw new HttpRequestException("Offline Mode is enabled.");
+                    }
 
                     var host = context.DnsEndPoint.Host;
-
                     var port = context.DnsEndPoint.Port;
+                    var candidateIps = new List<IPAddress>();
+                    int dohProvider = _settingsService.DnsOverHttpsProvider;
 
-                    IPAddress[]? addresses = null;
-
-                    if (_settingsService.DnsOverHttpsProvider != 0)
+                    if (IPAddress.TryParse(host, out var literalIp))
                     {
-                        try
+                        candidateIps.Add(literalIp);
+                    }
+                    else if (dohProvider != 0)
+                    {
+                        string cacheKey = $"{dohProvider}:{host}";
+                        if (_repoDohCache.TryGetValue(cacheKey, out var cached) && cached.ExpiresUtc > DateTime.UtcNow && cached.Ips.Count > 0)
                         {
-                            var dohUrl = $"https://1.1.1.1/dns-query?name={Uri.EscapeDataString(host)}&type=A";
-
-                            using var dnsReq = new HttpRequestMessage(HttpMethod.Get, dohUrl);
-                            dnsReq.Headers.TryAddWithoutValidation("Accept", "application/dns-json");
-                            using var dnsRes = await _dohClient.SendAsync(dnsReq, token);
-                            dnsRes.EnsureSuccessStatusCode();
-                            var dnsBytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(dnsRes.Content, 1L * 1024 * 1024, token);
-                            var dnsResp = System.Text.Encoding.UTF8.GetString(dnsBytes);
-
-                            using var doc = JsonDocument.Parse(dnsResp);
-
-                            if (doc.RootElement.TryGetProperty("Answer", out var answers))
+                            candidateIps.AddRange(cached.Ips);
+                        }
+                        else
+                        {
+                            string[] dohTemplates = dohProvider switch
                             {
-                                var ipList = new List<IPAddress>();
+                                1 => new[] { "https://1.1.1.1/dns-query?name={0}&type={1}", "https://cloudflare-dns.com/dns-query?name={0}&type={1}" },
+                                3 => new[] { "https://dns.adguard-dns.com/resolve?name={0}&type={1}", "https://94.140.14.14/resolve?name={0}&type={1}" },
+                                _ => new[] { "https://8.8.8.8/resolve?name={0}&type={1}", "https://dns.google/resolve?name={0}&type={1}", "https://1.1.1.1/dns-query?name={0}&type={1}" }
+                            };
 
-                                foreach (var ans in answers.EnumerateArray())
+                            foreach (var template in dohTemplates)
+                            {
+                                async Task<(List<IPAddress> Found, bool Ok)> QueryTypeAsync(string qType, int recType)
                                 {
-                                    if (ans.TryGetProperty("type", out var t) && t.GetInt32() == 1 &&
-                                        ans.TryGetProperty("data", out var d))
+                                    var found = new List<IPAddress>();
+                                    try
                                     {
-                                        var ipStr = d.GetString();
-
-                                        if (!string.IsNullOrEmpty(ipStr) && IPAddress.TryParse(ipStr, out var parsedIp))
+                                        var dohUrl = string.Format(template, Uri.EscapeDataString(host), qType);
+                                        using var dnsReq = new HttpRequestMessage(HttpMethod.Get, dohUrl);
+                                        dnsReq.Headers.TryAddWithoutValidation("Accept", "application/dns-json");
+                                        using var dnsRes = await _dohClient.SendAsync(dnsReq, token);
+                                        if (!dnsRes.IsSuccessStatusCode) return (found, false);
+                                        var dnsBytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(dnsRes.Content, 256 * 1024, token);
+                                        using var doc = JsonDocument.Parse(dnsBytes);
+                                        if (doc.RootElement.TryGetProperty("Answer", out var answers))
                                         {
-                                            ipList.Add(parsedIp);
+                                            foreach (var ans in answers.EnumerateArray())
+                                            {
+                                                if (ans.TryGetProperty("type", out var t) && t.GetInt32() == recType &&
+                                                    ans.TryGetProperty("data", out var d) &&
+                                                    IPAddress.TryParse(d.GetString(), out var parsedIp) &&
+                                                    !found.Contains(parsedIp))
+                                                {
+                                                    found.Add(parsedIp);
+                                                }
+                                            }
                                         }
+                                        return (found, true);
+                                    }
+                                    catch
+                                    {
+                                        return (found, false);
                                     }
                                 }
 
-                                if (ipList.Count > 0) addresses = ipList.ToArray();
+                                var aTask = QueryTypeAsync("A", 1);
+                                var aaaaTask = QueryTypeAsync("AAAA", 28);
+                                await Task.WhenAll(aTask, aaaaTask);
+                                var aRes = await aTask;
+                                var aaaaRes = await aaaaTask;
+                                foreach (var ip in aRes.Found.Concat(aaaaRes.Found))
+                                {
+                                    if (!candidateIps.Contains(ip)) candidateIps.Add(ip);
+                                }
+                                if (aRes.Ok || aaaaRes.Ok) break;
+                            }
+
+                            if (candidateIps.Count > 0)
+                            {
+                                if (_repoDohCache.Count >= 256) _repoDohCache.Clear();
+                                _repoDohCache[cacheKey] = (new List<IPAddress>(candidateIps), DateTime.UtcNow.AddMinutes(5));
                             }
                         }
-                        catch { }
                     }
 
-                    if (addresses == null || addresses.Length == 0)
-
-                    {
-
-                        addresses = await Dns.GetHostAddressesAsync(host, token);
-
-                    }
+                    IPAddress[] addresses = candidateIps.Count > 0
+                        ? candidateIps.ToArray()
+                        : await Dns.GetHostAddressesAsync(host, token);
 
                     var publicAddresses = addresses.Where(ip => !Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp(ip)).ToArray();
                     if (publicAddresses.Length == 0)
@@ -594,6 +631,27 @@ namespace Yomic.Core.Services
             return map.Values.OrderBy(e => CleanExtensionName(e.Name), StringComparer.OrdinalIgnoreCase).ToList();
         }
 
+        private readonly object _indexFileLock = new();
+
+        private void WriteIndexCacheAtomically(string cachePath, string json)
+        {
+            lock (_indexFileLock)
+            {
+                string? dir = Path.GetDirectoryName(cachePath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                string tmpPath = $"{cachePath}.{Guid.NewGuid():N}.tmp";
+                try
+                {
+                    File.WriteAllText(tmpPath, json, System.Text.Encoding.UTF8);
+                    File.Move(tmpPath, cachePath, overwrite: true);
+                }
+                finally
+                {
+                    try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
+                }
+            }
+        }
+
         public async Task<List<ExtensionEntryDto>> FetchCatalogEntriesAsync(bool forceOnline = false)
         {
             var cachePath = GetCacheFilePath();
@@ -621,7 +679,7 @@ namespace Yomic.Core.Services
                             var mergedJson = JsonSerializer.Serialize(_cachedRepoEntries);
                             if (!string.Equals(mergedJson, cachedJson, StringComparison.Ordinal))
                             {
-                                await File.WriteAllTextAsync(cachePath, mergedJson);
+                                WriteIndexCacheAtomically(cachePath, mergedJson);
                             }
                         }
                         catch { }
@@ -638,17 +696,15 @@ namespace Yomic.Core.Services
                 return _cachedRepoEntries;
             }
 
-            // 4. Try online mirrors if forcing online or if no local catalog exists
+            // 4. Try official GitHub origins ONLY for index.min.json (NEVER trust unverified third-party CDNs
+            // to supply manifest SHA-256 digests, otherwise a compromised CDN could forge both index.min.json and .js)
             if (!_settingsService.IsOfflineMode)
             {
                 string cacheBuster = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
                 string[] indexUrls =
                 {
                     $"https://raw.githubusercontent.com/{RepoOwner}/{RepoName}/{MainBranch}/index.min.json?t={cacheBuster}",
-                    $"https://raw.githubusercontent.com/{RepoOwner}/{RepoName}/{RepoBranch}/index.min.json?t={cacheBuster}",
-                    $"https://cdn.jsdelivr.net/gh/{RepoOwner}/{RepoName}@{MainBranch}/index.min.json?t={cacheBuster}",
-                    $"https://cdn.jsdelivr.net/gh/{RepoOwner}/{RepoName}@{RepoBranch}/index.min.json?t={cacheBuster}",
-                    $"https://fastly.jsdelivr.net/gh/{RepoOwner}/{RepoName}@{MainBranch}/index.min.json?t={cacheBuster}"
+                    $"https://raw.githubusercontent.com/{RepoOwner}/{RepoName}/{RepoBranch}/index.min.json?t={cacheBuster}"
                 };
 
                 foreach (var url in indexUrls)
@@ -668,7 +724,7 @@ namespace Yomic.Core.Services
                                 try
                                 {
                                     var mergedJson = JsonSerializer.Serialize(_cachedRepoEntries);
-                                    await File.WriteAllTextAsync(cachePath, mergedJson);
+                                    WriteIndexCacheAtomically(cachePath, mergedJson);
                                 }
                                 catch { }
                                 return _cachedRepoEntries;
@@ -971,13 +1027,14 @@ namespace Yomic.Core.Services
                 if (!_settingsService.IsOfflineMode)
                 {
                     string cb = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+                    string escapedFileName = Uri.EscapeDataString(cleanFileName);
                     string[] scriptUrls =
                     {
-                        $"https://raw.githubusercontent.com/{RepoOwner}/{RepoName}/{MainBranch}/src/{langFolder}/{cleanFileName}?t={cb}",
-                        $"https://raw.githubusercontent.com/{RepoOwner}/{RepoName}/{MainBranch}/{cleanFileName}?t={cb}",
-                        $"https://cdn.jsdelivr.net/gh/{RepoOwner}/{RepoName}@{MainBranch}/src/{langFolder}/{cleanFileName}?t={cb}",
-                        $"https://fastly.jsdelivr.net/gh/{RepoOwner}/{RepoName}@{MainBranch}/src/{langFolder}/{cleanFileName}?t={cb}",
-                        $"https://cdn.jsdelivr.net/gh/{RepoOwner}/{RepoName}@{MainBranch}/{cleanFileName}?t={cb}"
+                        $"https://raw.githubusercontent.com/{RepoOwner}/{RepoName}/{MainBranch}/src/{langFolder}/{escapedFileName}?t={cb}",
+                        $"https://raw.githubusercontent.com/{RepoOwner}/{RepoName}/{MainBranch}/{escapedFileName}?t={cb}",
+                        $"https://cdn.jsdelivr.net/gh/{RepoOwner}/{RepoName}@{MainBranch}/src/{langFolder}/{escapedFileName}?t={cb}",
+                        $"https://fastly.jsdelivr.net/gh/{RepoOwner}/{RepoName}@{MainBranch}/src/{langFolder}/{escapedFileName}?t={cb}",
+                        $"https://cdn.jsdelivr.net/gh/{RepoOwner}/{RepoName}@{MainBranch}/{escapedFileName}?t={cb}"
                     };
 
                     foreach (var url in scriptUrls)
@@ -1057,8 +1114,10 @@ namespace Yomic.Core.Services
                     return (false, isEnBadName ? $"Invalid script filename: {scriptFileName}." : $"Nama berkas skrip tidak valid: {scriptFileName}.");
                 }
 
-                // Stage and validate the downloaded script BEFORE removing any existing working extension
+                // Stage and validate the downloaded script BEFORE replacing any existing working extension
                 var stagingPath = Path.Combine(pluginsDir, $".staging_{Guid.NewGuid():N}.js");
+                string? backupPath = null;
+                long? staleOldSourceId = null;
                 try
                 {
                     await File.WriteAllTextAsync(stagingPath, jsContent);
@@ -1071,16 +1130,22 @@ namespace Yomic.Core.Services
                         return (false, isEnInvalid ? $"Invalid script {scriptFileName}." : $"Skrip {scriptFileName} tidak valid.");
                     }
 
-                    // Remove old matching script only after new script validated cleanly
                     if (entry != null)
                     {
                         var cleanName = CleanExtensionName(entry.Name);
                         var existingSrc = _sourceManager.GetSources().FirstOrDefault(s =>
                             string.Equals(CleanExtensionName(s.Name), cleanName, StringComparison.OrdinalIgnoreCase));
-                        if (existingSrc != null)
+                        if (existingSrc != null && existingSrc.Id != previewSource.Id)
                         {
-                            _sourceManager.RemoveSource(existingSrc.Id);
+                            staleOldSourceId = existingSrc.Id;
                         }
+                    }
+
+                    // Keep rollback copy of existing file until atomic move + InstallPlugin succeed
+                    if (File.Exists(targetPath))
+                    {
+                        backupPath = Path.Combine(pluginsDir, $".backup_{Guid.NewGuid():N}.js");
+                        File.Copy(targetPath, backupPath, overwrite: true);
                     }
 
                     File.Move(stagingPath, targetPath, overwrite: true);
@@ -1088,23 +1153,38 @@ namespace Yomic.Core.Services
                 catch
                 {
                     try { if (File.Exists(stagingPath)) File.Delete(stagingPath); } catch { }
+                    try { if (backupPath != null && File.Exists(backupPath)) File.Delete(backupPath); } catch { }
                     throw;
                 }
 
                 onProgress?.Invoke(90);
 
-                bool installed = _sourceManager.InstallPlugin(targetPath) != null;
+                var installedSource = _sourceManager.InstallPlugin(targetPath);
+                bool installed = installedSource != null;
 
                 onProgress?.Invoke(100);
 
                 if (installed)
                 {
+                    if (staleOldSourceId.HasValue)
+                    {
+                        try { _sourceManager.RemoveSource(staleOldSourceId.Value); } catch { }
+                    }
+                    try { if (backupPath != null && File.Exists(backupPath)) File.Delete(backupPath); } catch { }
                     var displayName = entry != null ? CleanExtensionName(entry.Name) : Path.GetFileNameWithoutExtension(scriptFileName);
                     bool isEn = string.Equals(_settingsService.AppLanguage, "en", StringComparison.OrdinalIgnoreCase);
                     return (true, isEn ? $"Extension {displayName} installed." : $"Ekstensi {displayName} berhasil dipasang.");
                 }
 
-                try { if (File.Exists(targetPath)) File.Delete(targetPath); } catch { }
+                // Restore prior working extension file if InstallPlugin failed
+                if (backupPath != null && File.Exists(backupPath))
+                {
+                    try { File.Move(backupPath, targetPath, overwrite: true); } catch { }
+                }
+                else
+                {
+                    try { if (File.Exists(targetPath)) File.Delete(targetPath); } catch { }
+                }
                 bool isEnInstallFail = string.Equals(_settingsService.AppLanguage, "en", StringComparison.OrdinalIgnoreCase);
                 return (false, isEnInstallFail ? $"Invalid script {scriptFileName}." : $"Skrip {scriptFileName} tidak valid.");
             }

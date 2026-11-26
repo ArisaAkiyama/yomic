@@ -101,12 +101,10 @@ export function updateDetailChapterDownloadsInPlace(
   const listEl = container.querySelector('.v1-chapters-list');
   if (!listEl) return;
 
-  let anyDownloaded = manga.chapters.some((c) => c.isDownloaded);
   for (const ch of manga.chapters) {
     const activeDl = findChapterDownloadItem(downloads, manga, ch);
     if (activeDl?.status === 'completed' && !ch.isDownloaded) {
       ch.isDownloaded = true;
-      anyDownloaded = true;
     }
 
     const statusEl = listEl.querySelector<HTMLElement>(`[data-ch-dl-status="${ch.number}"]`);
@@ -141,6 +139,7 @@ export function updateDetailChapterDownloadsInPlace(
       }
     }
   }
+  manga.downloadedCount = manga.chapters.filter((c) => c.isDownloaded).length;
 }
 
 export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
@@ -161,8 +160,13 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
   }
 
   const isOngoing = manga.status === 'Ongoing';
+  const isHiatus = manga.status === 'Hiatus';
   const statusColor = isOngoing ? '#E53935' : 'var(--ink-secondary)';
-  const statusText = isOngoing ? 'Berjalan' : 'Tamat Terbit';
+  const statusText = isOngoing
+    ? this.l('Berjalan', 'Ongoing')
+    : isHiatus
+    ? this.l('Hiatus', 'Hiatus')
+    : this.l('Tamat', 'Completed');
 
   const rawAuthor = (manga.author || 'Unknown').trim();
   const rawArtist = (manga.artist || '').trim();
@@ -761,6 +765,7 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         })
         .catch(() => {
           manga.inLibrary = prevInLibrary;
+          this.persistLocalCache();
           this.updateSidebarCounters();
           this.showToast(this.l('Gagal memperbarui status pustaka.', 'Failed to update library status.'), 'warning');
           if (this.activeDetailMangaId === manga.id) {
@@ -939,6 +944,8 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
 
   document.getElementById('btnCloseMalTracker')?.addEventListener('click', () => {
     this.isMalTrackerPopupOpen = false;
+    this.malSearchSeq++;
+    this.malSelectSeq++;
     this.renderCurrentWorkspace(true);
   });
 
@@ -946,6 +953,8 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     const backdrop = document.getElementById('malTrackerModalBackdrop');
     if (e.target === backdrop) {
       this.isMalTrackerPopupOpen = false;
+      this.malSearchSeq++;
+      this.malSelectSeq++;
       this.renderCurrentWorkspace(true);
       return;
     }
@@ -989,7 +998,11 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
 
   document.getElementById('btnMalGoToSettings')?.addEventListener('click', () => {
     this.isMalTrackerPopupOpen = false;
+    this.malSearchSeq++;
+    this.malSelectSeq++;
     this.navigateToTab('settings');
+    this.activeSettingsTab = 'tracker';
+    this.renderCurrentWorkspace(false);
     document.getElementById('settingsTrackerSection')?.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'center' });
   });
 
@@ -1039,24 +1052,31 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     });
   });
 
+  const getDraftMalChapter = (): number => {
+    const inp = document.getElementById('malChaptersReadInput') as HTMLInputElement | null;
+    if (inp && inp.value.trim() !== '') {
+      const parsed = Number(inp.value.replace(/[^\d]/g, ''));
+      if (!isNaN(parsed)) {
+        return manga.totalChapters > 0 ? Math.min(manga.totalChapters, Math.max(0, parsed)) : Math.max(0, parsed);
+      }
+    }
+    return Math.max(0, manga.lastReadChapter || 0);
+  };
+
   document.getElementById('btnMalDecCh')?.addEventListener('click', () => {
-    manga.lastReadChapter = Math.max(0, manga.lastReadChapter - 1);
+    const nextVal = Math.max(0, getDraftMalChapter() - 1);
     const inp = document.getElementById('malChaptersReadInput') as HTMLInputElement | null;
     if (inp) {
-      inp.value = manga.lastReadChapter.toString();
-    } else {
-      this.renderCurrentWorkspace(true);
+      inp.value = nextVal.toString();
     }
   });
 
   document.getElementById('btnMalIncCh')?.addEventListener('click', () => {
-    const next = manga.lastReadChapter + 1;
-    manga.lastReadChapter = manga.totalChapters > 0 ? Math.min(manga.totalChapters, next) : next;
+    const rawNext = getDraftMalChapter() + 1;
+    const nextVal = manga.totalChapters > 0 ? Math.min(manga.totalChapters, rawNext) : rawNext;
     const inp = document.getElementById('malChaptersReadInput') as HTMLInputElement | null;
     if (inp) {
-      inp.value = manga.lastReadChapter.toString();
-    } else {
-      this.renderCurrentWorkspace(true);
+      inp.value = nextVal.toString();
     }
   });
 
@@ -1069,14 +1089,13 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     }
     const parsed = Number(digitsOnly);
     const clamped = manga.totalChapters > 0 ? Math.min(manga.totalChapters, Math.max(0, parsed)) : Math.max(0, parsed);
-    manga.lastReadChapter = clamped;
     if (malChInput.value !== clamped.toString()) {
       malChInput.value = clamped.toString();
     }
   });
   malChInput?.addEventListener('blur', () => {
     if (malChInput.value.trim() === '') {
-      malChInput.value = manga.lastReadChapter.toString();
+      malChInput.value = Math.max(0, manga.lastReadChapter || 0).toString();
     }
   });
 
@@ -1085,6 +1104,7 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     const scoreSel = document.getElementById('malScoreSelect') as HTMLSelectElement | null;
     const statusVal = statusSel?.value || 'reading';
     const scoreVal = Number(scoreSel?.value || '0');
+    const nextChaptersRead = getDraftMalChapter();
     const targetRemoteId = this.malSelectedEntry?.id || manga.malId || 0;
     const targetTitle = this.malSelectedEntry?.title || manga.malTitle || manga.title;
 
@@ -1095,11 +1115,21 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
       return;
     }
 
+    const prevMal = {
+      malTracked: manga.malTracked,
+      malId: manga.malId,
+      malTitle: manga.malTitle,
+      malStatus: manga.malStatus,
+      malScore: manga.malScore,
+      lastReadChapter: manga.lastReadChapter
+    };
+
     manga.malTracked = true;
     manga.malId = targetRemoteId;
     manga.malTitle = targetTitle;
     manga.malStatus = statusVal;
     manga.malScore = scoreVal;
+    manga.lastReadChapter = nextChaptersRead;
     this.isMalTrackerPopupOpen = false;
 
     if (this.bridge.isWebViewHost) {
@@ -1110,11 +1140,14 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
           remoteId: targetRemoteId,
           malTitle: targetTitle,
           status: statusVal,
-          chaptersRead: manga.lastReadChapter,
+          chaptersRead: nextChaptersRead,
           score: scoreVal
         })
         .catch(() => {
+          Object.assign(manga, prevMal);
+          this.persistLocalCache();
           this.showToast(this.l('Gagal menyimpan status pelacakan MyAnimeList.', 'Failed to save MyAnimeList tracking status.'), 'warning');
+          if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
         });
     }
 
@@ -1173,11 +1206,22 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         this.showToast(this.l('Gagal menyinkronkan data dari MyAnimeList.', 'Failed to sync data from MyAnimeList.'), 'warning');
       }
     } catch {
+      if (this.malSelectSeq !== syncSeq || this.activeDetailMangaId !== targetMangaId) {
+        return;
+      }
       this.showToast(this.l('Gagal menyinkronkan data dari MyAnimeList.', 'Failed to sync data from MyAnimeList.'), 'warning');
     }
   });
 
   document.getElementById('btnUnbindMalTracker')?.addEventListener('click', () => {
+    const prevMal = {
+      malTracked: manga.malTracked,
+      malId: manga.malId,
+      malTitle: manga.malTitle,
+      malStatus: manga.malStatus,
+      malScore: manga.malScore
+    };
+    const prevSelected = this.malSelectedEntry;
     manga.malTracked = false;
     manga.malId = 0;
     manga.malTitle = '';
@@ -1193,12 +1237,16 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
           dbId: manga.dbId
         })
         .catch(() => {
+          Object.assign(manga, prevMal);
+          this.malSelectedEntry = prevSelected;
+          this.persistLocalCache();
           this.showToast(this.l('Gagal melepas tautan MyAnimeList.', 'Failed to unlink MyAnimeList.'), 'warning');
+          if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
         });
     }
 
     this.persistLocalCache();
-    this.showToast('Tautan MyAnimeList telah dilepas.');
+    this.showToast(this.l('Tautan MyAnimeList telah dilepas.', 'MyAnimeList link removed.'));
     this.renderCurrentWorkspace(true);
   });
   document.getElementById('btnOpenWebViewSource')?.addEventListener('click', () => {
@@ -1217,7 +1265,7 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
   document.getElementById('btnRefreshMangaDetail')?.addEventListener('click', () => {
     this.showToast(this.l(`Menyegarkan daftar chapter ${manga.title}...`, `Refreshing chapter list for ${manga.title}...`));
     if (this.bridge.isWebViewHost) {
-      void this.fetchMangaDetailFromBackend(manga.id, manga.url, manga.sourceId, true);
+      void this.fetchMangaDetailFromBackend(manga.id, manga.url, manga.sourceId, true, manga.sourceName);
     }
   });
   document.getElementById('btnDownloadAllChapters')?.addEventListener('click', () => {
@@ -1296,7 +1344,8 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
       const chNum = Number(btn.dataset.toggleBookmark);
       const found = manga.chapters.find((c) => c.number === chNum);
       if (found) {
-        found.isBookmarked = !found.isBookmarked;
+        const prevBookmarked = found.isBookmarked;
+        found.isBookmarked = !prevBookmarked;
         if (this.bridge.isWebViewHost) {
           void this.bridge
             .invoke('manga:toggle-bookmark', {
@@ -1309,7 +1358,11 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
               chapterNumber: chNum,
               isBookmarked: found.isBookmarked
             })
-            .catch(() => {});
+            .catch(() => {
+              found.isBookmarked = prevBookmarked;
+              this.showToast(this.l('Gagal memperbarui penanda bab.', 'Failed to update chapter bookmark.'), 'warning');
+              if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+            });
         }
         if (this.detailChapterFilter === 'bookmarked') {
           this.renderCurrentWorkspace(true);
@@ -1367,6 +1420,9 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
       const chNum = Number(delBtn.dataset.delSingleCh);
       const found = manga.chapters.find((c) => c.number === chNum);
       if (!found) return;
+      const prevDownloaded = found.isDownloaded;
+      const prevDlCount = manga.downloadedCount;
+      const removedDownloads: DownloadQueueItem[] = [];
       found.isDownloaded = false;
       manga.downloadedCount = manga.chapters.filter((c) => c.isDownloaded).length;
       // Remove stale completed entry from in-memory downloads so UI immediately flips back to download-2-line
@@ -1378,6 +1434,7 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
           ((typeof d.chapterNumber === 'number' && Math.abs(d.chapterNumber - found.number) < 0.01) ||
             (d.chapterLabel && Math.abs(parseFloat((d.chapterLabel.match(/(\d+(?:\.\d+)?)/) || ['0', '0'])[1]) - found.number) < 0.01));
         if (sameUrl || sameCh) {
+          removedDownloads.push(d);
           this.downloads.splice(i, 1);
         }
       }
@@ -1390,6 +1447,13 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
             chapterNumber: chNum
           })
           .catch(() => {
+            found.isDownloaded = prevDownloaded;
+            manga.downloadedCount = prevDlCount;
+            this.downloads.push(...removedDownloads);
+            this.updateSidebarCounters();
+            if (this.activeDetailMangaId === manga.id) {
+              updateDetailChapterDownloadsInPlace(container, manga, this.downloads, isEn);
+            }
             this.showToast(this.l(`Gagal menghapus unduhan Chapter ${chNum}.`, `Failed to delete Chapter ${chNum} download.`), 'warning');
           });
       }
@@ -1486,6 +1550,9 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         hideChapterMenu();
 
         if (action === 'mark-read') {
+          const prevRead = ch.isRead;
+          const prevUnread = manga.unreadCount;
+          const prevLastViewed = manga.lastViewedEpoch;
           ch.isRead = true;
           manga.unreadCount = Math.max(0, manga.unreadCount - 1);
           manga.lastViewedEpoch = Date.now();
@@ -1503,11 +1570,23 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
                 mangaUrl: manga.url,
                 sourceId: manga.sourceId
               })
-              .catch(() => {});
+              .catch(() => {
+                ch.isRead = prevRead;
+                manga.unreadCount = prevUnread;
+                manga.lastViewedEpoch = prevLastViewed;
+                this.showToast(this.l('Gagal memperbarui status baca bab.', 'Failed to update chapter read status.'), 'warning');
+                if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+              });
           }
           this.showToast(this.l(`Chapter ${ch.number} ditandai sudah dibaca.`, `Chapter ${ch.number} marked as read.`));
           this.updateSidebarCounters();
+          if (this.detailChapterFilter === 'unread') {
+            this.renderCurrentWorkspace(true);
+          }
         } else if (action === 'mark-unread') {
+          const prevRead = ch.isRead;
+          const prevUnread = manga.unreadCount;
+          const prevLastViewed = manga.lastViewedEpoch;
           ch.isRead = false;
           manga.unreadCount++;
           if (manga.unreadCount >= Math.max(manga.totalChapters || 0, manga.chapters.length)) {
@@ -1526,12 +1605,23 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
                 mangaUrl: manga.url,
                 sourceId: manga.sourceId
               })
-              .catch(() => {});
+              .catch(() => {
+                ch.isRead = prevRead;
+                manga.unreadCount = prevUnread;
+                manga.lastViewedEpoch = prevLastViewed;
+                this.showToast(this.l('Gagal memperbarui status belum dibaca bab.', 'Failed to update chapter unread status.'), 'warning');
+                if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+              });
           }
           this.showToast(this.l(`Chapter ${ch.number} ditandai belum dibaca.`, `Chapter ${ch.number} marked as unread.`));
           this.updateSidebarCounters();
+          if (this.detailChapterFilter === 'unread') {
+            this.renderCurrentWorkspace(true);
+          }
         } else if (action === 'mark-before-read') {
           const prevChapters = manga.chapters.filter((c) => c.number < ch.number && !c.isRead);
+          const prevUnread = manga.unreadCount;
+          const prevLastViewed = manga.lastViewedEpoch;
           prevChapters.forEach((c) => {
             c.isRead = true;
             const r = container.querySelector<HTMLElement>(`[data-read-ch="${c.number}"]`);
@@ -1552,10 +1642,21 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
                 mangaUrl: manga.url,
                 sourceId: manga.sourceId
               })
-              .catch(() => {});
+              .catch(() => {
+                prevChapters.forEach((c) => {
+                  c.isRead = false;
+                });
+                manga.unreadCount = prevUnread;
+                manga.lastViewedEpoch = prevLastViewed;
+                this.showToast(this.l('Gagal memperbarui status baca bab sebelumnya.', 'Failed to update previous chapters read status.'), 'warning');
+                if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+              });
           }
           this.showToast(this.l(`Seluruh bab sebelum Chapter ${ch.number} ditandai sudah dibaca.`, `All chapters before Chapter ${ch.number} marked as read.`));
           this.updateSidebarCounters();
+          if (this.detailChapterFilter === 'unread') {
+            this.renderCurrentWorkspace(true);
+          }
         }
       });
     });

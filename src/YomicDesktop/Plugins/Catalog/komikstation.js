@@ -47,13 +47,14 @@ var source = {
         return this.getSeriesPage(page, query || "", "", null, null, "");
     },
 
-    getMangaList: function(page, status, genre, type) {
+    getMangaList: function(page, status, genre, type, sort) {
         let statusStr = "";
         if (status === 1) statusStr = "ongoing";
         else if (status === 2) statusStr = "completed";
         else if (status === 3) statusStr = "hiatus";
 
-        return this.getSeriesPage(page, "", statusStr, genre, type, "");
+        let orderStr = sort === "latest" ? "update" : "popular";
+        return this.getSeriesPage(page, "", statusStr, genre, type, orderStr);
     },
 
     getSeriesPage: function(page, query, status, genre, type, order) {
@@ -184,7 +185,7 @@ var source = {
         let isFiltered = Boolean(query || status || genre || type);
         let totalPages = 313;
         if (isFiltered) {
-            let nextEl = doc.querySelector(".hpage a, .hpage a.r, .pagination a.next, a.next, a.next.page-numbers");
+            let nextEl = doc.querySelector(".hpage a.r, .pagination a.next, a.next, a.next.page-numbers");
             totalPages = (nextEl || items.length >= this.pageSize) ? page + 1 : page;
         }
 
@@ -333,8 +334,9 @@ var source = {
         let imgEls = doc.querySelectorAll("#readerarea img");
         for (let i = 0; i < imgEls.length; i++) {
             let img = imgEls[i];
-            let src = img.absUrl("src");
-            if (!src) src = img.attr("src") || img.attr("data-src") || img.attr("data-lazy-src");
+            let rawSrc = img.attr("src") || "";
+            let lazySrc = img.attr("data-src") || img.attr("data-lazy-src") || img.attr("data-cfsrc") || "";
+            let src = (lazySrc && (!rawSrc || rawSrc.startsWith("data:"))) ? (img.absUrl("data-src") || img.absUrl("data-lazy-src") || lazySrc) : (img.absUrl("src") || rawSrc || lazySrc);
             if (src && !src.includes("pebaikan.png")) {
                 pages.push(src.trim());
             }

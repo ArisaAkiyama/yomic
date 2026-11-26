@@ -73,8 +73,8 @@ namespace Yomic.Core.Services
                     { "redirect_uri", RedirectUri }
                 };
 
-                var content = new FormUrlEncodedContent(values);
-                var response = await _httpClient.PostAsync(TokenUrl, content);
+                using var content = new FormUrlEncodedContent(values);
+                using var response = await _httpClient.PostAsync(TokenUrl, content);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -103,8 +103,27 @@ namespace Yomic.Core.Services
             }
         }
 
+        private int _authEpoch = 0;
+
+        internal int CurrentAuthEpoch => System.Threading.Volatile.Read(ref _authEpoch);
+
+        internal bool TryApplyRefreshedTokens(int capturedEpoch, string accessToken, string refreshToken, long expiresAtMs)
+        {
+            if (System.Threading.Volatile.Read(ref _authEpoch) != capturedEpoch)
+            {
+                LogService.Info("MyAnimeList", "Discarded stale token refresh result because account was disconnected.");
+                return false;
+            }
+            if (!string.IsNullOrEmpty(accessToken)) _settingsService.MalAccessToken = accessToken;
+            if (!string.IsNullOrEmpty(refreshToken)) _settingsService.MalRefreshToken = refreshToken;
+            if (expiresAtMs > 0) _settingsService.MalTokenExpiresAt = expiresAtMs;
+            _settingsService.SaveImmediate();
+            return true;
+        }
+
         public void Disconnect()
         {
+            System.Threading.Interlocked.Increment(ref _authEpoch);
             _settingsService.MalAccessToken = "";
             _settingsService.MalRefreshToken = "";
             _settingsService.MalTokenExpiresAt = 0;
@@ -116,11 +135,16 @@ namespace Yomic.Core.Services
         public async Task<string> FetchUserProfileNameAsync()
         {
             if (!IsConnected) return "";
+            int capturedEpoch = System.Threading.Volatile.Read(ref _authEpoch);
 
             try
             {
-                var request = await CreateAuthenticatedRequestAsync(HttpMethod.Get, "https://api.myanimelist.net/v2/users/@me");
-                var response = await _httpClient.SendAsync(request);
+                using var request = await CreateAuthenticatedRequestAsync(HttpMethod.Get, "https://api.myanimelist.net/v2/users/@me");
+                if (request.Headers.Authorization == null || System.Threading.Volatile.Read(ref _authEpoch) != capturedEpoch)
+                {
+                    return "";
+                }
+                using var response = await _httpClient.SendAsync(request);
                 if (!response.IsSuccessStatusCode) return "";
 
                 var json = await response.Content.ReadAsStringAsync();
@@ -128,7 +152,9 @@ namespace Yomic.Core.Services
                 if (doc.RootElement.TryGetProperty("name", out var nameProp))
                 {
                     var username = nameProp.GetString() ?? "";
-                    if (!string.IsNullOrWhiteSpace(username))
+                    if (!string.IsNullOrWhiteSpace(username) &&
+                        System.Threading.Volatile.Read(ref _authEpoch) == capturedEpoch &&
+                        IsConnected)
                     {
                         _settingsService.MalUsername = username;
                         _settingsService.Save();
@@ -157,6 +183,7 @@ namespace Yomic.Core.Services
                 await _refreshLock.WaitAsync();
                 try
                 {
+                    if (!IsConnected) return;
                     var recheckNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     if (recheckNow + 300000 >= _settingsService.MalTokenExpiresAt)
                     {
@@ -172,6 +199,13 @@ namespace Yomic.Core.Services
 
         private async Task<bool> RefreshTokenAsync()
         {
+            int capturedEpoch = System.Threading.Volatile.Read(ref _authEpoch);
+            string currentRefreshToken = _settingsService.MalRefreshToken;
+            if (string.IsNullOrEmpty(currentRefreshToken))
+            {
+                return false;
+            }
+
             try
             {
                 LogService.Info("MyAnimeList", "Refreshing Access Token...");
@@ -179,7 +213,7 @@ namespace Yomic.Core.Services
                 {
                     { "client_id", ClientId },
                     { "grant_type", "refresh_token" },
-                    { "refresh_token", _settingsService.MalRefreshToken }
+                    { "refresh_token", currentRefreshToken }
                 };
 
                 using var content = new FormUrlEncodedContent(values);
@@ -196,13 +230,16 @@ namespace Yomic.Core.Services
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
-                if (root.TryGetProperty("access_token", out var atProp) && atProp.ValueKind == JsonValueKind.String)
-                    _settingsService.MalAccessToken = atProp.GetString() ?? "";
-                if (root.TryGetProperty("refresh_token", out var rtProp) && rtProp.ValueKind == JsonValueKind.String)
-                    _settingsService.MalRefreshToken = rtProp.GetString() ?? "";
-                if (root.TryGetProperty("expires_in", out var expProp) && expProp.ValueKind == JsonValueKind.Number)
-                    _settingsService.MalTokenExpiresAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (expProp.GetInt64() * 1000);
-                _settingsService.SaveImmediate();
+                string newAccess = root.TryGetProperty("access_token", out var atProp) && atProp.ValueKind == JsonValueKind.String ? (atProp.GetString() ?? "") : "";
+                string newRefresh = root.TryGetProperty("refresh_token", out var rtProp) && rtProp.ValueKind == JsonValueKind.String ? (rtProp.GetString() ?? "") : "";
+                long newExpires = root.TryGetProperty("expires_in", out var expProp) && expProp.ValueKind == JsonValueKind.Number
+                    ? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (expProp.GetInt64() * 1000)
+                    : 0;
+
+                if (!TryApplyRefreshedTokens(capturedEpoch, newAccess, newRefresh, newExpires))
+                {
+                    return false;
+                }
 
                 LogService.Success("MyAnimeList", "Token refreshed successfully.");
                 return true;
@@ -219,7 +256,11 @@ namespace Yomic.Core.Services
             await EnsureValidTokenAsync();
 
             var req = new HttpRequestMessage(method, url);
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _settingsService.MalAccessToken);
+            string token = _settingsService.MalAccessToken;
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
             return req;
         }
 
@@ -232,8 +273,8 @@ namespace Yomic.Core.Services
             try
             {
                 var url = $"https://api.myanimelist.net/v2/manga?q={Uri.EscapeDataString(query)}&limit=10&fields=main_picture,my_list_status,num_chapters&nsfw=true";
-                var request = await CreateAuthenticatedRequestAsync(HttpMethod.Get, url);
-                var response = await _httpClient.SendAsync(request);
+                using var request = await CreateAuthenticatedRequestAsync(HttpMethod.Get, url);
+                using var response = await _httpClient.SendAsync(request);
 
                 if (!response.IsSuccessStatusCode) return results;
 

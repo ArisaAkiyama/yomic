@@ -61,7 +61,8 @@ namespace YomicDesktop.IPC
                 {
                     return _sharedHttpClient;
                 }
-                var created = _networkService.CreateOptimizedHttpClient(useCookies: false);
+                // Disable automatic redirects so per-hop Cookie scoping prevents cross-origin cookie leakage on 302
+                var created = _networkService.CreateOptimizedHttpClient(useCookies: false, allowAutoRedirect: false);
                 created.Timeout = TimeSpan.FromSeconds(30);
                 _sharedHttpClient = created;
                 _sharedHttpClientDoh = doh;
@@ -355,10 +356,17 @@ namespace YomicDesktop.IPC
                     }
                 }
 
+                if (_isDisposed || _dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished)
+                {
+                    try { deferral.Complete(); } catch { }
+                    return;
+                }
+
                 await _dispatcher.InvokeAsync(() =>
                 {
                     try
                     {
+                        if (_isDisposed) return;
                         if (bytes != null && bytes.Length > 0)
                         {
                             var ms = new MemoryStream(bytes);
@@ -370,34 +378,65 @@ namespace YomicDesktop.IPC
                             e.Response = webView.Environment.CreateWebResourceResponse(Stream.Null, 404, "Not Found", "Access-Control-Allow-Origin: https://app.yomic.local");
                         }
                     }
+                    catch { }
                     finally
                     {
-                        deferral.Complete();
+                        try { deferral.Complete(); } catch { }
                     }
                 });
             }
             catch (Exception ex)
             {
                 LogService.Debug("ImageProxy", $"Error serving {uriStr}: {ex.Message}");
-                await _dispatcher.InvokeAsync(() =>
+                if (_isDisposed || _dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished)
                 {
-                    try
+                    try { deferral.Complete(); } catch { }
+                    return;
+                }
+                try
+                {
+                    await _dispatcher.InvokeAsync(() =>
                     {
-                        e.Response = webView.Environment.CreateWebResourceResponse(Stream.Null, 500, "Internal Error", "Access-Control-Allow-Origin: https://app.yomic.local");
-                    }
-                    catch { }
-                    finally
-                    {
-                        deferral.Complete();
-                    }
-                });
+                        try
+                        {
+                            if (!_isDisposed)
+                            {
+                                e.Response = webView.Environment.CreateWebResourceResponse(Stream.Null, 500, "Internal Error", "Access-Control-Allow-Origin: https://app.yomic.local");
+                            }
+                        }
+                        catch { }
+                        finally
+                        {
+                            try { deferral.Complete(); } catch { }
+                        }
+                    });
+                }
+                catch { }
             }
         }
 
         private async Task<byte[]?> FetchCoverBytesAsync(long mangaId, string rawUrl, long sourceId)
         {
-            // 1. Check local covers directory by mangaId or URL MD5
-            if (mangaId > 0)
+            // 1. Check URL-hashed cache FIRST so refreshed cover URLs are never shadowed by stale {mangaId}.jpg files
+            var urlHash = ComputeMd5Hex(rawUrl);
+            var cachedPath = Path.Combine(_coversDir, $"url_{urlHash}.cache");
+            if (!string.IsNullOrWhiteSpace(rawUrl) && File.Exists(cachedPath))
+            {
+                try { return await File.ReadAllBytesAsync(cachedPath); } catch { }
+            }
+
+            // If rawUrl is a local file path
+            if (!string.IsNullOrWhiteSpace(rawUrl) &&
+                !rawUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !rawUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+                IsAllowedLocalImagePath(rawUrl) &&
+                File.Exists(rawUrl))
+            {
+                return await File.ReadAllBytesAsync(rawUrl);
+            }
+
+            // Legacy/offline fallback by mangaId only when offline or rawUrl is empty
+            if ((_settingsService?.IsOfflineMode == true || string.IsNullOrWhiteSpace(rawUrl)) && mangaId > 0)
             {
                 var idFile = Path.Combine(_coversDir, $"{mangaId}.jpg");
                 if (File.Exists(idFile))
@@ -411,20 +450,9 @@ namespace YomicDesktop.IPC
                 }
             }
 
-            var urlHash = ComputeMd5Hex(rawUrl);
-            var cachedPath = Path.Combine(_coversDir, $"url_{urlHash}.cache");
-            if (File.Exists(cachedPath))
+            if (string.IsNullOrWhiteSpace(rawUrl))
             {
-                try { return await File.ReadAllBytesAsync(cachedPath); } catch { }
-            }
-
-            // If rawUrl is a local file path
-            if (!rawUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-                !rawUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
-                IsAllowedLocalImagePath(rawUrl) &&
-                File.Exists(rawUrl))
-            {
-                return await File.ReadAllBytesAsync(rawUrl);
+                return null;
             }
 
             await _coverDownloadThrottle.WaitAsync();
@@ -441,14 +469,20 @@ namespace YomicDesktop.IPC
                             if (mangaId > 0)
                             {
                                 var idFile = Path.Combine(_coversDir, $"{mangaId}.jpg");
-                                if (!File.Exists(idFile))
-                                {
-                                    await WriteFileAtomicAsync(idFile, data);
-                                }
+                                await WriteFileAtomicAsync(idFile, data);
                             }
                         }
                         catch { }
                     });
+                }
+                else if (mangaId > 0)
+                {
+                    // Remote fetch failed — serve last known {mangaId}.jpg if available
+                    var idFile = Path.Combine(_coversDir, $"{mangaId}.jpg");
+                    if (File.Exists(idFile))
+                    {
+                        try { return await File.ReadAllBytesAsync(idFile); } catch { }
+                    }
                 }
                 return data;
             }
@@ -627,97 +661,6 @@ namespace YomicDesktop.IPC
                 }
             }
 
-            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(requestUrl, out var targetUri) || targetUri == null)
-            {
-                LogService.Warning("ImageProxy", $"Blocked unsafe image proxy URL: {requestUrl}");
-                return null;
-            }
-
-            using var req = new HttpRequestMessage(HttpMethod.Get, targetUri)
-            {
-                Version = HttpVersion.Version20,
-                VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
-            };
-
-            // Referer header
-            if (customHeaders.TryGetValue("Referer", out var customRef))
-            {
-                if (!string.Equals(customRef, "none", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(customRef, "null", StringComparison.OrdinalIgnoreCase) &&
-                    Uri.TryCreate(customRef, UriKind.Absolute, out var refUri))
-                {
-                    req.Headers.Referrer = refUri;
-                }
-            }
-            else
-            {
-                var src = sourceId != 0 ? _sourceManager.GetSource(sourceId) : null;
-                if (src != null && !string.IsNullOrEmpty(src.BaseUrl) && Uri.TryCreate(src.BaseUrl, UriKind.Absolute, out var srcUri))
-                {
-                    req.Headers.Referrer = srcUri;
-                }
-                else if (Uri.TryCreate(requestUrl, UriKind.Absolute, out var reqUri))
-                {
-                    req.Headers.Referrer = new Uri(reqUri.GetLeftPart(UriPartial.Authority) + "/");
-                }
-            }
-
-            if (customHeaders.TryGetValue("Origin", out var originVal))
-            {
-                req.Headers.TryAddWithoutValidation("Origin", originVal);
-            }
-
-            if (customHeaders.TryGetValue("User-Agent", out var ua1))
-            {
-                req.Headers.UserAgent.TryParseAdd(ua1);
-            }
-            else if (customHeaders.TryGetValue("UserAgent", out var ua2))
-            {
-                req.Headers.UserAgent.TryParseAdd(ua2);
-            }
-            else
-            {
-                req.Headers.UserAgent.TryParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
-            }
-
-            // Inject Cloudflare cookies if present for host (thread-safe snapshot + RFC 6265 domain boundary check)
-            if (CloudflareBypassService.IsInstanceCreated)
-            {
-                var savedCookies = CloudflareBypassService.Instance.SavedCookies;
-                var relevantCookies = savedCookies
-                    .Where(c => Yomic.Core.Helpers.UrlSecurityHelper.CookieMatchesRequest(targetUri, c.Domain, c.Secure ?? false))
-                    .ToList();
-
-                if (relevantCookies.Count > 0)
-                {
-                    var cookieHeader = string.Join("; ", relevantCookies.Select(c => $"{c.Name}={c.Value}"));
-                    req.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
-                }
-
-                if (!string.IsNullOrEmpty(CloudflareBypassService.Instance.BypassUserAgent) &&
-                    (relevantCookies.Count > 0 || requestUrl.Contains("nhentai", StringComparison.OrdinalIgnoreCase)))
-                {
-                    req.Headers.Remove("User-Agent");
-                    req.Headers.TryAddWithoutValidation("User-Agent", CloudflareBypassService.Instance.BypassUserAgent);
-                }
-            }
-
-            if (requestUrl.Contains("mangamillion", StringComparison.OrdinalIgnoreCase))
-            {
-                req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
-                req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "cors");
-                req.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-site");
-                req.Headers.TryAddWithoutValidation("Origin", "https://mangamillion.shueisha.co.jp");
-            }
-            else
-            {
-                req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "image");
-                req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "no-cors");
-                req.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "cross-site");
-            }
-
-            req.Headers.TryAddWithoutValidation("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8");
-
             if (_settingsService?.IsOfflineMode == true)
             {
                 return null;
@@ -726,24 +669,156 @@ namespace YomicDesktop.IPC
             byte[]? data = null;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
             var client = GetOrCreateHttpClient();
-            using var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
 
-            if (!response.IsSuccessStatusCode)
+            const int maxRedirects = 5;
+            string currentUrl = requestUrl;
+            Uri? lastReferrer = null;
+            HttpResponseMessage? finalResponse = null;
+
+            try
             {
-                if (response.StatusCode == HttpStatusCode.Forbidden || IsGmbrProHost(requestUrl))
+                for (int hop = 0; hop <= maxRedirects; hop++)
                 {
-                    var refHeader = req.Headers.Referrer?.ToString() ?? "https://www.manhwaindo.my/";
-                    data = await DownloadWithCurlFallbackAsync(requestUrl, refHeader, cts.Token);
+                    if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(currentUrl, out var hopUri) || hopUri == null)
+                    {
+                        LogService.Warning("ImageProxy", $"Blocked unsafe image proxy URL: {currentUrl}");
+                        return null;
+                    }
+
+                    using var req = new HttpRequestMessage(HttpMethod.Get, hopUri)
+                    {
+                        Version = HttpVersion.Version20,
+                        VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+                    };
+
+                    // Referer header
+                    if (customHeaders.TryGetValue("Referer", out var customRef))
+                    {
+                        if (!string.Equals(customRef, "none", StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(customRef, "null", StringComparison.OrdinalIgnoreCase) &&
+                            Uri.TryCreate(customRef, UriKind.Absolute, out var refUri))
+                        {
+                            req.Headers.Referrer = refUri;
+                        }
+                    }
+                    else
+                    {
+                        var src = sourceId != 0 ? _sourceManager.GetSource(sourceId) : null;
+                        if (src != null && !string.IsNullOrEmpty(src.BaseUrl) && Uri.TryCreate(src.BaseUrl, UriKind.Absolute, out var srcUri))
+                        {
+                            req.Headers.Referrer = srcUri;
+                        }
+                        else
+                        {
+                            req.Headers.Referrer = new Uri(hopUri.GetLeftPart(UriPartial.Authority) + "/");
+                        }
+                    }
+                    lastReferrer = req.Headers.Referrer;
+
+                    if (customHeaders.TryGetValue("Origin", out var originVal))
+                    {
+                        req.Headers.TryAddWithoutValidation("Origin", originVal);
+                    }
+
+                    if (customHeaders.TryGetValue("User-Agent", out var ua1))
+                    {
+                        req.Headers.UserAgent.TryParseAdd(ua1);
+                    }
+                    else if (customHeaders.TryGetValue("UserAgent", out var ua2))
+                    {
+                        req.Headers.UserAgent.TryParseAdd(ua2);
+                    }
+                    else
+                    {
+                        req.Headers.UserAgent.TryParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+                    }
+
+                    // Inject Cloudflare cookies scoped strictly to this hop's URI (prevents cross-origin cookie leak on 302)
+                    if (CloudflareBypassService.IsInstanceCreated)
+                    {
+                        var savedCookies = CloudflareBypassService.Instance.SavedCookies;
+                        var relevantCookies = savedCookies
+                            .Where(c => Yomic.Core.Helpers.UrlSecurityHelper.CookieMatchesRequest(hopUri, c.Domain, c.Secure ?? false))
+                            .ToList();
+
+                        if (relevantCookies.Count > 0)
+                        {
+                            var cookieHeader = string.Join("; ", relevantCookies.Select(c => $"{c.Name}={c.Value}"));
+                            req.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
+                        }
+
+                        if (!string.IsNullOrEmpty(CloudflareBypassService.Instance.BypassUserAgent) &&
+                            (relevantCookies.Count > 0 || currentUrl.Contains("nhentai", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            req.Headers.Remove("User-Agent");
+                            req.Headers.TryAddWithoutValidation("User-Agent", CloudflareBypassService.Instance.BypassUserAgent);
+                        }
+                    }
+
+                    if (Yomic.Core.Helpers.UrlSecurityHelper.IsHostOrSubdomain(currentUrl, "mangamillion.shueisha.co.jp"))
+                    {
+                        req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
+                        req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "cors");
+                        req.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-site");
+                        req.Headers.TryAddWithoutValidation("Origin", "https://mangamillion.shueisha.co.jp");
+                    }
+                    else
+                    {
+                        req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "image");
+                        req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "no-cors");
+                        req.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "cross-site");
+                    }
+
+                    req.Headers.TryAddWithoutValidation("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8");
+
+                    var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                    int status = (int)resp.StatusCode;
+                    if (status is 301 or 302 or 303 or 307 or 308 && resp.Headers.Location != null)
+                    {
+                        var location = resp.Headers.Location;
+                        var nextUri = location.IsAbsoluteUri ? location : new Uri(hopUri, location);
+                        resp.Dispose();
+                        if (hop == maxRedirects)
+                        {
+                            return null;
+                        }
+                        currentUrl = nextUri.AbsoluteUri;
+                        continue;
+                    }
+
+                    finalResponse = resp;
+                    break;
                 }
-                if (data == null || data.Length == 0)
+
+                if (finalResponse == null)
                 {
                     return null;
                 }
+
+                if (!finalResponse.IsSuccessStatusCode)
+                {
+                    if (finalResponse.StatusCode == HttpStatusCode.Forbidden || IsGmbrProHost(currentUrl))
+                    {
+                        var refHeader = lastReferrer?.ToString() ?? "https://www.manhwaindo.my/";
+                        customHeaders.TryGetValue("User-Agent", out var customUa);
+                        if (string.IsNullOrWhiteSpace(customUa)) customHeaders.TryGetValue("UserAgent", out customUa);
+                        customHeaders.TryGetValue("Origin", out var customOrigin);
+                        data = await DownloadWithCurlFallbackAsync(currentUrl, refHeader, cts.Token, customUa, customOrigin);
+                    }
+                    if (data == null || data.Length == 0)
+                    {
+                        return null;
+                    }
+                }
+                else
+                {
+                    data = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(
+                        finalResponse.Content, 50L * 1024 * 1024, cts.Token);
+                }
             }
-            else
+            finally
             {
-                data = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(
-                    response.Content, 50L * 1024 * 1024, cts.Token);
+                finalResponse?.Dispose();
             }
 
             // Decrypt AES-256-CBC if key and IV are passed in customHeaders (e.g. MangaMillion)
@@ -754,8 +829,9 @@ namespace YomicDesktop.IPC
                 data = DecryptAes256Cbc(data, aesKey, aesIv);
             }
 
-            // Reject HTTP-200 HTML error / Cloudflare challenge pages so they never poison disk image caches
-            if (data != null && LooksLikeHtmlPayload(data))
+            // Validate against image magic-byte allowlist so HTML, JSON errors, plain-text blocks, or corrupt
+            // ciphertext never poison disk/RAM image caches
+            if (data == null || !Yomic.Core.Helpers.UrlSecurityHelper.IsValidImagePayload(data))
             {
                 return null;
             }
@@ -812,11 +888,20 @@ namespace YomicDesktop.IPC
                    host.EndsWith(".gmbr.pro", StringComparison.OrdinalIgnoreCase);
         }
 
-        internal static bool TryNormalizeCurlTarget(Uri validUri, out string normalizedHost, out string normalizedUrl)
+        internal static bool TryNormalizeCurlTarget(Uri validUri, out string normalizedHost, out string normalizedUrl, out bool isIpLiteral)
         {
             normalizedHost = validUri.IdnHost.TrimEnd('.');
             normalizedUrl = string.Empty;
+            isIpLiteral = false;
             if (string.IsNullOrWhiteSpace(normalizedHost)) return false;
+
+            if (IPAddress.TryParse(normalizedHost, out var ip))
+            {
+                if (Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp(ip)) return false;
+                isIpLiteral = true;
+                normalizedUrl = validUri.AbsoluteUri;
+                return true;
+            }
 
             // Rebuild URI with trailing-dot-free host so curl --resolve ALWAYS matches the request host
             var builder = new UriBuilder(validUri)
@@ -827,50 +912,93 @@ namespace YomicDesktop.IPC
             return true;
         }
 
-        private static async Task<byte[]?> DownloadWithCurlFallbackAsync(string url, string referer, CancellationToken ct)
+        private async Task<byte[]?> DownloadWithCurlFallbackAsync(
+            string url,
+            string referer,
+            CancellationToken ct,
+            string? customUserAgent = null,
+            string? customOrigin = null)
         {
             try
             {
+                if (_settingsService?.IsOfflineMode == true)
+                {
+                    return null;
+                }
+
                 if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out var validUri) || validUri == null)
                 {
                     return null;
                 }
 
-                // Resolve DNS up-front and pin a validated public IP via --resolve (host trailing-dot normalized on BOTH --resolve & URL)
-                if (!TryNormalizeCurlTarget(validUri, out var host, out var normalizedUrl))
+                // Resolve DNS up-front via NetworkService (respects user DoH provider!) and pin a validated public IP via --resolve
+                if (!TryNormalizeCurlTarget(validUri, out var host, out var normalizedUrl, out var isIpLiteral))
                 {
                     return null;
                 }
-                IPAddress[] resolvedIps;
-                try
+                string? pinnedIpStr = null;
+                if (!isIpLiteral)
                 {
-                    resolvedIps = await Dns.GetHostAddressesAsync(host, ct);
-                }
-                catch
-                {
-                    return null;
-                }
-
-                if (resolvedIps == null || resolvedIps.Length == 0)
-                {
-                    return null;
-                }
-
-                foreach (var ip in resolvedIps)
-                {
-                    if (Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp(ip))
+                    List<IPAddress> resolvedIps;
+                    try
+                    {
+                        resolvedIps = await _networkService.ResolveHostIpsAsync(host, ct);
+                    }
+                    catch
                     {
                         return null;
                     }
+
+                    if (resolvedIps == null || resolvedIps.Count == 0)
+                    {
+                        return null;
+                    }
+
+                    foreach (var ip in resolvedIps)
+                    {
+                        if (Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp(ip))
+                        {
+                            return null;
+                        }
+                    }
+
+                    var pinnedIp = resolvedIps.FirstOrDefault(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                                   ?? resolvedIps[0];
+                    pinnedIpStr = pinnedIp.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                        ? $"[{pinnedIp}]"
+                        : pinnedIp.ToString();
                 }
 
-                var pinnedIp = resolvedIps.FirstOrDefault(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                               ?? resolvedIps[0];
-                string pinnedIpStr = pinnedIp.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
-                    ? $"[{pinnedIp}]"
-                    : pinnedIp.ToString();
-
                 string safeReferer = (referer ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty);
+                string effectiveUa = !string.IsNullOrWhiteSpace(customUserAgent)
+                    ? customUserAgent.Replace("\r", string.Empty).Replace("\n", string.Empty)
+                    : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+                string safeOrigin = (customOrigin ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty);
+                string? safeCookieHeader = null;
+
+                // Attach host-scoped Cloudflare cookies & matching User-Agent (safe since -L auto-redirect is disabled)
+                if (CloudflareBypassService.IsInstanceCreated)
+                {
+                    var savedCookies = CloudflareBypassService.Instance.SavedCookies;
+                    var relevantCookies = savedCookies
+                        .Where(c => Yomic.Core.Helpers.UrlSecurityHelper.CookieMatchesRequest(validUri, c.Domain, c.Secure ?? false))
+                        .ToList();
+
+                    if (relevantCookies.Count > 0)
+                    {
+                        safeCookieHeader = string.Join("; ", relevantCookies.Select(c => $"{c.Name}={c.Value}"))
+                            .Replace("\r", string.Empty)
+                            .Replace("\n", string.Empty);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(CloudflareBypassService.Instance.BypassUserAgent) &&
+                        (relevantCookies.Count > 0 || normalizedUrl.Contains("nhentai", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        effectiveUa = CloudflareBypassService.Instance.BypassUserAgent
+                            .Replace("\r", string.Empty)
+                            .Replace("\n", string.Empty);
+                    }
+                }
 
                 var psi = new ProcessStartInfo
                 {
@@ -881,17 +1009,30 @@ namespace YomicDesktop.IPC
                 };
                 psi.ArgumentList.Add("-f"); // Fail silently on HTTP >= 400 so HTML error pages never poison image caches
                 psi.ArgumentList.Add("-s");
-                // Do NOT pass -L (auto-redirect): prevents SSRF redirect bypasses to 127.0.0.1 / LAN via curl.exe
-                psi.ArgumentList.Add("--resolve");
-                psi.ArgumentList.Add($"{host}:{validUri.Port}:{pinnedIpStr}");
+                // Do NOT pass -L (auto-redirect): prevents SSRF redirect bypasses to 127.0.0.1 / LAN and cross-origin cookie leaks via curl.exe
+                if (!string.IsNullOrEmpty(pinnedIpStr))
+                {
+                    psi.ArgumentList.Add("--resolve");
+                    psi.ArgumentList.Add($"{host}:{validUri.Port}:{pinnedIpStr}");
+                }
                 psi.ArgumentList.Add("--max-filesize");
                 psi.ArgumentList.Add((50L * 1024 * 1024).ToString());
                 psi.ArgumentList.Add("--max-time");
                 psi.ArgumentList.Add("20");
                 psi.ArgumentList.Add("-H");
                 psi.ArgumentList.Add($"Referer: {safeReferer}");
+                if (!string.IsNullOrEmpty(safeOrigin))
+                {
+                    psi.ArgumentList.Add("-H");
+                    psi.ArgumentList.Add($"Origin: {safeOrigin}");
+                }
+                if (!string.IsNullOrEmpty(safeCookieHeader))
+                {
+                    psi.ArgumentList.Add("-H");
+                    psi.ArgumentList.Add($"Cookie: {safeCookieHeader}");
+                }
                 psi.ArgumentList.Add("-A");
-                psi.ArgumentList.Add("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+                psi.ArgumentList.Add(effectiveUa);
                 psi.ArgumentList.Add(normalizedUrl);
 
                 using var proc = Process.Start(psi);
@@ -917,8 +1058,8 @@ namespace YomicDesktop.IPC
                     if (proc.ExitCode != 0 || ms.Length == 0) return null;
 
                     var result = ms.ToArray();
-                    // Reject HTML error / Cloudflare challenge pages masquerading as images
-                    if (LooksLikeHtmlPayload(result)) return null;
+                    // Reject non-image payloads (HTML/JSON/error pages) masquerading as images
+                    if (!Yomic.Core.Helpers.UrlSecurityHelper.IsValidImagePayload(result)) return null;
                     return result;
                 }
                 catch
@@ -933,17 +1074,28 @@ namespace YomicDesktop.IPC
             }
         }
 
-        private static bool LooksLikeHtmlPayload(byte[] bytes)
+        internal static bool LooksLikeHtmlPayload(byte[] bytes)
         {
             if (bytes == null || bytes.Length < 5) return false;
             int idx = 0;
+            // Skip optional UTF-8 BOM (EF BB BF)
+            if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            {
+                idx = 3;
+            }
             while (idx < bytes.Length && idx < 64 && (bytes[idx] == ' ' || bytes[idx] == '\t' || bytes[idx] == '\r' || bytes[idx] == '\n'))
             {
                 idx++;
             }
             if (idx >= bytes.Length || bytes[idx] != (byte)'<') return false;
             string prefix = Encoding.ASCII.GetString(bytes, idx, Math.Min(32, bytes.Length - idx)).ToLowerInvariant();
-            return prefix.StartsWith("<!doctype") || prefix.StartsWith("<html") || prefix.StartsWith("<head") || prefix.StartsWith("<body") || prefix.StartsWith("<!--");
+            return prefix.StartsWith("<!doctype") ||
+                   prefix.StartsWith("<html") ||
+                   prefix.StartsWith("<head") ||
+                   prefix.StartsWith("<body") ||
+                   prefix.StartsWith("<script") ||
+                   prefix.StartsWith("<?xml") ||
+                   prefix.StartsWith("<!--");
         }
 
         private static byte[] DecryptAes256Cbc(byte[] cipherText, string keyHex, string ivHex)
@@ -962,7 +1114,7 @@ namespace YomicDesktop.IPC
             }
             catch
             {
-                return cipherText;
+                return Array.Empty<byte>();
             }
         }
 

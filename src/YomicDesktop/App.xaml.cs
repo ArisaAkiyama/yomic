@@ -4,8 +4,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 using Yomic.Core.Data;
 using Yomic.Core.Services;
+using Yomic.Core.Sources;
 using YomicDesktop.Interop;
 
 namespace YomicDesktop;
@@ -55,6 +57,7 @@ public partial class App : Application
             }
             finally
             {
+                try { LogService.CloseAndFlush(); } catch { }
                 ReleaseSingleInstanceMutex();
                 Shutdown(0);
             }
@@ -83,15 +86,17 @@ public partial class App : Application
         }
 
         using var settingsService = new SettingsService();
+        HttpSource.IsOfflineModeProvider = () => settingsService.IsOfflineMode;
+        HttpSource.DnsOverHttpsProviderGetter = () => settingsService.DnsOverHttpsProvider;
+        JsMangaSource.SelectedLanguage = string.Equals(settingsService.MangaDexLanguage, "id", StringComparison.OrdinalIgnoreCase) ? "id" : "en";
+
         if (settingsService.IsOfflineMode)
         {
             LogService.Info("BackgroundUpdate", "Skipped headless sync because Offline Mode is enabled.");
             return;
         }
 
-        using var networkService = new NetworkService(settingsService);
         using var sourceManager = new SourceManager();
-        using var statusService = new SourceStatusService(sourceManager, settingsService, networkService);
 
         var libraryService = new LibraryService();
         int updated = await libraryService.UpdateAllLibraryMangaAsync(sourceManager, forceRefresh: false);
@@ -133,7 +138,7 @@ public partial class App : Application
                 }
                 else
                 {
-                    app.Dispatcher.Invoke(app.ReleaseSingleInstanceMutex);
+                    app.Dispatcher.Invoke(app.ReleaseSingleInstanceMutex, DispatcherPriority.Send, CancellationToken.None, TimeSpan.FromSeconds(2));
                 }
             }
         }
@@ -156,7 +161,9 @@ public partial class App : Application
                     return app._ownsMutex;
                 }
 
-                return app.Dispatcher.CheckAccess() ? Reacquire() : app.Dispatcher.Invoke(Reacquire);
+                return app.Dispatcher.CheckAccess()
+                    ? Reacquire()
+                    : app.Dispatcher.Invoke(Reacquire, DispatcherPriority.Send, CancellationToken.None, TimeSpan.FromSeconds(2));
             }
         }
         catch { }

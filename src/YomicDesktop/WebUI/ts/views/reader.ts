@@ -51,6 +51,30 @@ export function computePrefetchPageIndices(currentPage: number, totalPages: numb
 }
 
 /**
+ * Pure helper producing the inline CSS style for a reader comic page image across all fit modes and zoom levels.
+ * Ensures zoom controls scale images consistently in fit-width, fit-height, original, and dual modes.
+ */
+export function buildReaderImgStyle(fitMode: string, readerMode: string, zoomPercent: number): string {
+  const clampedZoom = Math.max(25, Math.min(300, Number(zoomPercent) || 100));
+  const scale = clampedZoom / 100;
+  if (readerMode === 'dual') {
+    const maxHeightPct = Math.round(clampedZoom);
+    const maxWidthPx = Math.round(520 * scale);
+    return `max-height:calc((100vh - 96px) * ${scale.toFixed(3)});max-width:${maxWidthPx}px;width:auto;height:auto;object-fit:contain;display:block;`;
+  }
+  if (fitMode === 'fit-height') {
+    const maxW = scale > 1 ? 'none' : '100%';
+    return `height:calc((100vh - 80px) * ${scale.toFixed(3)});width:auto;max-width:${maxW};object-fit:contain;display:block;margin:0 auto;`;
+  }
+  if (fitMode === 'original') {
+    return `width:auto;max-width:none;height:auto;zoom:${scale.toFixed(3)};display:block;margin:0 auto;`;
+  }
+  const targetWidth = Math.round(740 * scale);
+  const maxW = scale > 1 ? 'none' : '100%';
+  return `width:${targetWidth}px;max-width:${maxW};height:auto;display:block;margin:0 auto;`;
+}
+
+/**
  * O(log N) binary search over cached page wrappers using layout offsets (offsetTop / offsetHeight),
  * eliminating O(N) getBoundingClientRect() forced synchronous layouts during 60-120 FPS Webtoon scroll.
  */
@@ -125,6 +149,15 @@ export function prefetchReaderPagesAround(this: YomicApp, currentPage: number): 
 }
 
 export function openReader(this: YomicApp, mangaId: string, chapterNumber: number, forceRefresh = false, manualVerify = false): void {
+  // Flush/cancel any pending debounced progress save from the previous chapter BEFORE switching chapter state
+  if (this.readerSaveProgressDebounceTimer) {
+    clearTimeout(this.readerSaveProgressDebounceTimer);
+    this.readerSaveProgressDebounceTimer = null;
+    if (this.isReaderOpen && !this.isRestoringReaderScroll) {
+      this.saveReaderProgressToBackend();
+    }
+  }
+  this.stopReaderAutoScroll();
   this.saveWorkspaceScroll();
   let manga: MangaItem;
   const found = this.mangaList.find((m) => m.id === mangaId);
@@ -229,6 +262,7 @@ export function openReader(this: YomicApp, mangaId: string, chapterNumber: numbe
   this.readerChapterUrl = chObj?.url || '';
   const overlay = document.getElementById('readerOverlay');
   overlay?.classList.add('open');
+  overlay?.setAttribute('aria-hidden', 'false');
   overlay?.classList.remove('hud-hidden');
   if (this.readerHudAutoHideTimer) {
     clearTimeout(this.readerHudAutoHideTimer);
@@ -373,10 +407,19 @@ export function retryPageImg(this: YomicApp, pageNumber: number): void {
   const wrap = document.getElementById(`reader-page-wrap-${pageNumber}`);
   const rawUrl = this.readerPages[pageNumber - 1];
   if (!wrap || !rawUrl) return;
+  const fitMode = this.settings.readerFitMode || 'fit-width';
   const baseWidth = Math.round((this.readerMode === 'dual' ? 480 : 740) * (this.readerZoomPercent / 100));
-  const freshUrl = sanitizeImageSrc(rawUrl.includes('?') ? `${rawUrl}&force=1&t=${Date.now()}` : `${rawUrl}?force=1&t=${Date.now()}`);
+  const imgStyle = this.readerMode === 'dual'
+    ? getDualPageImgStyle(this.readerZoomPercent)
+    : buildReaderImgStyle(fitMode, this.readerMode, this.readerZoomPercent);
+  const isHttpLike = /^https?:\/\//i.test(rawUrl);
+  const retryCandidate = isHttpLike
+    ? (rawUrl.includes('?') ? `${rawUrl}&force=1&t=${Date.now()}` : `${rawUrl}?force=1&t=${Date.now()}`)
+    : rawUrl;
+  const freshUrl = sanitizeImageSrc(retryCandidate);
+  const pageAlt = escapeXml(this.l(`Halaman ${pageNumber}`, `Page ${pageNumber}`));
   wrap.innerHTML = `
-    <img id="reader-page-${pageNumber}" class="reader-page-art" style="width:${baseWidth}px;display:block;" src="${freshUrl}" alt="Halaman ${pageNumber}" loading="lazy" data-page-num="${pageNumber}" />
+    <img id="reader-page-${pageNumber}" class="reader-page-art" style="${imgStyle}" src="${freshUrl}" alt="${pageAlt}" loading="eager" decoding="async" data-page-num="${pageNumber}" />
   `;
   const img = wrap.querySelector('img');
   if (img) {
@@ -478,8 +521,9 @@ export function closeReader(this: YomicApp): void {
     this.readerSaveProgressDebounceTimer = null;
   }
   this.saveReaderProgressToBackend();
-  this.applyTheme(this.settings.isDarkMode);
   this.isReaderOpen = false;
+  this.isReaderLoadingPages = false;
+  this.readerRequiresVerification = false;
   this.stopReaderAutoScroll();
   this.isRestoringReaderScroll = false;
   this.targetRestorePercent = -1;
@@ -513,12 +557,16 @@ export function closeReader(this: YomicApp): void {
   document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
   const overlay = document.getElementById('readerOverlay');
   overlay?.classList.remove('open');
+  overlay?.setAttribute('aria-hidden', 'true');
   this.applyTheme(this.settings.isDarkMode);
   this.renderCurrentWorkspace(true);
 }
 
 export function setReaderMode(this: YomicApp, mode: ReaderMode): void {
   this.readerMode = mode;
+  if (mode !== 'webtoon') {
+    this.stopReaderAutoScroll();
+  }
   document.querySelectorAll<HTMLButtonElement>('[data-reader-mode]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.readerMode === mode);
   });
@@ -544,7 +592,7 @@ export function renderReaderPages(this: YomicApp): void {
   const manga = this.mangaList.find((m) => m.id === this.readerMangaId) ?? this.mangaList[0];
   const isRtl = this.settings.readingDirection === 'rtl';
   pagesContainer.className = `reader-pages-container mode-${this.readerMode}${isRtl ? ' dir-rtl' : ''}`;
-  const baseWidth = Math.round(740 * (this.readerZoomPercent / 100));
+  const baseWidth = Math.round((this.readerMode === 'dual' ? 480 : 740) * (this.readerZoomPercent / 100));
 
   // Event delegation on container
   pagesContainer.onclick = (ev) => {
@@ -609,15 +657,8 @@ export function renderReaderPages(this: YomicApp): void {
     return;
   }
   const fitMode = this.settings.readerFitMode || 'fit-width';
-  const getImgStyle = (targetWidth: number): string => {
-    if (fitMode === 'fit-height') {
-      return 'height:calc(100vh - 80px);width:auto;max-width:100%;object-fit:contain;display:block;margin:0 auto;';
-    }
-    if (fitMode === 'original') {
-      return 'width:auto;max-width:none;height:auto;display:block;margin:0 auto;';
-    }
-    return `width:${targetWidth}px;max-width:100%;height:auto;display:block;margin:0 auto;`;
-  };
+  const pageImgStyle = buildReaderImgStyle(fitMode, this.readerMode, this.readerZoomPercent);
+  const pageAltPrefix = this.l('Halaman', 'Page');
   pagesContainer.dir = 'ltr';
   const eagerIndices = new Set<number>([
     Math.max(0, Math.min(this.readerTotalPages - 1, this.readerCurrentPage - 1)),
@@ -628,7 +669,7 @@ export function renderReaderPages(this: YomicApp): void {
     const realUrl = sanitizeImageSrc(this.readerPages[this.readerCurrentPage - 1] || '');
     pagesContainer.innerHTML = `
       <div class="reader-page-item" id="reader-page-wrap-${this.readerCurrentPage}" style="position:relative;display:inline-block;margin:0 auto;">
-        <img id="reader-page-${this.readerCurrentPage}" class="reader-page-art" style="${getImgStyle(baseWidth)}" src="${realUrl}" alt="Halaman ${this.readerCurrentPage}" decoding="async" fetchpriority="high" data-page-num="${this.readerCurrentPage}" />
+        <img id="reader-page-${this.readerCurrentPage}" class="reader-page-art" style="${pageImgStyle}" src="${realUrl}" alt="${pageAltPrefix} ${this.readerCurrentPage}" decoding="async" fetchpriority="high" data-page-num="${this.readerCurrentPage}" />
       </div>
     `;
     scrollArea.scrollTop = 0;
@@ -643,7 +684,7 @@ export function renderReaderPages(this: YomicApp): void {
       const realUrl = sanitizeImageSrc(this.readerPages[p - 1] || '');
       pagesHtml.push(
         `<div class="reader-page-item reader-dual-spread-item" id="reader-page-wrap-${p}">
-          <img id="reader-page-${p}" class="reader-page-art" style="${dualStyle}" src="${realUrl}" alt="Halaman ${p}" loading="eager" decoding="async" fetchpriority="high" data-page-num="${p}" />
+          <img id="reader-page-${p}" class="reader-page-art" style="${dualStyle}" src="${realUrl}" alt="${pageAltPrefix} ${p}" loading="eager" decoding="async" fetchpriority="high" data-page-num="${p}" />
         </div>`
       );
     }
@@ -663,7 +704,7 @@ export function renderReaderPages(this: YomicApp): void {
       const isEager = eagerIndices.has(p - 1);
       pagesHtml.push(
         `<div class="reader-page-item" id="reader-page-wrap-${p}" style="position:relative;display:block;margin:0 auto;min-height:${estHeight}px;contain-intrinsic-size:auto ${baseWidth}px ${estHeight}px;">
-          <img id="reader-page-${p}" class="reader-page-art" style="${getImgStyle(baseWidth)}" src="${realUrl}" alt="Halaman ${p}" loading="${isEager ? 'eager' : 'lazy'}" decoding="async"${isEager ? ' fetchpriority="high"' : ''} data-page-num="${p}" />
+          <img id="reader-page-${p}" class="reader-page-art" style="${pageImgStyle}" src="${realUrl}" alt="${pageAltPrefix} ${p}" loading="${isEager ? 'eager' : 'lazy'}" decoding="async"${isEager ? ' fetchpriority="high"' : ''} data-page-num="${p}" />
         </div>`
       );
     }
@@ -847,15 +888,6 @@ export function adjustReaderZoom(this: YomicApp, delta: number): void {
   const scrollRatio = Math.max(0, Math.min(1, scrollArea.scrollTop / prevMaxScroll));
 
   const fitMode = this.settings.readerFitMode || 'fit-width';
-  const getImgStyle = (targetWidth: number): string => {
-    if (fitMode === 'fit-height') {
-      return 'height:calc(100vh - 80px);width:auto;max-width:100%;object-fit:contain;display:block;margin:0 auto;';
-    }
-    if (fitMode === 'original') {
-      return 'width:auto;max-width:none;height:auto;display:block;margin:0 auto;';
-    }
-    return `width:${targetWidth}px;max-width:100%;height:auto;display:block;margin:0 auto;`;
-  };
 
   if (this.readerMode === 'dual') {
     const targetStyle = getDualPageImgStyle(this.readerZoomPercent);
@@ -865,7 +897,7 @@ export function adjustReaderZoom(this: YomicApp, delta: number): void {
   } else {
     const baseWidth = Math.round(740 * (this.readerZoomPercent / 100));
     const minPageHeight = Math.round(baseWidth * 1.35);
-    const targetStyle = getImgStyle(baseWidth);
+    const targetStyle = buildReaderImgStyle(fitMode, this.readerMode, this.readerZoomPercent);
     existingImages.forEach((img) => {
       img.style.cssText = targetStyle;
       const parent = img.parentElement;
@@ -1071,11 +1103,9 @@ export function toggleReaderHud(this: YomicApp): void {
 }
 
 export function renderReaderChapterDropdown(this: YomicApp): void {
-  const targets = [
-    document.getElementById('readerChapterDropdownMenu'),
-    document.getElementById('readerChapterSheetList')
-  ].filter((el): el is HTMLElement => el !== null);
-  if (targets.length === 0) return;
+  const sheetList = document.getElementById('readerChapterSheetList');
+  if (!sheetList) return;
+  const targets = [sheetList];
   const manga = this.mangaList.find((m) => m.id === this.readerMangaId);
   if (!manga) return;
   if (!manga.chapters || manga.chapters.length === 0) {
@@ -1127,15 +1157,25 @@ export function toggleReaderAutoScroll(this: YomicApp): void {
   if (this.readerAutoScrollTimer !== null) {
     this.stopReaderAutoScroll();
     btn?.classList.remove('active');
+    this.showToast(this.l('Gulir otomatis dimatikan.', 'Auto-scroll stopped.'));
+    return;
+  }
+  if (this.readerMode !== 'webtoon') {
+    this.showToast(this.l('Gulir otomatis hanya tersedia di mode Webtoon.', 'Auto-scroll is only available in Webtoon mode.'), 'warning');
     return;
   }
   btn?.classList.add('active');
   const scrollArea = document.getElementById('readerCanvasScroll');
   this.readerAutoScrollTimer = window.setInterval(() => {
+    if (!this.isReaderOpen || this.readerMode !== 'webtoon') {
+      this.stopReaderAutoScroll();
+      return;
+    }
     if (scrollArea) {
       scrollArea.scrollBy({ top: 3, behavior: 'auto' });
     }
   }, 16);
+  this.showToast(this.l('Gulir otomatis aktif (tekan S untuk berhenti).', 'Auto-scroll active (press S to stop).'));
 }
 
 export function stopReaderAutoScroll(this: YomicApp): void {

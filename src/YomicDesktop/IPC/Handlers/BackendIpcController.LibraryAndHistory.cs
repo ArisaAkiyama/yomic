@@ -205,15 +205,23 @@ namespace YomicDesktop.IPC
             var manga = await ResolveMangaAsync(mangaId);
             if (manga != null && manga.Id > 0)
             {
-                using var db = new MangaDbContext();
-                var dbManga = await db.Mangas.FindAsync(manga.Id);
-                if (dbManga != null)
+                await MangaDbContext.DatabaseWriteGate.WaitAsync();
+                try
                 {
-                    dbManga.LastViewed = 0;
-                    var chIds = await db.Chapters.Where(c => c.MangaId == dbManga.Id).Select(c => c.Id).ToListAsync();
-                    var histRows = await db.History.Where(h => chIds.Contains(h.ChapterId)).ToListAsync();
-                    db.History.RemoveRange(histRows);
-                    await db.SaveChangesAsync();
+                    using var db = new MangaDbContext();
+                    var dbManga = await db.Mangas.FindAsync(manga.Id);
+                    if (dbManga != null)
+                    {
+                        dbManga.LastViewed = 0;
+                        var chIds = await db.Chapters.Where(c => c.MangaId == dbManga.Id).Select(c => c.Id).ToListAsync();
+                        var histRows = await db.History.Where(h => chIds.Contains(h.ChapterId)).ToListAsync();
+                        db.History.RemoveRange(histRows);
+                        await db.SaveChangesAsync();
+                    }
+                }
+                finally
+                {
+                    MangaDbContext.DatabaseWriteGate.Release();
                 }
             }
             return new { ok = true };
@@ -222,8 +230,10 @@ namespace YomicDesktop.IPC
         private async Task<object> HandleClearAllHistoryAsync()
         {
             await LibraryService.ClearAllReadHistoryAsync();
-            using (var db = new MangaDbContext())
+            await MangaDbContext.DatabaseWriteGate.WaitAsync();
+            try
             {
+                using var db = new MangaDbContext();
                 var viewedMangas = await db.Mangas.Where(m => m.LastViewed > 0).ToListAsync();
                 foreach (var m in viewedMangas)
                 {
@@ -236,6 +246,10 @@ namespace YomicDesktop.IPC
                 }
                 db.History.RemoveRange(db.History);
                 await db.SaveChangesAsync();
+            }
+            finally
+            {
+                MangaDbContext.DatabaseWriteGate.Release();
             }
             try
             {

@@ -606,6 +606,11 @@ export function renderBrowseView(this: YomicApp, container: HTMLElement, preserv
         this.viewScrollPositions.delete(`browse_source_${srcId}`);
         this.activeBrowseSourceId = srcId;
         this.sourceFeedSearchQuery = '';
+        this.sourceFeedSort = 'popular';
+        this.sourceFeedStatusFilter = 'all';
+        this.sourceFeedTypeFilter = 'all';
+        this.sourceFeedGenreFilter = 'Semua';
+        this.isSourceFeedFilterFlyoutOpen = false;
         this.sourceFeedError = null;
         container.scrollTop = 0;
         const src = this.extensions.find((e) => e.id === srcId);
@@ -1126,6 +1131,10 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
     this.activeBrowseSourceId = null;
     this.browseSearchQuery = '';
     this.sourceFeedSearchQuery = '';
+    this.sourceFeedSort = 'popular';
+    this.sourceFeedStatusFilter = 'all';
+    this.sourceFeedTypeFilter = 'all';
+    this.sourceFeedGenreFilter = 'Semua';
     this.isSourceFeedFilterFlyoutOpen = false;
     this.renderBrowseView(container, true);
   });
@@ -1134,7 +1143,8 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
       ev.stopPropagation();
       const clickedLang = (btn.dataset.mdLang === 'id' ? 'id' : 'en') as 'id' | 'en';
       const currentLang = (this.settings.mangaDexLanguage || 'en').toLowerCase() === 'id' ? 'id' : 'en';
-      const nextLang: 'id' | 'en' = clickedLang === currentLang ? (currentLang === 'id' ? 'en' : 'id') : clickedLang;
+      if (clickedLang === currentLang) return;
+      const nextLang: 'id' | 'en' = clickedLang;
       this.settings.mangaDexLanguage = nextLang;
       this.persistLocalCache();
       this.chapterPagesCache.clear();

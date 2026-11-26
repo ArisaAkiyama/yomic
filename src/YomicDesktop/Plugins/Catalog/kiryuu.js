@@ -30,7 +30,7 @@ var source = {
         return this.getRestMangaPage(page, "&search=" + encodeURIComponent(query));
     },
 
-    getMangaList: function(page, status, genre, type) {
+    getMangaList: function(page, status, genre, type, sort) {
         let extraQuery = "";
         let isFiltered = false;
 
@@ -89,12 +89,14 @@ var source = {
             }
         }
 
+        if (sort === "latest") {
+            extraQuery += "&orderby=modified";
+        }
         if (extraQuery) {
-            // Only pass totalItems estimate if we are only filtering by status and not doing complex multi-filtering
             let totalItems = (!isFiltered && (status === 1 || status === 2)) ? this.resolveTotalItems(status) : 0;
             return this.getRestMangaPage(page, extraQuery, totalItems);
         }
-        return this.getPopularManga(page);
+        return sort === "latest" ? this.getLatestUpdates(page) : this.getPopularManga(page);
     },
 
     getRestMangaPage: function(page, extraQuery, totalItems) {
@@ -160,10 +162,27 @@ var source = {
         let mangaId = this.extractMangaId(mangaUrl);
         if (!mangaId) return this.parseChapterListFromDetail(mangaUrl);
 
-        let url = this.baseUrl + "/wp-admin/admin-ajax.php?manga_id=" + encodeURIComponent(mangaId) + "&page=1&action=chapter_list";
-        let html = this.getHtml(url);
-        let chapters = this.parseChapterListHtml(html, url);
-        return chapters.length ? chapters : this.parseChapterListFromDetail(mangaUrl);
+        let allChapters = [];
+        let seen = {};
+        const maxPages = 50;
+        for (let page = 1; page <= maxPages; page++) {
+            let url = this.baseUrl + "/wp-admin/admin-ajax.php?manga_id=" + encodeURIComponent(mangaId) + "&page=" + page + "&action=chapter_list";
+            let html = this.getHtml(url);
+            if (!html || this.isBlockedHtml(html)) break;
+
+            let pageChapters = this.parseChapterListHtml(html, url);
+            let added = 0;
+            for (let i = 0; i < pageChapters.length; i++) {
+                let ch = pageChapters[i];
+                if (!ch.url || seen[ch.url]) continue;
+                seen[ch.url] = true;
+                allChapters.push(ch);
+                added++;
+            }
+            if (added === 0) break;
+        }
+
+        return allChapters.length ? allChapters : this.parseChapterListFromDetail(mangaUrl);
     },
 
     getPageList: function(chapterUrl) {
@@ -431,7 +450,7 @@ var source = {
 
     getHtml: function(url) {
         let response = fetch(url);
-        if (response.status < 200 || response.status >= 300) return "";
+        if (!response || response.status < 200 || response.status >= 300) return "";
         return response.body;
     },
 
@@ -442,7 +461,7 @@ var source = {
                 "Referer": this.baseUrl + "/"
             }
         });
-        if (response.status < 200 || response.status >= 300) return null;
+        if (!response || response.status < 200 || response.status >= 300) return null;
         try { return JSON.parse(response.body); } catch (e) { return null; }
     },
 

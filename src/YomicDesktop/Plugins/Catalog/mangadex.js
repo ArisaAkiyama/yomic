@@ -45,7 +45,7 @@ var source = {
     getMangaByTranslatedChapterFeed: function(page, lang, sortMode) {
         let currentPage = Math.max(1, page || 1);
         let chapLimit = 64;
-        let chapOffset = (currentPage - 1) * 32;
+        let chapOffset = (currentPage - 1) * chapLimit;
         let chapParams = {
             limit: chapLimit,
             offset: chapOffset,
@@ -95,9 +95,14 @@ var source = {
             return null;
         }
 
+        let totalChapters = typeof chapJson.total === "number" ? chapJson.total : (chapOffset + chapJson.data.length);
+        let computedTotalPages = chapJson.data.length < chapLimit
+            ? currentPage
+            : Math.max(currentPage, Math.min(200, Math.ceil(totalChapters / chapLimit)));
+
         return {
             items: mangaJson.data.map(manga => this.parseManga(manga)),
-            totalPages: currentPage + 1
+            totalPages: computedTotalPages
         };
     },
 
@@ -258,6 +263,8 @@ var source = {
             for (let i = 0; i < json.data.length; i++) {
                 let chapter = json.data[i];
                 let attr = chapter.attributes || {};
+                // Skip external-only / 0-page chapters (e.g. MangaPlus/Comikey redirects with no hosted pages)
+                if (attr.externalUrl || attr.pages === 0) continue;
                 let chapterNumber = attr.chapter || "";
                 let title = attr.title || "";
                 let name = chapterNumber ? "Chapter " + chapterNumber : "Chapter";
@@ -406,7 +413,7 @@ var source = {
                 "Accept": "application/json"
             }
         });
-        if (response.status < 200 || response.status >= 300) return null;
+        if (!response || response.status < 200 || response.status >= 300) return null;
         try { return JSON.parse(response.body); } catch (e) { return null; }
     },
 

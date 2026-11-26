@@ -97,6 +97,8 @@ namespace Yomic.Core.Sources
 
         public static Func<bool>? IsOfflineModeProvider { get; set; }
         public static Func<int>? DnsOverHttpsProviderGetter { get; set; }
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (List<System.Net.IPAddress> Ips, DateTime ExpiresUtc)> _dohDnsCache =
+            new(StringComparer.OrdinalIgnoreCase);
 
         protected HttpSource()
         {
@@ -119,63 +121,89 @@ namespace Yomic.Core.Sources
                     var logBuilder = new System.Text.StringBuilder();
 
                     int dohProvider = DnsOverHttpsProviderGetter?.Invoke() ?? 2;
-                    if (dohProvider != 0)
+                    if (System.Net.IPAddress.TryParse(host, out var literalIp))
                     {
-                        var dohQueries = dohProvider switch
+                        candidateIps.Add(literalIp);
+                    }
+                    else if (dohProvider != 0)
+                    {
+                        string cacheKey = $"{dohProvider}:{host}";
+                        if (_dohDnsCache.TryGetValue(cacheKey, out var cachedDns) && cachedDns.ExpiresUtc > DateTime.UtcNow && cachedDns.Ips.Count > 0)
                         {
-                            1 => new[]
-                            {
-                                (Provider: "https://1.1.1.1/dns-query?name={0}&type=A", Type: "IPv4"),
-                                (Provider: "https://cloudflare-dns.com/dns-query?name={0}&type=A", Type: "IPv4")
-                            },
-                            3 => new[]
-                            {
-                                (Provider: "https://dns.adguard-dns.com/resolve?name={0}&type=A", Type: "IPv4"),
-                                (Provider: "https://94.140.14.14/resolve?name={0}&type=A", Type: "IPv4")
-                            },
-                            _ => new[]
-                            {
-                                (Provider: "https://8.8.8.8/resolve?name={0}&type=A", Type: "IPv4"),
-                                (Provider: "https://dns.google/resolve?name={0}&type=A", Type: "IPv4"),
-                                (Provider: "https://cloudflare-dns.com/dns-query?name={0}&type=A", Type: "IPv4")
-                            }
-                        };
-
-                        foreach (var (template, type) in dohQueries)
+                            candidateIps.AddRange(cachedDns.Ips);
+                        }
+                        else
                         {
-                            try
+                            var dohBases = dohProvider switch
                             {
-                                string dohUrl = string.Format(template, Uri.EscapeDataString(host));
-                                using var request = new HttpRequestMessage(HttpMethod.Get, dohUrl);
-                                request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-json"));
+                                1 => new[] { "https://1.1.1.1/dns-query?name={0}&type={1}", "https://cloudflare-dns.com/dns-query?name={0}&type={1}" },
+                                3 => new[] { "https://dns.adguard-dns.com/resolve?name={0}&type={1}", "https://94.140.14.14/resolve?name={0}&type={1}" },
+                                _ => new[] { "https://8.8.8.8/resolve?name={0}&type={1}", "https://dns.google/resolve?name={0}&type={1}", "https://cloudflare-dns.com/dns-query?name={0}&type={1}" }
+                            };
 
-                                using var response = await _dohClient.SendAsync(request, token);
-                                if (response.IsSuccessStatusCode)
+                            // Query A and AAAA in parallel against the first healthy DoH provider (HTTP 200 JSON)
+                            // so IPv4-only sites never incur 4 sequential DoH round-trips per connection.
+                            foreach (var template in dohBases)
+                            {
+                                async Task<(List<System.Net.IPAddress> Found, bool Ok)> QueryTypeAsync(string qType)
                                 {
-                                    var jsonBytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(response.Content, 256 * 1024, token);
-                                    var json = System.Text.Encoding.UTF8.GetString(jsonBytes);
-                                    var obj = JsonNode.Parse(json);
-                                    var answers = obj?["Answer"] as JsonArray;
-
-                                    if (answers != null)
+                                    var found = new List<System.Net.IPAddress>();
+                                    try
                                     {
-                                        foreach (var ans in answers)
+                                        string dohUrl = string.Format(template, Uri.EscapeDataString(host), qType);
+                                        using var request = new HttpRequestMessage(HttpMethod.Get, dohUrl);
+                                        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-json"));
+
+                                        using var response = await _dohClient.SendAsync(request, token);
+                                        if (!response.IsSuccessStatusCode) return (found, false);
+
+                                        var jsonBytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(response.Content, 256 * 1024, token);
+                                        var json = System.Text.Encoding.UTF8.GetString(jsonBytes);
+                                        var obj = JsonNode.Parse(json);
+                                        var answers = obj?["Answer"] as JsonArray;
+                                        if (answers != null)
                                         {
-                                            var ipStr = ans?["data"]?.ToString();
-                                            if (System.Net.IPAddress.TryParse(ipStr, out var parsedIp) && !candidateIps.Contains(parsedIp))
+                                            foreach (var ans in answers)
                                             {
-                                                candidateIps.Add(parsedIp);
-                                                logBuilder.AppendLine($"[DoH] Resolved {host} ({type}) via {dohUrl} -> {parsedIp}");
+                                                var ipStr = ans?["data"]?.ToString();
+                                                if (System.Net.IPAddress.TryParse(ipStr, out var parsedIp) && !found.Contains(parsedIp))
+                                                {
+                                                    found.Add(parsedIp);
+                                                }
                                             }
                                         }
-
-                                        if (candidateIps.Count > 0) break;
+                                        return (found, true);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        logBuilder.AppendLine($"[DoH] Failed {template} ({qType}): {ex.Message}");
+                                        return (found, false);
                                     }
                                 }
+
+                                var aTask = QueryTypeAsync("A");
+                                var aaaaTask = QueryTypeAsync("AAAA");
+                                await Task.WhenAll(aTask, aaaaTask);
+                                var aRes = await aTask;
+                                var aaaaRes = await aaaaTask;
+
+                                foreach (var ip in aRes.Found.Concat(aaaaRes.Found))
+                                {
+                                    if (!candidateIps.Contains(ip))
+                                    {
+                                        candidateIps.Add(ip);
+                                        logBuilder.AppendLine($"[DoH] Resolved {host} -> {ip}");
+                                    }
+                                }
+
+                                // Stop at first healthy provider response even when AAAA returns 0 answers for IPv4-only hosts
+                                if (aRes.Ok || aaaaRes.Ok) break;
                             }
-                            catch (Exception ex)
+
+                            if (candidateIps.Count > 0)
                             {
-                                logBuilder.AppendLine($"[DoH] Failed {template}: {ex.Message}");
+                                if (_dohDnsCache.Count >= 512) _dohDnsCache.Clear();
+                                _dohDnsCache[cacheKey] = (new List<System.Net.IPAddress>(candidateIps), DateTime.UtcNow.AddMinutes(5));
                             }
                         }
                     }
@@ -241,7 +269,8 @@ namespace Yomic.Core.Sources
                 PooledConnectionLifetime = TimeSpan.FromMinutes(2),
                 AutomaticDecompression = System.Net.DecompressionMethods.All,
                 UseCookies = true,
-                CookieContainer = _cookieContainer
+                CookieContainer = _cookieContainer,
+                AllowAutoRedirect = false
             };
             
             var client = new HttpClient(handler);
@@ -289,8 +318,18 @@ namespace Yomic.Core.Sources
                 {
                     throw;
                 }
+                if (ex is System.IO.InvalidDataException || ex is OperationCanceledException)
+                {
+                    WriteToLog($"Non-Cloudflare failure ({ex.GetType().Name}). Skipping Cloudflare Fallback.");
+                    throw;
+                }
                 if (ex is HttpRequestException httpEx)
                 {
+                    if (IsSecurityOrOfflineRejection(httpEx))
+                    {
+                        WriteToLog("Blocked/Offline request error. Skipping Cloudflare Fallback.");
+                        throw;
+                    }
                     var code = httpEx.StatusCode;
                     bool isCloudflareLike =
                         code == System.Net.HttpStatusCode.Forbidden ||
@@ -304,10 +343,10 @@ namespace Yomic.Core.Sources
                 }
                 WriteToLog("Attempting Cloudflare/Puppeteer Fallback...");
                 
-                // FAST PATH: If user already solved CAPTCHA via WebView, skip Steps 1-2 and go directly to headless fetch
-                if (CloudflareBypassService.Instance.HasPreSolvedCookies)
+                // FAST PATH: Only route directly to headless fetch when pre-solved cookies match THIS target URL's host
+                if (CloudflareBypassService.IsInstanceCreated && CloudflareBypassService.Instance.HasPreSolvedCookiesFor(url))
                 {
-                    WriteToLog("Pre-solved cookies detected! Skipping to HEADLESS BROWSER FETCH...");
+                    WriteToLog("Pre-solved cookies detected for target host! Skipping to HEADLESS BROWSER FETCH...");
                     return await CloudflareBypassService.Instance.GetContentAsync(url);
                 }
 
@@ -321,7 +360,14 @@ namespace Yomic.Core.Sources
                          var targetHost = new Uri(BaseUrl).Host;
                          foreach (var kv in cookies)
                          {
-                             _cookieContainer.Add(new System.Net.Cookie(kv.Key, kv.Value, "/", targetHost));
+                             try
+                             {
+                                 _cookieContainer.Add(new System.Net.Cookie(kv.Key, kv.Value, "/", targetHost));
+                             }
+                             catch (System.Net.CookieException)
+                             {
+                                 // Ignore malformed cookie values containing commas/semicolons
+                             }
                          }
                     }
 
@@ -340,12 +386,34 @@ namespace Yomic.Core.Sources
             }
         }
 
+        private static bool IsSecurityOrOfflineRejection(HttpRequestException ex)
+        {
+            if (string.IsNullOrEmpty(ex.Message)) return false;
+            return ex.Message.Contains("Offline Mode", StringComparison.OrdinalIgnoreCase) ||
+                   ex.Message.Contains("Blocked ", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static readonly ResiliencePipeline _httpRetryPipeline = new ResiliencePipelineBuilder()
             .AddRetry(new RetryStrategyOptions
             {
-                ShouldHandle = new PredicateBuilder().Handle<HttpRequestException>()
-                                                     .Handle<TaskCanceledException>()
-                                                     .Handle<TimeoutException>(),
+                ShouldHandle = new PredicateBuilder()
+                    .Handle<HttpRequestException>(ex =>
+                    {
+                        if (IsSecurityOrOfflineRejection(ex)) return false;
+                        if (ex.StatusCode is System.Net.HttpStatusCode code)
+                        {
+                            int status = (int)code;
+                            if (status >= 400 && status < 500 &&
+                                code != System.Net.HttpStatusCode.RequestTimeout &&
+                                code != System.Net.HttpStatusCode.TooManyRequests)
+                            {
+                                return false;
+                            }
+                        }
+                        return true;
+                    })
+                    .Handle<TaskCanceledException>()
+                    .Handle<TimeoutException>(),
                 MaxRetryAttempts = 3,
                 Delay = TimeSpan.FromMilliseconds(500),
                 BackoffType = DelayBackoffType.Exponential,
@@ -357,6 +425,72 @@ namespace Yomic.Core.Sources
                 }
             })
             .Build();
+
+        internal static bool IsSameOrigin(Uri a, Uri b)
+        {
+            return string.Equals(a.Scheme, b.Scheme, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(a.IdnHost.TrimEnd('.'), b.IdnHost.TrimEnd('.'), StringComparison.OrdinalIgnoreCase) &&
+                   a.Port == b.Port;
+        }
+
+        /// <summary>
+        /// Sends an HTTP request and follows up to <paramref name="maxRedirects"/> redirects manually,
+        /// validating every hop with <see cref="Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl"/>
+        /// and flagging cross-origin hops so callers never leak raw Cookie or Authorization headers across origins.
+        /// </summary>
+        protected Task<HttpResponseMessage> SendWithSafeRedirectsAsync(
+            Uri initialUri,
+            HttpMethod initialMethod,
+            Func<Uri, HttpMethod, bool, HttpRequestMessage> requestFactory,
+            CancellationToken cancellationToken = default,
+            int maxRedirects = 5)
+            => SendWithSafeRedirectsCoreAsync(Client, initialUri, initialMethod, requestFactory, cancellationToken, maxRedirects);
+
+        internal static async Task<HttpResponseMessage> SendWithSafeRedirectsCoreAsync(
+            HttpClient client,
+            Uri initialUri,
+            HttpMethod initialMethod,
+            Func<Uri, HttpMethod, bool, HttpRequestMessage> requestFactory,
+            CancellationToken cancellationToken = default,
+            int maxRedirects = 5)
+        {
+            Uri currentUri = initialUri;
+            HttpMethod currentMethod = initialMethod;
+
+            for (int hop = 0; hop <= maxRedirects; hop++)
+            {
+                if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(currentUri.AbsoluteUri, out var safeUri) || safeUri == null)
+                {
+                    throw new HttpRequestException($"Blocked redirect to unsafe URL: {currentUri}");
+                }
+
+                bool isCrossOrigin = hop > 0 && !IsSameOrigin(initialUri, safeUri);
+                using var req = requestFactory(safeUri, currentMethod, isCrossOrigin);
+                var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                int status = (int)response.StatusCode;
+
+                if (status is 301 or 302 or 303 or 307 or 308 && response.Headers.Location != null)
+                {
+                    var location = response.Headers.Location;
+                    var nextUri = location.IsAbsoluteUri ? location : new Uri(safeUri, location);
+                    response.Dispose();
+                    if (hop == maxRedirects)
+                    {
+                        throw new HttpRequestException($"Too many redirects while fetching: {initialUri}");
+                    }
+                    if (status == 303 || ((status == 301 || status == 302) && currentMethod == HttpMethod.Post))
+                    {
+                        currentMethod = HttpMethod.Get;
+                    }
+                    currentUri = nextUri;
+                    continue;
+                }
+
+                return response;
+            }
+
+            throw new HttpRequestException($"Failed to complete request after redirects: {initialUri}");
+        }
 
         private async Task<string> GetStringAsyncInternal(string url, string? overrideUserAgent = null)
         {
@@ -371,18 +505,23 @@ namespace Yomic.Core.Sources
 
             return await _httpRetryPipeline.ExecuteAsync(async (context) =>
             {
-                using var req = new HttpRequestMessage(HttpMethod.Get, validatedUri);
-                if (!string.IsNullOrWhiteSpace(BaseUrl) && Uri.TryCreate(BaseUrl, UriKind.Absolute, out var refUri))
-                {
-                    req.Headers.Referrer = refUri;
-                }
-                if (!string.IsNullOrWhiteSpace(overrideUserAgent))
-                {
-                    req.Headers.TryAddWithoutValidation("User-Agent", overrideUserAgent);
-                }
-
                 WriteToLog($"Downloading: {url}");
-                using var response = await Client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+                using var response = await SendWithSafeRedirectsAsync(
+                    validatedUri,
+                    HttpMethod.Get,
+                    (hopUri, hopMethod, _) =>
+                    {
+                        var req = new HttpRequestMessage(hopMethod, hopUri);
+                        if (!string.IsNullOrWhiteSpace(BaseUrl) && Uri.TryCreate(BaseUrl, UriKind.Absolute, out var refUri))
+                        {
+                            req.Headers.Referrer = refUri;
+                        }
+                        if (!string.IsNullOrWhiteSpace(overrideUserAgent))
+                        {
+                            req.Headers.TryAddWithoutValidation("User-Agent", overrideUserAgent);
+                        }
+                        return req;
+                    });
                 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -413,8 +552,12 @@ namespace Yomic.Core.Sources
 
         protected async Task<string> ForceBrowserFetchAsync(string url, string? waitForSelector = null)
         {
-              WriteToLog($"FORCING HEADLESS BROWSER FETCH for: {url} (Wait: {waitForSelector ?? "None"})");
-              return await CloudflareBypassService.Instance.GetContentAsync(url, waitForSelector);
+            if (IsOfflineModeProvider?.Invoke() == true)
+            {
+                throw new HttpRequestException("Offline Mode is enabled.");
+            }
+            WriteToLog($"FORCING HEADLESS BROWSER FETCH for: {url} (Wait: {waitForSelector ?? "None"})");
+            return await CloudflareBypassService.Instance.GetContentAsync(url, waitForSelector);
         }
 
         private bool _isDisposed;

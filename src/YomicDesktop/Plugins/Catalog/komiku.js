@@ -84,7 +84,7 @@ var source = {
     },
 
 
-    getMangaList: function(page, status, genre, type) {
+    getMangaList: function(page, status, genre, type, sort) {
         let params = [];
         let isFiltered = false;
 
@@ -136,7 +136,8 @@ var source = {
         }
 
         if (params.length > 0) {
-            let queryString = "?" + params.join("&") + "&orderby=meta_value_num";
+            let orderBy = sort === "latest" ? "modified" : "meta_value_num";
+            let queryString = "?" + params.join("&") + "&orderby=" + orderBy;
             
             // Use exact probed values for estimated pages
             let estimatedPages = 752;
@@ -158,7 +159,7 @@ var source = {
             return result;
         }
 
-        return this.getPopularManga(page);
+        return sort === "latest" ? this.getLatestUpdates(page) : this.getPopularManga(page);
     },
 
     getMangaDetails: function(url) {

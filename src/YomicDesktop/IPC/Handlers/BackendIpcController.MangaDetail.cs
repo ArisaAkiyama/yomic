@@ -144,12 +144,20 @@ namespace YomicDesktop.IPC
                     {
                         try
                         {
-                            using var db = new MangaDbContext();
-                            var dbManga = await db.Mangas.FindAsync(manga.Id);
-                            if (dbManga != null)
+                            await MangaDbContext.DatabaseWriteGate.WaitAsync();
+                            try
                             {
-                                dbManga.Source = source.Id;
-                                await db.SaveChangesAsync();
+                                using var db = new MangaDbContext();
+                                var dbManga = await db.Mangas.FindAsync(manga.Id);
+                                if (dbManga != null)
+                                {
+                                    dbManga.Source = source.Id;
+                                    await db.SaveChangesAsync();
+                                }
+                            }
+                            finally
+                            {
+                                MangaDbContext.DatabaseWriteGate.Release();
                             }
                         }
                         catch { }
@@ -196,13 +204,14 @@ namespace YomicDesktop.IPC
                             if (details.Status > 0) manga.Status = details.Status;
                             if (!string.IsNullOrWhiteSpace(details.ThumbnailUrl)) manga.ThumbnailUrl = details.ThumbnailUrl;
                             manga.Initialized = true;
-                        }
-                        if (remoteChapters != null && remoteChapters.Count > 0)
-                        {
+
+                            // Persist fetched metadata even when the source returns 0 chapters
                             if (manga.Id > 0)
                             {
-                                using (var db = new MangaDbContext())
+                                await MangaDbContext.DatabaseWriteGate.WaitAsync();
+                                try
                                 {
+                                    using var db = new MangaDbContext();
                                     var dbManga = await db.Mangas.FindAsync(manga.Id);
                                     if (dbManga != null)
                                     {
@@ -217,6 +226,16 @@ namespace YomicDesktop.IPC
                                         await db.SaveChangesAsync();
                                     }
                                 }
+                                finally
+                                {
+                                    MangaDbContext.DatabaseWriteGate.Release();
+                                }
+                            }
+                        }
+                        if (remoteChapters != null && remoteChapters.Count > 0)
+                        {
+                            if (manga.Id > 0)
+                            {
                                 await LibraryService.UpdateChaptersAsync(manga, remoteChapters, isInitialLoad: !manga.Favorite && !isMangaDex);
                                 manga = await ResolveMangaAsync($"db-{manga.Id}") ?? manga;
                             }

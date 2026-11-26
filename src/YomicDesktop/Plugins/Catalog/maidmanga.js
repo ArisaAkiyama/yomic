@@ -31,8 +31,8 @@ var source = {
         return this.getMangaPage(path, page, 0);
     },
 
-    getMangaList: function(page, status, genre, type) {
-        let params = { order: "popular" };
+    getMangaList: function(page, status, genre, type, sort) {
+        let params = { order: sort === "latest" ? "update" : "popular" };
         let forcedStatus = 0;
 
         // 1. Status Filter
@@ -445,7 +445,7 @@ var source = {
 
     getHtml: function(url) {
         let response = fetch(url);
-        if (response.status < 200 || response.status >= 300) return "";
+        if (!response || response.status < 200 || response.status >= 300) return "";
         return response.body;
     },
 

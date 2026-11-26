@@ -22,6 +22,12 @@ namespace Yomic.Core.Data
         private static volatile bool _columnsEnsured = false;
         private static readonly object _columnsLock = new object();
 
+        /// <summary>
+        /// Shared process-wide SQLite write &amp; maintenance gate coordinating LibraryService upserts,
+        /// IPC manga/reader-progress writes, and exclusive BackupService DB swaps without races.
+        /// </summary>
+        internal static readonly SemaphoreSlim DatabaseWriteGate = new(1, 1);
+
         public MangaDbContext()
         {
         }

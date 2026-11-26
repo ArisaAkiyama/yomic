@@ -26,6 +26,8 @@ export type TranslationKey =
   | 'reader.selectChapterTitle'
   | 'reader.chapterListAria'
   | 'reader.displayDockLabel'
+  | 'reader.modeDockAria'
+  | 'reader.displayDockTitle'
   | 'reader.refreshTitle'
   | 'reader.refreshAria'
   | 'reader.fullscreenTitle'
@@ -82,6 +84,7 @@ export type TranslationKey =
   | 'modal.confirm'
   | 'modal.save'
   | 'announcements.title'
+  | 'announcements.refresh'
   | 'announcements.empty'
   | 'feedback.title'
   | 'feedback.typeTitle'
@@ -97,6 +100,7 @@ export type TranslationKey =
   | 'feedback.guideBullet3'
   | 'feedback.placeholder'
   | 'feedback.attachScreenshot'
+  | 'feedback.removeAttachment'
   | 'feedback.submit'
   | 'feedback.emptyWarning'
   | 'feedback.sentSuccess'
@@ -459,6 +463,8 @@ const ID_DICT: Record<TranslationKey, string> = {
   'reader.selectChapterTitle': 'Pilih Chapter',
   'reader.chapterListAria': 'Daftar Chapter',
   'reader.displayDockLabel': 'Tampilan',
+  'reader.modeDockAria': 'Mode Baca',
+  'reader.displayDockTitle': 'Tampilan & Kualitas Gambar',
   'reader.refreshTitle': 'Muat Ulang Halaman',
   'reader.refreshAria': 'Muat Ulang Halaman',
   'reader.fullscreenTitle': 'Layar Penuh (F11)',
@@ -492,9 +498,9 @@ const ID_DICT: Record<TranslationKey, string> = {
   'reader.prevPageAria': 'Halaman Sebelumnya',
   'reader.nextPageTitle': 'Halaman Selanjutnya (→)',
   'reader.nextPageAria': 'Halaman Selanjutnya',
-  'reader.prevChapterTitle': 'Chapter Sebelumnya (Shift+←)',
+  'reader.prevChapterTitle': 'Chapter Sebelumnya ([)',
   'reader.prevChapterAria': 'Chapter Sebelumnya',
-  'reader.nextChapterTitle': 'Chapter Selanjutnya (Shift+→)',
+  'reader.nextChapterTitle': 'Chapter Selanjutnya (])',
   'reader.nextChapterAria': 'Chapter Selanjutnya',
   'reader.prevBtn': 'Sebelumnya',
   'reader.nextBtn': 'Berikutnya',
@@ -514,6 +520,7 @@ const ID_DICT: Record<TranslationKey, string> = {
   'modal.confirm': 'Konfirmasi',
   'modal.save': 'Simpan',
   'announcements.title': 'Pengumuman & Info Developer',
+  'announcements.refresh': 'Muat Ulang Pengumuman',
   'announcements.empty': 'Belum ada pengumuman terbaru.',
   'feedback.title': 'Kirim Masukan',
   'feedback.typeTitle': 'Jenis Masukan',
@@ -529,6 +536,7 @@ const ID_DICT: Record<TranslationKey, string> = {
   'feedback.guideBullet3': 'Nama sumber komik atau bab terkait',
   'feedback.placeholder': 'Jelaskan masukan atau kendala yang Anda temui...',
   'feedback.attachScreenshot': 'Lampirkan tangkapan layar (opsional)',
+  'feedback.removeAttachment': 'Hapus lampiran',
   'feedback.submit': 'Kirim Masukan',
   'feedback.emptyWarning': 'Mohon tuliskan deskripsi masukan terlebih dahulu.',
   'feedback.sentSuccess': 'Terima kasih! Masukan Anda telah dikirim.',
@@ -888,6 +896,8 @@ const EN_DICT: Record<TranslationKey, string> = {
   'reader.selectChapterTitle': 'Select Chapter',
   'reader.chapterListAria': 'Chapter List',
   'reader.displayDockLabel': 'Display',
+  'reader.modeDockAria': 'Reading Mode',
+  'reader.displayDockTitle': 'Display & Image Quality',
   'reader.refreshTitle': 'Reload Pages',
   'reader.refreshAria': 'Reload Pages',
   'reader.fullscreenTitle': 'Fullscreen (F11)',
@@ -921,9 +931,9 @@ const EN_DICT: Record<TranslationKey, string> = {
   'reader.prevPageAria': 'Previous Page',
   'reader.nextPageTitle': 'Next Page (→)',
   'reader.nextPageAria': 'Next Page',
-  'reader.prevChapterTitle': 'Previous Chapter (Shift+←)',
+  'reader.prevChapterTitle': 'Previous Chapter ([)',
   'reader.prevChapterAria': 'Previous Chapter',
-  'reader.nextChapterTitle': 'Next Chapter (Shift+→)',
+  'reader.nextChapterTitle': 'Next Chapter (])',
   'reader.nextChapterAria': 'Next Chapter',
   'reader.prevBtn': 'Prev',
   'reader.nextBtn': 'Next',
@@ -943,6 +953,7 @@ const EN_DICT: Record<TranslationKey, string> = {
   'modal.confirm': 'Confirm',
   'modal.save': 'Save',
   'announcements.title': 'Announcements & Developer Info',
+  'announcements.refresh': 'Reload Announcements',
   'announcements.empty': 'No announcements available yet.',
   'feedback.title': 'Send Feedback',
   'feedback.typeTitle': 'Feedback Type',
@@ -958,6 +969,7 @@ const EN_DICT: Record<TranslationKey, string> = {
   'feedback.guideBullet3': 'Related comic source name or chapter',
   'feedback.placeholder': 'Describe the feedback or issue you encountered...',
   'feedback.attachScreenshot': 'Attach a screenshot (optional)',
+  'feedback.removeAttachment': 'Remove attachment',
   'feedback.submit': 'Send Feedback',
   'feedback.emptyWarning': 'Please enter a feedback description first.',
   'feedback.sentSuccess': 'Thank you! Your feedback has been sent.',

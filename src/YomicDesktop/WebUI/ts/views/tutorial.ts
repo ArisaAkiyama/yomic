@@ -183,11 +183,9 @@ export class TutorialController {
 
     // Smoothly animate dots (NO DOM destruction!)
     dots.forEach((dot, idx) => {
-      if (idx === this.currentSlideIndex) {
-        dot.classList.add('active');
-      } else {
-        dot.classList.remove('active');
-      }
+      const isSelected = idx === this.currentSlideIndex;
+      dot.classList.toggle('active', isSelected);
+      dot.setAttribute('aria-selected', isSelected ? 'true' : 'false');
     });
 
     if (btnPrev) {
@@ -266,11 +264,13 @@ export class TutorialController {
       }
     });
 
-    // Escape key listener for tutorial
+    // Escape key listener for tutorial (capture phase + stopPropagation so underlying Detail/Stats views stay open)
     window.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && backdrop?.classList.contains('open')) {
+        ev.preventDefault();
+        ev.stopPropagation();
         this.close(true);
       }
-    });
+    }, true);
   }
 }

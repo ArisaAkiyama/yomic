@@ -756,7 +756,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Versi', 'Version')}</span>
               </div>
-              <span class="v1-setting-desc">Stable 2.3.0 (Windows Desktop)</span>
+              <span class="v1-setting-desc">Stable 2.4.0 (Windows Desktop)</span>
             </div>
           </div>
 
@@ -774,31 +774,31 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Catatan rilis', 'Release notes')}</span>
               </div>
-              <span class="v1-setting-desc">v2.3.0</span>
+              <span class="v1-setting-desc">v2.4.0</span>
             </div>
             <span id="aboutReleaseNotesChevron" class="v1-about-release-chevron">
               ${getIconSvg('alt-arrow-down-linear', { size: 18 })}
             </span>
           </button>
           <div id="aboutReleaseNotesPanel" class="v1-about-release-notes" style="display:none;">
-            <div class="v1-about-release-head">[2.3.0] - Major Update</div>
+            <div class="v1-about-release-head">[2.4.0] - Major Update</div>
             <div class="v1-about-release-subhead">Update Details:</div>
             <ul class="v1-about-release-list">
-              <li>Add centralized URL, SSRF, Cookie, and Filesystem security helper (UrlSecurityHelper.cs) enforcing public HTTP/HTTPS validation, IPv4/IPv6 private/loopback/CGNAT/metadata IP blocking, bounded HTTP stream reading (ReadContentBoundedAsync) against OOM DoS, strict RFC 6265 cookie domain matching, Google Apps Script webhook allowlisting, and directory containment checks.</li>
-              <li>Add fail-closed SHA-256 cryptographic integrity verification in UpdateService (ExtractExpectedSha256 &amp; VerifyHashMatchesExpectedHex using constant-time CryptographicOperations.FixedTimeEquals), strict official repository URL/redirect scoping, stale update directory cleanup, single-instance mutex handoff (ReleaseSingleInstanceMutexForRestart), and silent auto-relaunch support in Installer/Yomic.iss.</li>
-              <li>Add SHA-256 release checksum generator script (scripts/generate-release-sha256.ps1) to emit verified .sha256 files and release-note integrity blocks.</li>
-              <li>Add strict WebView2 security boundaries in MainWindow.xaml.cs and index.html: Content-Security-Policy (CSP) meta header, external script preload-theme.js, strict app.yomic.local IPC origin validation, blocked external navigation/frames, and prevented unrestricted popup windows.</li>
-              <li>Add comprehensive XSS &amp; injection hardening across all WebUI views (app.ts, library.ts, manga-detail.ts, reader.ts, downloads.ts, browse.ts, extensions.ts, settings.ts, modals.ts, updates-history.ts) with escapeXml, sanitizeImageSrc, sanitizeCssColor, modal keyboard focus trapping, and safe Cancel-first focus on destructive confirmation dialogs.</li>
-              <li>Add DownloadSpeedMode presets (Safe, Fast, Max) in SettingsService, DownloadService, BackendIpcController, and Settings UI for configurable concurrent chapter/page download throughput.</li>
-              <li>Add automatic installed extension updating on startup (AutoUpdateInstalledExtensionsAsync &amp; event:extensions-updated) plus fail-closed SHA-256 verification on third-party CDN mirrors, staged plugin validation before replacing working scripts, and path traversal protection in ExtensionRepositoryService.</li>
-              <li>Add DoH-first SSRF request interception guard (InstallSsrfRequestGuardAsync) and thread-safe host-scoped cookie merging in CloudflareBypassService so ISP DNS poisoning never causes false blocks while blocking private/loopback targets.</li>
-              <li>Add pooled reusable HttpClient with DoH-change reset, atomic disk cache writes (WriteFileAtomicAsync), curl --resolve public-IP pinning without unsafe auto-redirects, HTML/Cloudflare error payload rejection (LooksLikeHtmlPayload), and remote SVG script neutralization in WebResourceImageProxy.</li>
-              <li>Add online live SQLite backup (CopyLiveSqliteDatabaseOnline), zip-bomb bounded extraction caps (512 MB DB / 5 MB settings), isolated staging validation with SQLite integrity check before restore, and OAuth/webhook credential sanitization in BackupService.</li>
-              <li>Add relational SQLite foreign keys with cascade deletes, legacy orphan cleanup on upgrade, performance composite indexes (Source+Url, Favorite, MangaId+Url, DateFetch, MangaId+LastRead), and tuned WAL/busy_timeout/memory-temp PRAGMAs in MangaDbContext.</li>
-              <li>Add full BackendIpcController modularization into 7 focused partial handler files (BootstrapAndMapping, Downloads, LibraryAndHistory, MangaDetail, Reader, SettingsAndSystem, SourcesAndExtensions) and CSS modularization of main.css into 7 ordered stylesheets under WebUI/styles/modules/.</li>
-              <li>Add automated CI &amp; Test Infrastructure: GitHub Actions workflow (.github/workflows/ci-desktop.yml), C# xUnit test suite (SecurityTests, CoreServicesTests, BackupAndDatabaseTests, IntegrityAndCatalogTests covering 102-plugin Jint loading &amp; SQLite FK/indexes), and Node.js WebUI automated tests (tests/WebUI.Tests/webui.test.mjs).</li>
-              <li>Improve 90+ bundled JavaScript extensions in Plugins/Catalog (including VoraToon v1.2.2 fast disjoint regex RSC parser &amp; MangaDex v1.0.4 translated chapter feed) with null-safe response guards and try/catch JSON parsing to prevent plugin crashes on transient network errors.</li>
-              <li>Improve reliability across MyAnimeListService (serialized SemaphoreSlim token refresh &amp; cryptographically unbiased PKCE state), AutoUpdateTaskService (schtasks DAILY fallback for 24h+ &amp; concurrent stdout/stderr drain), WebViewPageExtractorWindow (deadlock-free watchdog before init/polling), MainWindow (adaptive MinWidth/MinHeight on compact high-DPI laptops), and Google Sheets feedback webhook (atomic rate limiting, 6 MB magic-byte screenshot validation, private Drive storage &amp; formula injection sanitization).</li>
+              <li>Add deep SSRF &amp; DNS-rebinding defense in UrlSecurityHelper.cs blocking RFC 6890/2544/TEST-NET IPv4 ranges and IPv6 transition/tunnel ranges (::/96, SIIT, NAT64, 6to4, Teredo, RFC 6666), plus dual-stack DoH/System-DNS resolution verification (IsSafeResolvedPublicUrlAsync with 60s anti-rebinding cache), IsHostOrSubdomain helper, and strict magic-byte image payload validation (IsValidImagePayload for JPEG, PNG, GIF, WebP, BMP, TIFF, ICO, AVIF/HEIF, JPEG XL, and strict SVG).</li>
+              <li>Add manual per-hop redirect validation (IsTrustedUpdateDownloadUri), 250 MB installer download safety cap, concurrency guard (_isInstalling), and official .sha256 sidecar checksum fetching &amp; parsing (ParseSha256SidecarText &amp; TryFetchSidecarSha256Async) in UpdateService.</li>
+              <li>Add unified process-wide SQLite write &amp; maintenance lock (MangaDbContext.DatabaseWriteGate) shared across LibraryService, BackendIpcController writes, and BackupService restore swaps, paired with ReplaceSqliteFileWithRetry, strict WAL/SHM removal checks against SQLITE_CORRUPT, and DownloadService.WaitForActiveDownloadsToStopAsync preserving .tmp progress before restore.</li>
+              <li>Add deferred background Jint plugin loading (SourceManager deferExtensionLoad + EnsureExtensionsLoadedAsync) and non-blocking cached announcement bootstrap (event:announcements-updated) so MainWindow opens instantly without UI-thread freezes.</li>
+              <li>Add bounded single-flight next-chapter page list preloading (_preloadedPageListCache, max 32 entries, 10-min TTL) triggered within 3 pages of chapter end in BackendIpcController.Reader.cs and transient src-* memory eviction during long browsing sessions.</li>
+              <li>Add manual per-hop redirect handling with strict host-scoped Cookie &amp; Authorization isolation across DownloadService (SendPageRequestWithSafeRedirectsAsync), WebResourceImageProxy, and JsMangaSource to prevent cross-origin cookie/auth leakage on 302 redirects, plus magic-byte image validation and curl --resolve DoH public-IP pinning.</li>
+              <li>Add host-specific Cloudflare pre-solved cookie lookup (HasPreSolvedCookiesFor), parallel IPv4+IPv6 DoH SSRF guards with race-free ConditionalWeakTable page tracking (_guardedPages), automatic headless popup closure, and parent-domain cookie merge cleanup in CloudflareBypassService.</li>
+              <li>Add parallel IPv4/IPv6 DoH resolution with 5-minute caching and zero ISP DNS leakage when DoH succeeds (NetworkService.ResolveHostIpsAsync), socket-level SSRF blocking with 3s per-IP connect caps, and single-flight connectivity checks (_isCheckingConnectivity).</li>
+              <li>Add official-GitHub-only index.min.json fetching in ExtensionRepositoryService (preventing third-party CDN manifest forgery), cached repo DoH resolution (_repoDohCache), and atomic index cache writes (WriteIndexCacheAtomically).</li>
+              <li>Add MyAnimeList auth epoch protection (_authEpoch &amp; TryApplyRefreshedTokens in MyAnimeListService) preventing stale background token refreshes from reviving logged-out sessions, plus strict host-only keyword matching in SourceIdMigrationService.</li>
+              <li>Add optimistic WebUI updates with full state snapshot rollback on backend errors across Library (library.ts), Manga Detail (manga-detail.ts — MAL tracker, bookmarks, chapter read/download actions, Hiatus status badge), and Settings (settings.ts — history/cache/library maintenance), plus real-time sync of completed downloads into Library downloadedCount and filters (backend-sync.ts).</li>
+              <li>Add Reader image fit/zoom builder (buildReaderImgStyle), debounced progress-save flush/cancel before chapter switching to prevent cross-chapter progress corruption, URL-hashed cover cache precedence in WebResourceImageProxy, modal/busy-dialog Tab focus trapping (app.ts &amp; settings.ts), capture-phase Escape isolation in tutorial.ts, and formatted reading progress in updates-history.ts.</li>
+              <li>Improve 90+ bundled JavaScript extensions in Plugins/Catalog with getMangaList sort ("latest" vs popular) support (including komiku.js and Blogger/Madara/MangaStream sources), mangadex.js chapter feed offset &amp; totalChapters pagination fix, cleaned unsupported filter metadata, and null-safe JSON feed parsing.</li>
+              <li>Improve Inno Setup installer (Installer/Yomic.iss) with graceful close before force-kill so App.OnExit cleanly flushes SQLite WAL/logs and shuts down Puppeteer on upgrades.</li>
+              <li>Add upgraded Windows CI pipeline (.github/workflows/ci-desktop.yml enforcing strict tsc compile, automated version parity across csproj/iss/updater/WebUI, -warnaserror Release builds, and clean self-contained publish verification) and massively expanded automated test suites (new BehavioralServicesTests.cs + expanded CoreServicesTests, IntegrityAndCatalogTests, and WebUI node:test coverage).</li>
             </ul>
           </div>
         </div>
@@ -864,14 +864,17 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
       const labelText = el.closest('.v1-setting-row')?.querySelector('.v1-setting-title')?.textContent?.trim();
       if (labelText) el.setAttribute('aria-label', labelText);
     }
+    let triggeredByKeyboard = false;
     el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') {
         ev.preventDefault();
+        triggeredByKeyboard = true;
         el.click();
       }
     });
     el.addEventListener('click', () => {
-      const wasFocused = document.activeElement === el;
+      const shouldRestoreFocus = triggeredByKeyboard;
+      triggeredByKeyboard = false;
       const key = el.dataset.toggleSetting as keyof AppSettingsState | undefined;
       if (!key) return;
       const currentVal = this.settings[key];
@@ -891,7 +894,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         } else if (key === 'autoDarkReader') {
           this.showToast(
             this.settings.autoDarkReader
-              ? 'Mode gelap otomatis saat membaca diaktifkan.'
+              ? this.l('Mode gelap otomatis saat membaca diaktifkan.', 'Auto dark mode while reading enabled.')
               : this.l('Mode gelap otomatis saat membaca dinonaktifkan.', 'Auto dark mode while reading disabled.')
           );
         } else if (key === 'showNsfw') {
@@ -1001,8 +1004,8 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           );
         }
         this.renderSettingsView(container);
-        if (wasFocused) {
-          container.querySelector<HTMLElement>(`[data-toggle-setting="${key}"]`)?.focus();
+        if (shouldRestoreFocus) {
+          container.querySelector<HTMLElement>(`[data-toggle-setting="${key}"]`)?.focus({ preventScroll: true });
         }
       }
     });
@@ -1044,18 +1047,41 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
       </div>
     `;
     document.body.appendChild(overlay);
+    const previousFocus = document.activeElement as HTMLElement | null;
 
     const closeModal = () => {
-      window.removeEventListener('keydown', onEscKey);
+      window.removeEventListener('keydown', onKeyDown, true);
       overlay.remove();
-    };
-    overlay._closeModal = closeModal;
-    const onEscKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') {
-        closeModal();
+      if (previousFocus && document.contains(previousFocus)) {
+        previousFocus.focus();
       }
     };
-    window.addEventListener('keydown', onEscKey);
+    overlay._closeModal = closeModal;
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeModal();
+        return;
+      }
+      if (ev.key === 'Tab') {
+        const focusables = Array.from(overlay.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+        if (focusables.length > 0) {
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          if (ev.shiftKey && document.activeElement === first) {
+            ev.preventDefault();
+            last.focus();
+          } else if (!ev.shiftKey && document.activeElement === last) {
+            ev.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    const initialFocus = overlay.querySelector<HTMLElement>('.v1-setting-select-option.selected, .v1-setting-select-option');
+    initialFocus?.focus();
 
     overlay.addEventListener('click', (ev) => {
       if (ev.target === overlay) {
@@ -1165,10 +1191,13 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
   document.getElementById('btnClearNonLibraryCache')?.addEventListener('click', () => {
     const btn = document.getElementById('btnClearNonLibraryCache') as HTMLButtonElement | null;
     const descEl = document.getElementById('clearNonLibDesc');
+    const prevDesc = descEl?.textContent || '';
+    const removedNonLib: MangaItem[] = [];
     if (btn) btn.disabled = true;
     if (descEl) descEl.textContent = this.l('Menghapus berkas cache non-pustaka...', 'Clearing non-library cache files...');
     for (let i = this.mangaList.length - 1; i >= 0; i--) {
       if (!this.mangaList[i].inLibrary) {
+        removedNonLib.push(this.mangaList[i]);
         this.mangaList.splice(i, 1);
       }
     }
@@ -1185,7 +1214,9 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           this.showToast(this.l('Seluruh cache gambar komik non-pustaka berhasil dibersihkan.', 'All non-library comic image cache cleared.'));
         })
         .catch(() => {
-          this.showToast(this.l('Gagal membersihkan cache non-pustaka.', 'Failed to clear non-library cache.'));
+          this.mangaList.push(...removedNonLib);
+          if (descEl) descEl.textContent = prevDesc;
+          this.showToast(this.l('Gagal membersihkan cache non-pustaka.', 'Failed to clear non-library cache.'), 'warning');
         })
         .finally(() => {
           if (btn) btn.disabled = false;
@@ -1309,6 +1340,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
   document.getElementById('btnDangerClearCache')?.addEventListener('click', () => {
     const btn = document.getElementById('btnDangerClearCache') as HTMLButtonElement | null;
     const descEl = document.getElementById('clearCacheDesc');
+    const prevDesc = descEl?.textContent || '';
     if (btn) btn.disabled = true;
     if (descEl) descEl.textContent = this.l('Membersihkan cache...', 'Clearing cache...');
     if (this.bridge.isWebViewHost) {
@@ -1322,7 +1354,8 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           this.showToast(this.l('Seluruh berkas cache gambar berhasil dibersihkan.', 'All image cache files cleared.'));
         })
         .catch(() => {
-          this.showToast(this.l('Gagal membersihkan cache gambar.', 'Failed to clear image cache.'));
+          if (descEl) descEl.textContent = prevDesc;
+          this.showToast(this.l('Gagal membersihkan cache gambar.', 'Failed to clear image cache.'), 'warning');
         })
         .finally(() => {
           if (btn) btn.disabled = false;
@@ -1348,6 +1381,15 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
 
     const btn = document.getElementById('btnDangerClearHistory') as HTMLButtonElement | null;
     const descEl = document.getElementById('clearHistoryDesc');
+    const prevDesc = descEl?.textContent || '';
+    const historySnapshot = this.mangaList.map((m) => ({
+      manga: m,
+      wasRemoved: this.removedHistoryIds.has(m.id),
+      lastViewedEpoch: m.lastViewedEpoch,
+      lastReadTimeAgo: m.lastReadTimeAgo,
+      unreadCount: m.unreadCount,
+      chapterReadFlags: Array.isArray(m.chapters) ? m.chapters.map((c) => c.isRead) : []
+    }));
     if (btn) btn.disabled = true;
     if (descEl) descEl.textContent = this.l('Menghapus riwayat baca...', 'Clearing reading history...');
     this.mangaList.forEach((m) => {
@@ -1377,7 +1419,19 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           this.showToast(this.l('Seluruh riwayat baca telah dibersihkan.', 'All reading history cleared.'));
         })
         .catch(() => {
-          this.showToast(this.l('Gagal membersihkan riwayat baca.', 'Failed to clear reading history.'));
+          for (const snap of historySnapshot) {
+            if (!snap.wasRemoved) this.removedHistoryIds.delete(snap.manga.id);
+            snap.manga.lastViewedEpoch = snap.lastViewedEpoch;
+            snap.manga.lastReadTimeAgo = snap.lastReadTimeAgo;
+            snap.manga.unreadCount = snap.unreadCount;
+            if (Array.isArray(snap.manga.chapters)) {
+              snap.manga.chapters.forEach((c, idx) => {
+                if (idx < snap.chapterReadFlags.length) c.isRead = snap.chapterReadFlags[idx];
+              });
+            }
+          }
+          if (descEl) descEl.textContent = prevDesc;
+          this.showToast(this.l('Gagal membersihkan riwayat baca.', 'Failed to clear reading history.'), 'warning');
         })
         .finally(() => {
           if (btn) btn.disabled = false;
@@ -1552,15 +1606,39 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         </div>
       `;
       document.body.appendChild(overlay);
+      const previousFocus = document.activeElement as HTMLElement | null;
       const closeModal = () => {
-        window.removeEventListener('keydown', onEsc);
+        window.removeEventListener('keydown', onKeyDown, true);
         overlay.remove();
+        if (previousFocus && document.contains(previousFocus)) {
+          previousFocus.focus();
+        }
       };
       overlay._closeModal = closeModal;
-      const onEsc = (ev: KeyboardEvent) => {
-        if (ev.key === 'Escape') closeModal();
+      const onKeyDown = (ev: KeyboardEvent) => {
+        if (ev.key === 'Escape') {
+          ev.preventDefault();
+          ev.stopPropagation();
+          closeModal();
+          return;
+        }
+        if (ev.key === 'Tab') {
+          const focusables = Array.from(overlay.querySelectorAll<HTMLElement>('button:not([disabled])'));
+          if (focusables.length > 0) {
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (ev.shiftKey && document.activeElement === first) {
+              ev.preventDefault();
+              last.focus();
+            } else if (!ev.shiftKey && document.activeElement === last) {
+              ev.preventDefault();
+              first.focus();
+            }
+          }
+        }
       };
-      window.addEventListener('keydown', onEsc);
+      window.addEventListener('keydown', onKeyDown, true);
+      document.getElementById('btnCancelMalDisconnect')?.focus();
       overlay.addEventListener('click', (ev) => {
         if (ev.target === overlay) closeModal();
       });
@@ -1607,11 +1685,29 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
       </div>
     `;
     document.body.appendChild(overlay);
+    const previousFocus = document.activeElement as HTMLElement | null;
     let countdownTimer: number | null = null;
     let isBusy = false;
-    const onEsc = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape' && !isBusy) {
-        closeModal();
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!isBusy) closeModal();
+        return;
+      }
+      if (ev.key === 'Tab') {
+        const focusables = Array.from(overlay.querySelectorAll<HTMLElement>('button:not([disabled])'));
+        if (focusables.length > 0) {
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          if (ev.shiftKey && document.activeElement === first) {
+            ev.preventDefault();
+            last.focus();
+          } else if (!ev.shiftKey && document.activeElement === last) {
+            ev.preventDefault();
+            first.focus();
+          }
+        }
       }
     };
     const closeModal = (): void => {
@@ -1619,11 +1715,15 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         window.clearInterval(countdownTimer);
         countdownTimer = null;
       }
-      window.removeEventListener('keydown', onEsc);
+      window.removeEventListener('keydown', onKeyDown, true);
       overlay.remove();
+      if (previousFocus && document.contains(previousFocus)) {
+        previousFocus.focus();
+      }
     };
     overlay._closeModal = closeModal;
-    window.addEventListener('keydown', onEsc);
+    window.addEventListener('keydown', onKeyDown, true);
+    document.getElementById('btnCancelClearAllData')?.focus();
     overlay.addEventListener('click', (ev) => {
       if (ev.target === overlay && !isBusy) {
         closeModal();
@@ -1659,9 +1759,23 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
           // ignore storage access errors
         }
         this.mangaList.splice(0, this.mangaList.length);
+        this.categories.splice(0, this.categories.length);
+        this.activityUpdates.splice(0, this.activityUpdates.length);
+        this.downloads.splice(0, this.downloads.length);
+        this.chapterPagesCache.clear();
+        this.readingStatsData = null;
         this.removedHistoryIds.clear();
-        Object.assign(this.settings, DEFAULT_APP_SETTINGS);
+        this.libraryCategoryFilter = 'all';
+        this.activeDetailMangaId = null;
+        this.contextMenuMangaId = null;
+        this.categoryManageMangaId = null;
+        Object.assign(this.settings, DEFAULT_APP_SETTINGS, {
+          customHotkeys: { ...DEFAULT_APP_SETTINGS.customHotkeys }
+        });
         this.readerMode = this.settings.defaultReaderMode;
+        this.applyTheme(this.settings.isDarkMode);
+        applyStaticDomTranslations(this.settings.appLanguage);
+        this.updateSidebarCounters();
         const finalNotice =
           serverMsg ||
           this.l(
@@ -1849,20 +1963,40 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
       </div>
     `;
     document.body.appendChild(overlay);
+    const previousFocus = document.activeElement as HTMLElement | null;
 
-    const onEsc = (ev: KeyboardEvent) => {
+    const onKeyDown = (ev: KeyboardEvent) => {
       if (ev.key === 'Escape') {
         ev.preventDefault();
         ev.stopPropagation();
         closeResetModal();
+        return;
+      }
+      if (ev.key === 'Tab') {
+        const focusables = Array.from(overlay.querySelectorAll<HTMLElement>('button:not([disabled])'));
+        if (focusables.length > 0) {
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          if (ev.shiftKey && document.activeElement === first) {
+            ev.preventDefault();
+            last.focus();
+          } else if (!ev.shiftKey && document.activeElement === last) {
+            ev.preventDefault();
+            first.focus();
+          }
+        }
       }
     };
     const closeResetModal = () => {
-      window.removeEventListener('keydown', onEsc, { capture: true });
+      window.removeEventListener('keydown', onKeyDown, { capture: true });
       overlay.remove();
+      if (previousFocus && document.contains(previousFocus)) {
+        previousFocus.focus();
+      }
     };
     overlay._closeModal = closeResetModal;
-    window.addEventListener('keydown', onEsc, { capture: true });
+    window.addEventListener('keydown', onKeyDown, { capture: true });
+    document.getElementById('btnCancelResetHotkeys')?.focus();
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) closeResetModal();
     });
@@ -1928,7 +2062,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
 
     // Immediately open the full-screen Updater UI when Check for Updates is clicked
     openAppUpdateOverlay({
-      version: '2.3.0',
+      version: '2.4.0',
       releaseNotes: '',
       isEn,
       mode: 'checking'
@@ -1937,7 +2071,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     if (!this.bridge.isWebViewHost) {
       window.setTimeout(() => {
         openAppUpdateOverlay({
-          version: '2.3.0',
+          version: '2.4.0',
           releaseNotes: '',
           isEn,
           mode: 'uptodate'
@@ -1958,8 +2092,8 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
       .then((info) => {
         if (btn) btn.disabled = false;
         // If user already dismissed the checking overlay, do not forcibly pop it back open
-        if (!document.getElementById('appUpdateOverlay')) return;
-        const ver = info?.latestVersion || info?.currentVersion || '2.3.0';
+        if (!document.getElementById('appUpdateOverlay')?.classList.contains('open')) return;
+        const ver = info?.latestVersion || info?.currentVersion || '2.4.0';
         const notes = info?.releaseNotes || '';
         if (info?.isUpdateAvailable && info.downloadUrl) {
           openAppUpdateOverlay({
@@ -1980,9 +2114,9 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
       })
       .catch(() => {
         if (btn) btn.disabled = false;
-        if (!document.getElementById('appUpdateOverlay')) return;
+        if (!document.getElementById('appUpdateOverlay')?.classList.contains('open')) return;
         openAppUpdateOverlay({
-          version: '2.3.0',
+          version: '2.4.0',
           releaseNotes: '',
           isEn,
           mode: 'error'
@@ -2101,7 +2235,7 @@ export function openAppUpdateOverlay(opts: {
   const verEl = document.getElementById('appUpdateVersionText');
   const startBtn = document.getElementById('btnStartAppUpdateNow') as HTMLButtonElement | null;
   const closeBtn = document.getElementById('btnCloseAppUpdateOverlay') as HTMLButtonElement | null;
-  const cleanVer = (opts.version || '2.3.0').replace(/^v/i, '');
+  const cleanVer = (opts.version || '2.4.0').replace(/^v/i, '');
 
   if (barFill) {
     barFill.classList.toggle('indeterminate', mode === 'checking');

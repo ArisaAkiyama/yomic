@@ -10,8 +10,8 @@ var source = {
     iconBackground: "#ff0080",
     iconForeground: "#FFFFFF",
     isNsfw: false,
-    genres: ['Action', 'Adult', 'Adventure', 'Comedy', 'Cooking', 'Crime', 'Cultivation', 'Demon', 'Demons', 'Drama', 'Ecchi', 'Fantasy', 'Game', 'Gender Bender', 'Gore', 'Harem', 'Historical', 'Horror', 'Isekai', 'Josei', 'Magic', 'Martial Arts', 'Mature', 'Mecha', 'Medical', 'Military', 'Music', 'Mystery', 'Psychological', 'Reincarnation', 'Romance', 'School', 'School Life', 'Sci-Fi', 'Seinen', 'Shoujo', 'Shounen', 'Slice of Life', 'Smut', 'Sports', 'Super Power', 'Supernatural', 'Survival', 'Thriller', 'Time Travel', 'Tragedy', 'Webtoon'],
-    formats: ['Manga', 'Manhwa', 'Manhua'],
+    genres: [],
+    formats: [],
     isHasMorePages: true,
 
     getPopularManga: function(page) {
@@ -45,8 +45,9 @@ var source = {
         if (!response || response.status !== 200) return { items: [], totalPages: page };
 
         let json = (() => { try { return JSON.parse(response.body) || {}; } catch (e) { return {}; } })();
+        if (!json || !json.feed) return { items: [], totalPages: page };
         let entries = json.feed.entry || [];
-        let totalResults = parseInt(json.feed.openSearch$totalResults.$t) || 0;
+        let totalResults = parseInt((json.feed.openSearch$totalResults && json.feed.openSearch$totalResults.$t) || "0") || 0;
         let totalPages = Math.ceil(totalResults / appPageSize);
 
         let items = [];
@@ -99,13 +100,14 @@ var source = {
         };
     },
 
-    getMangaList: function(page, status) {
+    getMangaList: function(page, status, genre, type, sort) {
+        let orderby = sort === "latest" ? "updated" : "published";
         if (status === 1) {
-            return this.getBloggerMangaPage(page, "Ongoing");
+            return this.getBloggerMangaPage(page, "Ongoing", null, orderby);
         } else if (status === 2 || status === 4) {
-            return this.getBloggerMangaPage(page, "Completed");
+            return this.getBloggerMangaPage(page, "Completed", null, orderby);
         }
-        return this.getPopularManga(page);
+        return sort === "latest" ? this.getLatestUpdates(page) : this.getPopularManga(page);
     },
 
     getMangaDetails: function(url) {
@@ -189,6 +191,7 @@ var source = {
         if (!feedResponse || feedResponse.status !== 200) return [];
 
         let json = (() => { try { return JSON.parse(feedResponse.body) || {}; } catch (e) { return {}; } })();
+        if (!json || !json.feed) return [];
         let entries = json.feed.entry || [];
         
         let chapters = [];
@@ -220,7 +223,7 @@ var source = {
 
             let dateUpload = 0;
             if (entry.published && entry.published.$t) {
-                dateUpload = new Date(entry.published.$t).getTime();
+                dateUpload = ((ts => isNaN(ts) ? 0 : ts)(new Date(entry.published.$t).getTime()));
             }
 
             chapters.push({
@@ -255,10 +258,13 @@ var source = {
         }
 
         for (let img of imgEls) {
-            let src = img.absUrl("src");
-            if (!src) src = img.attr("src");
-            if (src) {
-                pages.push(src);
+            let rawSrc = img.attr("src") || "";
+            let lazySrc = img.attr("data-src") || img.attr("data-lazy-src") || img.attr("data-cfsrc") || "";
+            let src = (lazySrc && (!rawSrc || rawSrc.startsWith("data:")))
+                ? (img.absUrl("data-src") || img.absUrl("data-lazy-src") || lazySrc)
+                : (img.absUrl("src") || rawSrc || lazySrc);
+            if (src && !src.startsWith("data:image/svg")) {
+                pages.push(src.trim());
             }
         }
         return pages;

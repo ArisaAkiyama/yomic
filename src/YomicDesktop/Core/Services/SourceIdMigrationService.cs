@@ -40,130 +40,138 @@ namespace Yomic.Core.Services
 
                 var validSourceIds = new HashSet<long>(sources.Select(s => s.Id));
 
-                using var db = new MangaDbContext();
-                var allManga = await db.Mangas.ToListAsync();
-                var existingPairs = new HashSet<(string Url, long Source)>(
-                    allManga.Select(m => ((m.Url ?? string.Empty).Trim().ToLowerInvariant(), m.Source)));
-
-                var orphanedManga = allManga.Where(m => !validSourceIds.Contains(m.Source)).ToList();
-
-                if (orphanedManga.Count == 0)
+                await MangaDbContext.DatabaseWriteGate.WaitAsync();
+                try
                 {
-                    LogService.Info("SourceIdMigration", "All manga have valid Source IDs. Marking migration as done.");
-                    MarkMigrationDone();
-                    return;
-                }
+                    using var db = new MangaDbContext();
+                    var allManga = await db.Mangas.ToListAsync();
+                    var existingPairs = new HashSet<(string Url, long Source)>(
+                        allManga.Select(m => ((m.Url ?? string.Empty).Trim().ToLowerInvariant(), m.Source)));
 
-                LogService.Info("SourceIdMigration", $"Found {orphanedManga.Count} manga with outdated Source IDs. Remapping...");
+                    var orphanedManga = allManga.Where(m => !validSourceIds.Contains(m.Source)).ToList();
 
-                var domainMap = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-                foreach (var src in sources)
-                {
-                    if (!string.IsNullOrEmpty(src.BaseUrl) && Uri.TryCreate(src.BaseUrl, UriKind.Absolute, out var baseUri))
+                    if (orphanedManga.Count == 0)
                     {
-                        var host = NormalizeDomain(baseUri.Host);
-                        domainMap.TryAdd(host, src.Id);
-                    }
-                }
-
-                var keywordFallbacks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    { "komikcast", "komikcast" },
-                    { "komiku", "komiku" },
-                    { "kiryuu", "kiryuu" },
-                    { "shinigami", "shinigami" },
-                    { "maid", "maid" },
-                    { "bacakomik", "bacakomik" },
-                    { "westmanga", "westmanga" },
-                    { "mgkomik", "mgkomik" },
-                    { "mangadex", "mangadex" },
-                    { "mangabat", "mangabat" },
-                    { "manganato", "mangabat" },
-                    { "mangakakalot", "mangabat" },
-                    { "nhentai", "nhentai" },
-                    { "weebcentral", "weebcentral" },
-                    { "manhwaindo", "manhwaindo" },
-                    { "softkomik", "softkomik" },
-                };
-
-                int fixedCount = 0;
-                foreach (var manga in orphanedManga)
-                {
-                    long? matchedSourceId = null;
-
-                    // 1. Direct legacy v1 ID mapping
-                    if (manga.Source == 3639673976007021568L)
-                    {
-                        var kiryuuSrc = sources.FirstOrDefault(s => s.Name != null && s.Name.Contains("Kiryuu", StringComparison.OrdinalIgnoreCase));
-                        if (kiryuuSrc != null) matchedSourceId = kiryuuSrc.Id;
-                    }
-                    else if (manga.Source == -3406828676302900168L)
-                    {
-                        var komikuSrc = sources.FirstOrDefault(s => s.Name != null && s.Name.Contains("Komiku", StringComparison.OrdinalIgnoreCase));
-                        if (komikuSrc != null) matchedSourceId = komikuSrc.Id;
+                        LogService.Info("SourceIdMigration", "All manga have valid Source IDs. Marking migration as done.");
+                        MarkMigrationDone();
+                        return;
                     }
 
-                    // 2. Exact host domain matching
-                    string? mangaHost = null;
-                    if (!string.IsNullOrEmpty(manga.Url) && Uri.TryCreate(manga.Url, UriKind.Absolute, out var mangaUri))
+                    LogService.Info("SourceIdMigration", $"Found {orphanedManga.Count} manga with outdated Source IDs. Remapping...");
+
+                    var domainMap = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var src in sources)
                     {
-                        mangaHost = NormalizeDomain(mangaUri.Host);
-                        if (matchedSourceId == null && domainMap.TryGetValue(mangaHost, out var idByDomain))
+                        if (!string.IsNullOrEmpty(src.BaseUrl) && Uri.TryCreate(src.BaseUrl, UriKind.Absolute, out var baseUri))
                         {
-                            matchedSourceId = idByDomain;
+                            var host = NormalizeDomain(baseUri.Host);
+                            domainMap.TryAdd(host, src.Id);
                         }
                     }
 
-                    // 3. Host-only keyword matching (NEVER match URL path slugs or generic "/manga/"!)
-                    if (matchedSourceId == null && !string.IsNullOrEmpty(mangaHost))
+                    var keywordFallbacks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
-                        foreach (var kv in keywordFallbacks)
-                        {
-                            if (mangaHost.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
-                            {
-                                var matchingSrc = sources.FirstOrDefault(s =>
-                                    (s.Name != null && s.Name.Contains(kv.Value, StringComparison.OrdinalIgnoreCase)) ||
-                                    (s.BaseUrl != null && s.BaseUrl.Contains(kv.Value, StringComparison.OrdinalIgnoreCase)));
+                        { "komikcast", "komikcast" },
+                        { "komiku", "komiku" },
+                        { "kiryuu", "kiryuu" },
+                        { "shinigami", "shinigami" },
+                        { "maid", "maid" },
+                        { "bacakomik", "bacakomik" },
+                        { "westmanga", "westmanga" },
+                        { "mgkomik", "mgkomik" },
+                        { "mangadex", "mangadex" },
+                        { "mangabat", "mangabat" },
+                        { "manganato", "mangabat" },
+                        { "mangakakalot", "mangabat" },
+                        { "nhentai", "nhentai" },
+                        { "weebcentral", "weebcentral" },
+                        { "manhwaindo", "manhwaindo" },
+                        { "softkomik", "softkomik" },
+                    };
 
-                                if (matchingSrc != null)
+                    int fixedCount = 0;
+                    foreach (var manga in orphanedManga)
+                    {
+                        long? matchedSourceId = null;
+
+                        // 1. Direct legacy v1 ID mapping
+                        if (manga.Source == 3639673976007021568L)
+                        {
+                            var kiryuuSrc = sources.FirstOrDefault(s => s.Name != null && s.Name.Contains("Kiryuu", StringComparison.OrdinalIgnoreCase));
+                            if (kiryuuSrc != null) matchedSourceId = kiryuuSrc.Id;
+                        }
+                        else if (manga.Source == -3406828676302900168L)
+                        {
+                            var komikuSrc = sources.FirstOrDefault(s => s.Name != null && s.Name.Contains("Komiku", StringComparison.OrdinalIgnoreCase));
+                            if (komikuSrc != null) matchedSourceId = komikuSrc.Id;
+                        }
+
+                        // 2. Exact host domain matching
+                        string? mangaHost = null;
+                        if (!string.IsNullOrEmpty(manga.Url) && Uri.TryCreate(manga.Url, UriKind.Absolute, out var mangaUri))
+                        {
+                            mangaHost = NormalizeDomain(mangaUri.Host);
+                            if (matchedSourceId == null && domainMap.TryGetValue(mangaHost, out var idByDomain))
+                            {
+                                matchedSourceId = idByDomain;
+                            }
+                        }
+
+                        // 3. Host-only keyword matching (NEVER match URL path slugs or generic "/manga/"!)
+                        if (matchedSourceId == null && !string.IsNullOrEmpty(mangaHost))
+                        {
+                            foreach (var kv in keywordFallbacks)
+                            {
+                                if (mangaHost.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    matchedSourceId = matchingSrc.Id;
-                                    break;
+                                    var matchingSrc = sources.FirstOrDefault(s =>
+                                        (s.Name != null && s.Name.Contains(kv.Value, StringComparison.OrdinalIgnoreCase)) ||
+                                        (s.BaseUrl != null && s.BaseUrl.Contains(kv.Value, StringComparison.OrdinalIgnoreCase)));
+
+                                    if (matchingSrc != null)
+                                    {
+                                        matchedSourceId = matchingSrc.Id;
+                                        break;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if (matchedSourceId.HasValue)
-                    {
-                        var normalizedUrl = (manga.Url ?? string.Empty).Trim().ToLowerInvariant();
-                        if (existingPairs.Contains((normalizedUrl, matchedSourceId.Value)))
+                        if (matchedSourceId.HasValue)
                         {
-                            LogService.Warning("SourceIdMigration", $"Skipping remap for '{manga.Title}' -> {matchedSourceId.Value} (duplicate already exists).");
-                            continue;
+                            var normalizedUrl = (manga.Url ?? string.Empty).Trim().ToLowerInvariant();
+                            if (existingPairs.Contains((normalizedUrl, matchedSourceId.Value)))
+                            {
+                                LogService.Warning("SourceIdMigration", $"Skipping remap for '{manga.Title}' -> {matchedSourceId.Value} (duplicate already exists).");
+                                continue;
+                            }
+
+                            long oldId = manga.Source;
+                            manga.Source = matchedSourceId.Value;
+                            existingPairs.Add((normalizedUrl, matchedSourceId.Value));
+                            fixedCount++;
+                            LogService.Info("SourceIdMigration", $"Remapped '{manga.Title}': {oldId} -> {matchedSourceId.Value}");
                         }
-
-                        long oldId = manga.Source;
-                        manga.Source = matchedSourceId.Value;
-                        existingPairs.Add((normalizedUrl, matchedSourceId.Value));
-                        fixedCount++;
-                        LogService.Info("SourceIdMigration", $"Remapped '{manga.Title}': {oldId} -> {matchedSourceId.Value}");
+                        else
+                        {
+                            LogService.Warning("SourceIdMigration", $"Could not remap '{manga.Title}' (URL: {manga.Url}, OldSource: {manga.Source})");
+                        }
                     }
-                    else
+
+                    if (fixedCount > 0)
                     {
-                        LogService.Warning("SourceIdMigration", $"Could not remap '{manga.Title}' (URL: {manga.Url}, OldSource: {manga.Source})");
+                        await db.SaveChangesAsync();
+                        LogService.Success("SourceIdMigration", $"Successfully migrated {fixedCount}/{orphanedManga.Count} manga Source IDs.");
+                    }
+
+                    if (fixedCount == orphanedManga.Count)
+                    {
+                        MarkMigrationDone();
                     }
                 }
-
-                if (fixedCount > 0)
+                finally
                 {
-                    await db.SaveChangesAsync();
-                    LogService.Success("SourceIdMigration", $"Successfully migrated {fixedCount}/{orphanedManga.Count} manga Source IDs.");
-                }
-
-                if (fixedCount == orphanedManga.Count)
-                {
-                    MarkMigrationDone();
+                    MangaDbContext.DatabaseWriteGate.Release();
                 }
             }
             catch (Exception ex)

@@ -29,6 +29,7 @@ var source = {
     formats: ["Manga", "Manhwa", "Manhua"],
 
     requestUrl: function(url) {
+        var lastRes = null;
         for (var i = 0; i < this.mirrorUrls.length; i++) {
             var activeBase = this.mirrorUrls[(this.currentMirrorIndex + i) % this.mirrorUrls.length];
             var testUrl = url;
@@ -44,6 +45,7 @@ var source = {
                         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
                     }
                 });
+                lastRes = res;
                 if (res && res.status === 200 && res.body) {
                     if (activeBase !== this.baseUrl) {
                         this.baseUrl = activeBase;
@@ -57,12 +59,7 @@ var source = {
             }
         }
 
-        return fetch(url, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": this.baseUrl + "/"
-            }
-        });
+        return lastRes || { body: "", status: 500 };
     },
 
     getPopularManga: function(page) {
@@ -77,13 +74,14 @@ var source = {
         return this.getSeriesPage(page, query || "", "", null, null, "");
     },
 
-    getMangaList: function(page, status, genre, type) {
+    getMangaList: function(page, status, genre, type, sort) {
         let statusStr = "";
         if (status === 1) statusStr = "ongoing";
         else if (status === 2) statusStr = "completed";
         else if (status === 3) statusStr = "hiatus";
 
-        return this.getSeriesPage(page, "", statusStr, genre, type, "popular");
+        let orderStr = sort === "latest" ? "update" : "popular";
+        return this.getSeriesPage(page, "", statusStr, genre, type, orderStr);
     },
 
     getSeriesPage: function(page, query, status, genre, type, order) {
@@ -193,7 +191,7 @@ var source = {
         }
 
         let isFiltered = Boolean(query || status || genre || type);
-        let nextEl = doc.querySelector(".hpage a, .hpage a.r, .pagination a.next, a.next, a.next.page-numbers");
+        let nextEl = doc.querySelector(".hpage a.r, .pagination a.next, a.next, a.next.page-numbers");
         let totalPages = (nextEl || items.length >= this.pageSize) ? page + 1 : page;
 
         return {
@@ -341,8 +339,9 @@ var source = {
         let imgEls = doc.querySelectorAll("#readerarea img, div.images img, div#readerarea img, img.ts-main-image, center img.ts-main-image, center img");
         for (let i = 0; i < imgEls.length; i++) {
             let img = imgEls[i];
-            let src = img.absUrl("src");
-            if (!src) src = img.attr("src") || img.attr("data-src") || img.attr("data-lazy-src");
+            let rawSrc = img.attr("src") || "";
+            let lazySrc = img.attr("data-src") || img.attr("data-lazy-src") || img.attr("data-cfsrc") || "";
+            let src = (lazySrc && (!rawSrc || rawSrc.startsWith("data:"))) ? (img.absUrl("data-src") || img.absUrl("data-lazy-src") || lazySrc) : (img.absUrl("src") || rawSrc || lazySrc);
             if (src && !src.includes("pebaikan.png") && !src.includes("readerarea.svg") && !src.includes("/flags/") && !src.includes("akhir_baru.png") && !src.includes("icon.png") && !src.startsWith("data:image/svg")) {
                 pages.push(src.trim());
             }

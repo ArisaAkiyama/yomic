@@ -9,8 +9,8 @@ var source = {
     iconBackground: "#111111",
     iconForeground: "#ed2553",
     isNsfw: true,
-    genres: ['Action', 'Adult', 'Adventure', 'Comedy', 'Cooking', 'Crime', 'Cultivation', 'Demon', 'Demons', 'Drama', 'Ecchi', 'Fantasy', 'Game', 'Gender Bender', 'Gore', 'Harem', 'Historical', 'Horror', 'Isekai', 'Josei', 'Magic', 'Martial Arts', 'Mature', 'Mecha', 'Medical', 'Military', 'Music', 'Mystery', 'Psychological', 'Reincarnation', 'Romance', 'School', 'School Life', 'Sci-Fi', 'Seinen', 'Shoujo', 'Shounen', 'Slice of Life', 'Smut', 'Sports', 'Super Power', 'Supernatural', 'Survival', 'Thriller', 'Time Travel', 'Tragedy', 'Webtoon'],
-    formats: ['Manga', 'Manhwa', 'Manhua'],
+    genres: [],
+    formats: [],
     isHasMorePages: true,
 
     getPopularManga: function(page) {
@@ -27,11 +27,11 @@ var source = {
         return this.getGalleryPage("/search/?key=" + encodeURIComponent(query) + "&page=" + Math.max(1, page || 1), ["1", "2"]);
     },
 
-    getMangaList: function(page, status) {
+    getMangaList: function(page, status, genre, type, sort) {
         if (status === 1) {
             return { items: [], totalPages: 1 };
         }
-        return this.getLatestUpdates(page);
+        return sort === "latest" ? this.getLatestUpdates(page) : this.getPopularManga(page);
     },
 
     getDualLanguagePage: function(page, popular) {
@@ -290,7 +290,7 @@ var source = {
                 "Referer": this.baseUrl + "/"
             }
         });
-        if (response.status < 200 || response.status >= 300) return "";
+        if (!response || response.status < 200 || response.status >= 300) return "";
         return response.body;
     }
 };

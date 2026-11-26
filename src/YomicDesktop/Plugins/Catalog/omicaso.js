@@ -18,8 +18,8 @@ var source = {
     isNsfw: false,
     isHasMorePages: true,
     pageSize: 20,
-    genres: ['Action', 'Adult', 'Adventure', 'Comedy', 'Cooking', 'Crime', 'Cultivation', 'Demon', 'Demons', 'Drama', 'Ecchi', 'Fantasy', 'Game', 'Gender Bender', 'Gore', 'Harem', 'Historical', 'Horror', 'Isekai', 'Josei', 'Magic', 'Martial Arts', 'Mature', 'Mecha', 'Medical', 'Military', 'Music', 'Mystery', 'Psychological', 'Reincarnation', 'Romance', 'School', 'School Life', 'Sci-Fi', 'Seinen', 'Shoujo', 'Shounen', 'Slice of Life', 'Smut', 'Sports', 'Super Power', 'Supernatural', 'Survival', 'Thriller', 'Time Travel', 'Tragedy', 'Webtoon'],
-    formats: ['Manga', 'Manhwa', 'Manhua'],
+    genres: [],
+    formats: [],
 
     requestUrl: function(url, headers) {
         let reqHeaders = headers || {};
@@ -40,7 +40,7 @@ var source = {
         let url = this.baseUrl + "/api/manga.php?page=1&limit=20&mode=all&sort=popular";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let json = JSON.parse(res.body);
+        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
         let list = (json.sections && json.sections.trending && json.sections.trending.all) ? json.sections.trending.all : (json.items || []);
         let items = list.map(item => ({
             title: item.title,

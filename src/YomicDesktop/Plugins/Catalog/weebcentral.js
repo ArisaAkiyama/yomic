@@ -42,9 +42,9 @@ var source = {
         });
     },
 
-    getMangaList: function(page, status) {
+    getMangaList: function(page, status, genre, type, sort) {
         let params = {
-            sort: "Popularity",
+            sort: sort === "latest" ? "Latest Updates" : "Popularity",
             order: "Descending"
         };
 
@@ -52,6 +52,30 @@ var source = {
             params.included_status = "Ongoing";
         } else if (status === 2) {
             params.included_status = "Complete";
+        }
+
+        if (genre) {
+            let gArr = Array.isArray(genre) ? genre : [genre];
+            let tags = [];
+            for (let i = 0; i < gArr.length; i++) {
+                let g = String(gArr[i] || "").trim();
+                if (g && g !== "Semua") tags.push(g);
+            }
+            if (tags.length > 0) {
+                params.included_tag = tags;
+            }
+        }
+
+        if (type) {
+            let tArr = Array.isArray(type) ? type : [type];
+            let types = [];
+            for (let i = 0; i < tArr.length; i++) {
+                let t = String(tArr[i] || "").trim();
+                if (t && t !== "Semua") types.push(t);
+            }
+            if (types.length > 0) {
+                params.included_type = types;
+            }
         }
 
         return this.getSearchPage(page, "", params);
@@ -339,7 +363,8 @@ var source = {
 
     getTotalPages: function(query, extraParams, currentPage, html) {
         query = (query || "").trim();
-        if (query === "" && extraParams) {
+        let hasTagOrTypeFilter = extraParams && ((extraParams.included_tag && extraParams.included_tag.length > 0) || (extraParams.included_type && extraParams.included_type.length > 0));
+        if (query === "" && extraParams && !hasTagOrTypeFilter) {
             let known = this.getKnownTotalItems(extraParams);
             if (known > 0) {
                 return Math.max(currentPage, Math.ceil(known / this.pageSize));
@@ -364,7 +389,7 @@ var source = {
                 "Referer": this.baseUrl + "/"
             }
         });
-        if (response.status < 200 || response.status >= 300) return "";
+        if (!response || response.status < 200 || response.status >= 300) return "";
         return response.body;
     },
 

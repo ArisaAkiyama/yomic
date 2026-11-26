@@ -188,13 +188,41 @@ public class CoreServicesTests
     }
 
     [Fact]
-    public void WebResourceImageProxy_TryNormalizeCurlTarget_StripsTrailingDotConsistently()
+    public void WebResourceImageProxy_TryNormalizeCurlTarget_StripsTrailingDotAndHandlesIpLiterals()
     {
         var trailingDotUri = new Uri("https://example.com./img/page1.jpg?q=1");
-        Assert.True(YomicDesktop.IPC.WebResourceImageProxy.TryNormalizeCurlTarget(trailingDotUri, out var host, out var url));
+        Assert.True(YomicDesktop.IPC.WebResourceImageProxy.TryNormalizeCurlTarget(trailingDotUri, out var host, out var url, out var isIpLiteral));
         Assert.Equal("example.com", host);
         Assert.Equal("https://example.com/img/page1.jpg?q=1", url);
+        Assert.False(isIpLiteral);
         Assert.DoesNotContain("example.com.", url);
+
+        // Public IPv6 literal must succeed with isIpLiteral=true (so curl skips --resolve)
+        var publicIpv6Uri = new Uri("https://[2606:4700:4700::1111]/img/page1.jpg");
+        Assert.True(YomicDesktop.IPC.WebResourceImageProxy.TryNormalizeCurlTarget(publicIpv6Uri, out var v6Host, out var v6Url, out var v6IsIp));
+        Assert.True(v6IsIp);
+        Assert.Contains("2606:4700:4700::1111", v6Host);
+        Assert.StartsWith("https://[2606:4700:4700::1111]/", v6Url);
+
+        // Loopback/private IPv6 literal must be rejected
+        var privateIpv6Uri = new Uri("https://[::1]/secret.jpg");
+        Assert.False(YomicDesktop.IPC.WebResourceImageProxy.TryNormalizeCurlTarget(privateIpv6Uri, out _, out _, out _));
+    }
+
+    [Fact]
+    public void WebResourceImageProxy_LooksLikeHtmlPayload_DetectsBomHtmlScriptAndXmlErrors()
+    {
+        byte[] bomDoctype = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(System.Text.Encoding.UTF8.GetBytes("  <!DOCTYPE html><html>Cloudflare</html>")).ToArray();
+        byte[] scriptPayload = System.Text.Encoding.UTF8.GetBytes("<script>window.location='/'</script>");
+        byte[] s3XmlError = System.Text.Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><Error><Code>AccessDenied</Code></Error>");
+        byte[] validPng = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0 };
+        byte[] validJpg = { 0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+        Assert.True(YomicDesktop.IPC.WebResourceImageProxy.LooksLikeHtmlPayload(bomDoctype));
+        Assert.True(YomicDesktop.IPC.WebResourceImageProxy.LooksLikeHtmlPayload(scriptPayload));
+        Assert.True(YomicDesktop.IPC.WebResourceImageProxy.LooksLikeHtmlPayload(s3XmlError));
+        Assert.False(YomicDesktop.IPC.WebResourceImageProxy.LooksLikeHtmlPayload(validPng));
+        Assert.False(YomicDesktop.IPC.WebResourceImageProxy.LooksLikeHtmlPayload(validJpg));
     }
 
     [Fact]
@@ -331,5 +359,256 @@ var source = {
         {
             try { File.Delete(tempPlugin); } catch { }
         }
+    }
+
+    [Fact]
+    public void DownloadService_IsValidDownloadedImagePayload_RejectsHtmlAndXmlChallengePages()
+    {
+        byte[] wafHtml = Encoding.UTF8.GetBytes("<!DOCTYPE html><html><title>Just a moment...</title></html>");
+        byte[] bomHtml = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(Encoding.UTF8.GetBytes("<html>Cloudflare</html>")).ToArray();
+        byte[] xmlError = Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><Error><Code>AccessDenied</Code></Error>");
+        byte[] validJpeg = { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46 };
+        byte[] validPng = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00 };
+
+        Assert.False(DownloadService.IsValidDownloadedImagePayload(Array.Empty<byte>()));
+        Assert.False(DownloadService.IsValidDownloadedImagePayload(wafHtml));
+        Assert.False(DownloadService.IsValidDownloadedImagePayload(bomHtml));
+        Assert.False(DownloadService.IsValidDownloadedImagePayload(xmlError));
+        Assert.True(DownloadService.IsValidDownloadedImagePayload(validJpeg));
+        Assert.True(DownloadService.IsValidDownloadedImagePayload(validPng));
+    }
+
+    [Fact]
+    public async Task DownloadService_CompletedGuardAndDisposePreservePartialState()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"YomicDlTest_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            using var settings = new SettingsService(Path.Combine(tempDir, "settings.json"));
+            using var network = new NetworkService(settings);
+            using var sourceMgr = new SourceManager();
+            var libSvc = new LibraryService(Path.Combine(tempDir, "manga.db"));
+            using var dl = new DownloadService(sourceMgr, libSvc, network, settings, Path.Combine(tempDir, "dl"), loadQueue: false);
+
+            var completedReq = new DownloadRequest
+            {
+                Manga = new Yomic.Core.Models.Manga { Title = "M1", Url = "/m1" },
+                Chapter = new Yomic.Core.Models.Chapter { Name = "Ch 1", Url = "/m1/c1" },
+                Status = "Completed"
+            };
+            var activeReq = new DownloadRequest
+            {
+                Manga = new Yomic.Core.Models.Manga { Title = "M2", Url = "/m2" },
+                Chapter = new Yomic.Core.Models.Chapter { Name = "Ch 2", Url = "/m2/c2" },
+                Status = "Downloading"
+            };
+
+            dl.RegisterActiveForTesting(completedReq);
+            dl.RegisterActiveForTesting(activeReq);
+
+            // Pause/Cancel MUST NOT overwrite an already Completed active item
+            dl.Pause(completedReq);
+            Assert.Equal("Completed", completedReq.Status);
+            Assert.False(completedReq.CancellationTokenSource.IsCancellationRequested);
+
+            dl.Cancel(completedReq);
+            Assert.Equal("Completed", completedReq.Status);
+            Assert.False(completedReq.CancellationTokenSource.IsCancellationRequested);
+
+            // Dispose MUST mark in-progress items as Paused (not Cancelled) before cancelling CTS so .tmp progress survives app exit
+            dl.Dispose();
+            Assert.Equal("Paused", activeReq.Status);
+            Assert.True(activeReq.CancellationTokenSource.IsCancellationRequested);
+            Assert.Equal("Completed", completedReq.Status);
+
+            // Empty active list returns immediately from WaitForActiveDownloadsToStopAsync
+            using var dl2 = new DownloadService(sourceMgr, libSvc, network, settings, Path.Combine(tempDir, "dl2"), loadQueue: false);
+            Assert.True(await dl2.WaitForActiveDownloadsToStopAsync(TimeSpan.FromMilliseconds(200)));
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task LibraryService_ConcurrentAddToLibraryAsync_CreatesSingleUniqueMangaRow()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"YomicLibConcurrency_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        string dbPath = Path.Combine(tempDir, "manga.db");
+
+        try
+        {
+            using (var initDb = new Yomic.Core.Data.MangaDbContext(dbPath))
+            {
+                initDb.Database.EnsureCreated();
+            }
+
+            var lib = new LibraryService(dbPath);
+            var tasks = Enumerable.Range(0, 6).Select(i => lib.AddToLibraryAsync(new Yomic.Core.Models.Manga
+            {
+                Source = 999111,
+                Url = "https://example.com/manga/concurrent-title",
+                Title = $"Concurrent Title {i}",
+                ThumbnailUrl = "https://example.com/cover.jpg"
+            }));
+
+            await Task.WhenAll(tasks);
+
+            using var verifyDb = new Yomic.Core.Data.MangaDbContext(dbPath);
+            int count = verifyDb.Mangas.Count(m => m.Source == 999111 && m.Url == "https://example.com/manga/concurrent-title");
+            Assert.Equal(1, count);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void UrlSecurityHelper_IsPrivateOrLoopbackIp_BlocksIpv6EmbeddedIpv4AndRfc6890()
+    {
+        string[] blockedIps =
+        {
+            "64:ff9b::127.0.0.1",
+            "64:ff9b::169.254.169.254",
+            "64:ff9b:1::1",
+            "::127.0.0.1",
+            "::ffff:0:127.0.0.1",
+            "2002:7f00:0001::1",
+            "2001:0::1",
+            "2001:db8::1",
+            "100::1",
+            "192.0.0.1",
+            "192.0.2.1",
+            "198.18.0.1",
+            "198.19.255.254",
+            "198.51.100.1",
+            "203.0.113.1"
+        };
+
+        foreach (var ipStr in blockedIps)
+        {
+            var ip = System.Net.IPAddress.Parse(ipStr);
+            Assert.True(Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp(ip), $"Expected {ipStr} to be blocked");
+            string url = ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+                ? $"http://[{ipStr}]/secret"
+                : $"http://{ipStr}/secret";
+            Assert.False(Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out _), $"Expected URL {url} to be blocked");
+        }
+
+        Assert.False(Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp(System.Net.IPAddress.Parse("2606:4700:4700::1111")));
+        Assert.False(Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp(System.Net.IPAddress.Parse("1.1.1.1")));
+        Assert.True(Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl("https://[2606:4700:4700::1111]/ok", out _));
+    }
+
+    [Fact]
+    public void HttpSource_IsSameOrigin_DetectsCrossOriginRedirectsProperly()
+    {
+        var a = new Uri("https://Example.COM/page1");
+        Assert.True(HttpSource.IsSameOrigin(a, new Uri("https://example.com./page2")));
+        Assert.False(HttpSource.IsSameOrigin(a, new Uri("http://example.com/page2")));
+        Assert.False(HttpSource.IsSameOrigin(a, new Uri("https://cdn.example.com/page2")));
+        Assert.False(HttpSource.IsSameOrigin(a, new Uri("https://example.com:8443/page2")));
+    }
+
+    [Fact]
+    public void UpdateService_ParseSha256SidecarText_ExtractsValidHexAndRejectsInvalid()
+    {
+        const string validHex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        Assert.Equal(validHex, UpdateService.ParseSha256SidecarText($"{validHex.ToUpperInvariant()}  Yomic_Setup_v2.3.0.exe\n"));
+        Assert.Equal(validHex, UpdateService.ParseSha256SidecarText(validHex));
+        Assert.Null(UpdateService.ParseSha256SidecarText("not-a-checksum"));
+        Assert.Null(UpdateService.ParseSha256SidecarText(""));
+    }
+
+    [Fact]
+    public void WebViewPageExtractorWindow_BuildDefaultExtractScript_SafelyEscapesNewlinesAndQuotes()
+    {
+        string maliciousSelector = "img');\nalert(1);\r\n//\"\\";
+        string script = YomicDesktop.Views.WebViewPageExtractorWindow.BuildDefaultExtractScript(maliciousSelector);
+        string? capturedSelector = null;
+        bool alertTriggered = false;
+        var engine = new Jint.Engine();
+        engine.SetValue("alert", new Action<object?>(_ => alertTriggered = true));
+        engine.SetValue("document", new
+        {
+            querySelectorAll = new Func<string, object[]>(sel =>
+            {
+                capturedSelector = sel;
+                return Array.Empty<object>();
+            })
+        });
+        engine.Execute(script);
+        Assert.False(alertTriggered, "Injected alert(1) must never execute");
+        Assert.Equal(maliciousSelector, capturedSelector);
+    }
+
+    [Fact]
+    public void MyAnimeListService_Disconnect_DiscardsStaleTokenRefreshViaAuthEpoch()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"YomicMalEpoch_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            using var settings = new SettingsService(Path.Combine(tempDir, "settings.json"));
+            settings.MalAccessToken = "initial-access";
+            settings.MalRefreshToken = "initial-refresh";
+            using var mal = new MyAnimeListService(settings);
+
+            int capturedEpoch = mal.CurrentAuthEpoch;
+            mal.Disconnect();
+
+            Assert.NotEqual(capturedEpoch, mal.CurrentAuthEpoch);
+            Assert.False(mal.IsConnected);
+
+            // Simulated in-flight refresh completing after Disconnect MUST be discarded
+            bool applied = mal.TryApplyRefreshedTokens(
+                capturedEpoch,
+                "stale-reconnected-access",
+                "stale-reconnected-refresh",
+                DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeMilliseconds());
+
+            Assert.False(applied);
+            Assert.Equal("", settings.MalAccessToken);
+            Assert.Equal("", settings.MalRefreshToken);
+            Assert.False(mal.IsConnected);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SourceManager_DeferredExtensionLoad_CompletesAsynchronously()
+    {
+        using var sm = new SourceManager(deferExtensionLoad: true);
+        await sm.EnsureExtensionsLoadedAsync();
+        Assert.NotNull(sm.GetSources());
+    }
+
+    [Fact]
+    public void BackendIpcController_PreloadedPageListCache_RoundTripsAndRespectsEviction()
+    {
+        string key = $"999999|https://example.com/ch-preload-{Guid.NewGuid():N}";
+        var pages = new System.Collections.Generic.List<string>
+        {
+            "https://cdn.example.com/p1.jpg",
+            "https://cdn.example.com/p2.jpg"
+        };
+
+        YomicDesktop.IPC.BackendIpcController.StorePreloadedPageList(key, pages);
+        Assert.True(YomicDesktop.IPC.BackendIpcController.TryGetPreloadedPageList(key, out var retrieved));
+        Assert.Equal(pages, retrieved);
+
+        // Mutating caller copy must not corrupt cached list
+        retrieved.Clear();
+        Assert.True(YomicDesktop.IPC.BackendIpcController.TryGetPreloadedPageList(key, out var retrieved2));
+        Assert.Equal(2, retrieved2.Count);
     }
 }

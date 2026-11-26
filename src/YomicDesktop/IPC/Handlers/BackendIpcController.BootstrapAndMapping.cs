@@ -30,15 +30,23 @@ namespace YomicDesktop.IPC
          * ========================================================================= */
         public async Task<AppBootstrapDto> BuildBootstrapAsync()
         {
+            await SourceManager.EnsureExtensionsLoadedAsync();
             var extensionsTask = GetExtensionsDtosAsync(false);
             var mangasTask = GetLibraryAndHistoryMangaDtosAsync();
             var updatesTask = GetActivityUpdatesDtosAsync();
             var categoriesTask = LibraryService.GetCategoriesAsync();
-            var announcementsTask = AnnouncementService.CachedAnnouncements.Count > 0
-                ? Task.FromResult(AnnouncementService.CachedAnnouncements)
-                : AnnouncementService.FetchAnnouncementsAsync(false);
-            await Task.WhenAll(extensionsTask, mangasTask, updatesTask, categoriesTask, announcementsTask);
-            var announcements = await announcementsTask;
+            // Never block initial WebView navigation on remote announcement HTTP fetches (up to 16s);
+            // return cached announcements immediately and refresh asynchronously via event:announcements-updated.
+            var announcements = AnnouncementService.CachedAnnouncements;
+            if (announcements.Count == 0 && !SettingsService.IsOfflineMode)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try { await AnnouncementService.FetchAnnouncementsAsync(false); }
+                    catch (Exception ex) { LogService.Debug("IPC", $"Background announcement fetch failed: {ex.Message}"); }
+                });
+            }
+            await Task.WhenAll(extensionsTask, mangasTask, updatesTask, categoriesTask);
             var categories = await categoriesTask;
             return new AppBootstrapDto
             {
@@ -216,6 +224,18 @@ namespace YomicDesktop.IPC
         private MangaDto MapMangaToDto(Manga m, bool includeChapters = false)
         {
             var id = MakeMangaFrontendId(m);
+            if (_discoveredManga.Count >= 2000 && !_discoveredManga.ContainsKey(id))
+            {
+                // Evict transient browsed entries (src-*) first to keep memory bounded during long browsing sessions
+                foreach (var key in _discoveredManga.Keys.Where(k => k.StartsWith("src-", StringComparison.Ordinal)).Take(500).ToList())
+                {
+                    _discoveredManga.TryRemove(key, out _);
+                }
+                if (_discoveredManga.Count >= 2000)
+                {
+                    _discoveredManga.Clear();
+                }
+            }
             _discoveredManga[id] = m;
             var src = SourceManager.GetSource(m.Source);
             string sourceName = src?.Name?.Replace("Yomic:", "", StringComparison.OrdinalIgnoreCase).Trim() ?? "Sumber Komik";
@@ -240,7 +260,7 @@ namespace YomicDesktop.IPC
                 ? lastReadChObj.ChapterNumber
                 : (totalCh > 0 ? 1 : 1);
             int lastReadTotalPages = 0;
-            if (lastReadChObj != null && !string.IsNullOrEmpty(lastReadChObj.Url) && _chapterTotalPagesCache.TryGetValue(lastReadChObj.Url, out int cachedPages))
+            if (lastReadChObj != null && !string.IsNullOrEmpty(lastReadChObj.Url) && _chapterTotalPagesCache.TryGetValue(MakeChapterCacheKey(m.Source, lastReadChObj.Url), out int cachedPages))
             {
                 lastReadTotalPages = cachedPages;
             }

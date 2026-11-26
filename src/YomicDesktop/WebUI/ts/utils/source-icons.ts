@@ -51,7 +51,7 @@ export function resolveSourceIconUrl(key: string, baseUrl?: string, explicitIcon
 
 export function getMangaCoverHtmlSrc(this: YomicApp, manga: MangaItem): string {
   const trimmed = (manga.coverUrl || '').trim();
-  if (trimmed) {
+  if (trimmed && !/["'<>]/.test(trimmed)) {
     const lower = trimmed.toLowerCase();
     if (
       lower.startsWith('https://') ||

@@ -12,16 +12,9 @@ var source = {
     isHasMorePages: true,
     pageSize: 50,
 
-    genres: [
-        "Action", "Adventure", "Avant Garde", "Boys Love", "Comedy", "Demons", "Drama", "Ecchi",
-        "Fantasy", "Girls Love", "Gourmet", "Harem", "Historical", "Horror", "Isekai", "Iyashikei",
-        "Josei", "Martial Arts", "Mecha", "Medical", "Military", "Music", "Mystery", "Parody",
-        "Psychological", "Reverse Harem", "Romance", "School", "Sci-Fi", "Seinen", "Shoujo",
-        "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Space", "Sports", "Super Power",
-        "Supernatural", "Suspense", "Thriller", "Vampire", "Video Games", "Villainess"
-    ],
+    genres: [],
 
-    formats: ["Manga", "Manhwa", "Manhua"],
+    formats: [],
 
     // ── VRF Encryption Stages ────────────────────────────────────────────────
 
@@ -292,28 +285,43 @@ var source = {
         let hid = this.extractHid(mangaUrl);
         if (!hid) return [];
 
-        let data = this.fetchApi("/titles/" + hid + "/chapters", {
-            "language": "en",
-            "limit": "200",
-            "order": "desc",
-            "page": "1",
-            "sort": "number"
-        });
-
-        if (!data || !data.items) return [];
-
         let chapters = [];
-        let items = data.items;
-        for (let i = 0; i < items.length; i++) {
-            let ch = items[i];
-            let num = ch.number != null ? String(ch.number).replace(/\.0$/, "") : "";
-            let name = "Ch. " + num + (ch.name ? " - " + ch.name : "");
+        let seen = {};
+        let page = 1;
+        const maxPages = 20;
 
-            // URL format: /title/hid-slug/chId-chapter-num-en
-            let chUrl = mangaUrl + "/" + ch.id + "-chapter-" + num + "-en";
+        while (page <= maxPages) {
+            let data = this.fetchApi("/titles/" + hid + "/chapters", {
+                "language": "en",
+                "limit": "200",
+                "order": "desc",
+                "page": String(page),
+                "sort": "number"
+            });
 
-            let dateUpload = ch.createdAt ? ch.createdAt * 1000 : 0;
-            chapters.push({ name: name, url: chUrl, dateUpload: dateUpload });
+            if (!data || !data.items || data.items.length === 0) break;
+
+            let items = data.items;
+            let addedOnPage = 0;
+            for (let i = 0; i < items.length; i++) {
+                let ch = items[i];
+                if (!ch || !ch.id || seen[ch.id]) continue;
+                seen[ch.id] = true;
+                addedOnPage++;
+                let num = ch.number != null ? String(ch.number).replace(/\.0$/, "") : "";
+                let name = "Ch. " + num + (ch.name ? " - " + ch.name : "");
+
+                // URL format: /title/hid-slug/chId-chapter-num-en
+                let chUrl = mangaUrl + "/" + ch.id + "-chapter-" + num + "-en";
+
+                let dateUpload = ch.createdAt ? ch.createdAt * 1000 : 0;
+                chapters.push({ name: name, url: chUrl, dateUpload: dateUpload });
+            }
+
+            if (addedOnPage === 0 || items.length < 200 || (data.meta && data.meta.hasNext === false)) {
+                break;
+            }
+            page++;
         }
 
         return chapters;

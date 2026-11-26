@@ -7,6 +7,7 @@ on:
       - 'src/YomicDesktop/**'
       - 'tests/**'
       - 'Installer/**'
+      - 'scripts/**'
       - 'YomicV2.sln'
       - '.github/workflows/ci-desktop.yml'
   pull_request:
@@ -14,6 +15,7 @@ on:
       - 'src/YomicDesktop/**'
       - 'tests/**'
       - 'Installer/**'
+      - 'scripts/**'
       - 'YomicV2.sln'
       - '.github/workflows/ci-desktop.yml'
   workflow_dispatch:
@@ -39,11 +41,37 @@ jobs:
       - name: Restore .NET dependencies
         run: dotnet restore YomicV2.sln
 
-      - name: Build & Run C# xUnit Tests (includes 102-plugin Jint load & SQLite FK/Index tests)
-        run: dotnet test tests/YomicDesktop.Tests/YomicDesktop.Tests.csproj --no-restore --configuration Release --verbosity normal
+      - name: Strict TypeScript compile (WebUI/tsconfig.json)
+        shell: pwsh
+        run: |
+          $nugetRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE ".nuget\packages" }
+          $tsc = Get-ChildItem -Path (Join-Path $nugetRoot "microsoft.typescript.msbuild") -Filter "tsc.js" -Recurse | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $tsc) { throw "Could not locate tsc.js under $nugetRoot" }
+          node $tsc -p src/YomicDesktop/WebUI/tsconfig.json
+
+      - name: Verify Version Parity Across Csproj, Installer, Updater, and WebUI
+        shell: pwsh
+        run: |
+          [xml]$csproj = Get-Content src/YomicDesktop/YomicDesktop.csproj
+          $ver = ($csproj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1).Trim()
+          $iss = Get-Content Installer/Yomic.iss -Raw
+          $upd = Get-Content src/YomicDesktop/Core/Services/UpdateService.cs -Raw
+          $html = Get-Content src/YomicDesktop/WebUI/index.html -Raw
+          $css = Get-Content src/YomicDesktop/WebUI/styles/main.css -Raw
+          if ($iss -notmatch "#define MyAppVersion `"$ver`"") { throw "Installer/Yomic.iss version mismatch (expected $ver)" }
+          if ($upd -notmatch "return `"$ver`";") { throw "UpdateService.cs fallback version mismatch (expected $ver)" }
+          if ($html -notmatch "\?v=$ver") { throw "WebUI/index.html cache-buster mismatch (expected ?v=$ver)" }
+          if ($css -notmatch "\?v=$ver") { throw "WebUI/styles/main.css cache-buster mismatch (expected ?v=$ver)" }
+          Write-Host "Version parity verified: v$ver"
 
       - name: Run WebUI TypeScript Automated Tests (node:test)
         run: node --test tests/WebUI.Tests/webui.test.mjs
 
-      - name: Build Yomic Desktop (Release win-x64, treat warnings check)
-        run: dotnet build src/YomicDesktop/YomicDesktop.csproj -c Release --no-restore -v minimal
+      - name: Build & Run C# xUnit Tests (includes 102-plugin Jint load & SQLite FK/Index tests)
+        run: dotnet test tests/YomicDesktop.Tests/YomicDesktop.Tests.csproj --no-restore --configuration Release --verbosity normal
+
+      - name: Build Yomic Desktop (Release win-x64, warnings as errors)
+        run: dotnet build src/YomicDesktop/YomicDesktop.csproj -c Release --no-restore -warnaserror -v minimal
+
+      - name: Validate Clean Release Publish
+        run: dotnet publish src/YomicDesktop/YomicDesktop.csproj -c Release -r win-x64 --self-contained true --no-restore -o dist/ci_publish -v minimal

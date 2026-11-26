@@ -72,7 +72,7 @@ var source = {
         return this.parseMangaCardsFromHtml(htmlUrl);
     },
 
-    getMangaList: function(page, status, genre, type) {
+    getMangaList: function(page, status, genre, type, sort) {
         let label = "Series";
         if (genre) {
             let arr = Array.isArray(genre) ? genre : [genre];
@@ -196,10 +196,11 @@ var source = {
             }
         }
 
-        let statusStr = html.toLowerCase();
+        let statusEl = document.querySelector("#extra-info, .spe, .status, .gta-series, .info, .infotable");
+        let statusStr = statusEl ? statusEl.text().toLowerCase() : "";
         let status = 0;
-        if (statusStr.indexOf("ongoing") !== -1) status = 1;
-        else if (statusStr.indexOf("completed") !== -1 || statusStr.indexOf("tamat") !== -1) status = 2;
+        if (statusStr.indexOf("completed") !== -1 || statusStr.indexOf("tamat") !== -1) status = 2;
+        else if (statusStr.indexOf("ongoing") !== -1 || statusStr.indexOf("berlangsung") !== -1) status = 1;
 
         return {
             title: title,
@@ -240,32 +241,49 @@ var source = {
         let mainTitle = this.cleanText(categoryName);
 
         if (mainTitle) {
-            let feedUrl = this.baseUrl + "/feeds/posts/summary/-/" + encodeURIComponent(mainTitle) + "?alt=json&max-results=150";
-            let json = this.getJson(feedUrl);
-            if (json && json.feed && json.feed.entry) {
+            let feedSeen = {};
+            let startIndex = 1;
+            const maxResults = 150;
+            const maxPages = 15;
+
+            for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
+                let feedUrl = this.baseUrl + "/feeds/posts/summary/-/" + encodeURIComponent(mainTitle) + "?alt=json&max-results=" + maxResults + "&start-index=" + startIndex;
+                let json = this.getJson(feedUrl);
+                if (!json || !json.feed || !json.feed.entry || json.feed.entry.length === 0) break;
+
                 let entries = json.feed.entry;
+                let totalResults = (json.feed["openSearch$totalResults"] && json.feed["openSearch$totalResults"]["$t"])
+                    ? parseInt(json.feed["openSearch$totalResults"]["$t"], 10)
+                    : 0;
+
                 for (let i = 0; i < entries.length; i++) {
                     let e = entries[i];
                     let links = e.link || [];
                     let alt = links.find(l => l.rel === "alternate");
                     let href = alt ? alt.href : "";
-                    if (!href || href === absUrl) continue;
+                    if (!href || href === absUrl || feedSeen[href]) continue;
 
                     let chTitle = (e.title && e.title["$t"]) ? e.title["$t"] : this.titleFromUrl(href);
                     let cleanedName = this.cleanChapterName(chTitle, mainTitle);
                     if (!cleanedName) continue;
 
+                    feedSeen[href] = true;
                     let published = e.published ? Date.parse(e.published["$t"]) : 0;
 
                     chapters.push({
                         name: cleanedName,
                         url: this.relativeUrl(href),
-                        dateUpload: published || 0
+                        dateUpload: isNaN(published) ? 0 : (published || 0)
                     });
                 }
 
-                if (chapters.length > 0) return chapters;
+                startIndex += entries.length;
+                if (entries.length < maxResults || (totalResults > 0 && startIndex > totalResults)) {
+                    break;
+                }
             }
+
+            if (chapters.length > 0) return chapters;
         }
 
         // 2. Fallback to HTML chapter links parsing
@@ -381,7 +399,7 @@ var source = {
                 "Referer": this.baseUrl + "/"
             }
         });
-        if (response.status < 200 || response.status >= 300) return "";
+        if (!response || response.status < 200 || response.status >= 300) return "";
         return response.body;
     },
 
@@ -393,7 +411,7 @@ var source = {
                 "Referer": this.baseUrl + "/"
             }
         });
-        if (response.status < 200 || response.status >= 300) return null;
+        if (!response || response.status < 200 || response.status >= 300) return null;
         try {
             return JSON.parse(response.body);
         } catch(e) {

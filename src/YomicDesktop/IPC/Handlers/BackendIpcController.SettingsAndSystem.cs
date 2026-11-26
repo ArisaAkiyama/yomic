@@ -55,6 +55,9 @@ namespace YomicDesktop.IPC
             };
         }
 
+        private static string? TryGetJsonString(JsonElement elem) =>
+            elem.ValueKind == JsonValueKind.String ? elem.GetString() : null;
+
         private Dictionary<string, object?> HandleUpdateSetting(JsonElement? payload)
         {
             string key = GetString(payload, "key");
@@ -64,18 +67,21 @@ namespace YomicDesktop.IPC
             {
                 case "defaultReaderMode":
                 {
-                    var str = valElem.GetString();
-                    SettingsService.DefaultReaderMode = str switch
+                    var str = TryGetJsonString(valElem);
+                    if (str != null)
                     {
-                        "single" => 1,
-                        "dual" => 2,
-                        _ => 0
-                    };
+                        SettingsService.DefaultReaderMode = str switch
+                        {
+                            "single" => 1,
+                            "dual" => 2,
+                            _ => 0
+                        };
+                    }
                     break;
                 }
                 case "readingDirection":
                 {
-                    var str = valElem.GetString();
+                    var str = TryGetJsonString(valElem);
                     if (!string.IsNullOrWhiteSpace(str))
                     {
                         SettingsService.ReadingDirection = str;
@@ -84,7 +90,7 @@ namespace YomicDesktop.IPC
                 }
                 case "readerFitMode":
                 {
-                    var str = valElem.GetString();
+                    var str = TryGetJsonString(valElem);
                     if (!string.IsNullOrWhiteSpace(str))
                     {
                         SettingsService.ReaderFitMode = str;
@@ -117,7 +123,7 @@ namespace YomicDesktop.IPC
                 }
                 case "maxReaderCacheSize":
                 {
-                    var str = valElem.GetString() ?? "500MB";
+                    var str = TryGetJsonString(valElem) ?? "500MB";
                     int mbValue = str switch
                     {
                         "250MB" => 250,
@@ -149,7 +155,7 @@ namespace YomicDesktop.IPC
                 }
                 case "dohProvider":
                 {
-                    var str = valElem.GetString() ?? "";
+                    var str = TryGetJsonString(valElem) ?? "";
                     SettingsService.DnsOverHttpsProvider = str.Contains("Cloudflare") ? 1
                         : str.Contains("Google") ? 2
                         : str.Contains("AdGuard") ? 3
@@ -199,7 +205,7 @@ namespace YomicDesktop.IPC
                 }
                 case "downloadSpeedMode":
                 {
-                    var str = valElem.GetString();
+                    var str = TryGetJsonString(valElem);
                     if (!string.IsNullOrWhiteSpace(str))
                     {
                         SettingsService.DownloadSpeedMode = str;
@@ -233,7 +239,7 @@ namespace YomicDesktop.IPC
                 }
                 case "backgroundUpdateInterval":
                 {
-                    var str = valElem.GetString() ?? "12h";
+                    var str = TryGetJsonString(valElem) ?? "12h";
                     int hours = str switch
                     {
                         "off" => 0,
@@ -256,7 +262,7 @@ namespace YomicDesktop.IPC
                 }
                 case "sourceStatusInterval":
                 {
-                    var str = valElem.GetString() ?? "30m";
+                    var str = TryGetJsonString(valElem) ?? "30m";
                     SettingsService.SourceStatusRefreshIntervalMinutes = str switch
                     {
                         "off" => 0,
@@ -530,6 +536,7 @@ namespace YomicDesktop.IPC
                     {
                         DownloadService.Cancel(req);
                     }
+                    await DownloadService.WaitForActiveDownloadsToStopAsync(TimeSpan.FromSeconds(5));
                     DownloadService.ClearCompleted();
                 }
                 catch { }
@@ -708,6 +715,17 @@ namespace YomicDesktop.IPC
             if (string.IsNullOrWhiteSpace(srcPath))
                 return new { ok = false, restored = false, cancelled = true };
             DownloadService.Pause();
+            bool downloadsStopped = await DownloadService.WaitForActiveDownloadsToStopAsync(TimeSpan.FromSeconds(5));
+            if (!downloadsStopped)
+            {
+                return new
+                {
+                    ok = false,
+                    restored = false,
+                    cancelled = false,
+                    error = L("Unduhan aktif belum berhenti sepenuhnya. Coba lagi setelah unduhan dijeda.", "Active downloads have not stopped yet. Please retry once downloads finish pausing.")
+                };
+            }
             bool success = await BackupService.RestoreBackupAsync(srcPath);
             if (success)
             {
@@ -936,32 +954,40 @@ namespace YomicDesktop.IPC
             {
                 try
                 {
-                    using var db = new MangaDbContext();
-                    var existing = await db.Tracks.FirstOrDefaultAsync(t => t.MangaId == manga.Id && t.TrackerName == "MyAnimeList");
-                    if (existing == null)
+                    await MangaDbContext.DatabaseWriteGate.WaitAsync();
+                    try
                     {
-                        db.Tracks.Add(new MangaTrack
+                        using var db = new MangaDbContext();
+                        var existing = await db.Tracks.FirstOrDefaultAsync(t => t.MangaId == manga.Id && t.TrackerName == "MyAnimeList");
+                        if (existing == null)
                         {
-                            MangaId = manga.Id,
-                            TrackerName = "MyAnimeList",
-                            RemoteId = remoteTrack.RemoteId,
-                            Title = remoteTrack.Title,
-                            TotalChapters = remoteTrack.TotalChapters,
-                            Status = remoteTrack.Status,
-                            Score = remoteTrack.Score,
-                            LastChapterRead = remoteTrack.LastChapterRead
-                        });
+                            db.Tracks.Add(new MangaTrack
+                            {
+                                MangaId = manga.Id,
+                                TrackerName = "MyAnimeList",
+                                RemoteId = remoteTrack.RemoteId,
+                                Title = remoteTrack.Title,
+                                TotalChapters = remoteTrack.TotalChapters,
+                                Status = remoteTrack.Status,
+                                Score = remoteTrack.Score,
+                                LastChapterRead = remoteTrack.LastChapterRead
+                            });
+                        }
+                        else
+                        {
+                            existing.RemoteId = remoteTrack.RemoteId;
+                            existing.Title = remoteTrack.Title;
+                            existing.TotalChapters = remoteTrack.TotalChapters;
+                            existing.Status = remoteTrack.Status;
+                            existing.Score = remoteTrack.Score;
+                            existing.LastChapterRead = remoteTrack.LastChapterRead;
+                        }
+                        await db.SaveChangesAsync();
                     }
-                    else
+                    finally
                     {
-                        existing.RemoteId = remoteTrack.RemoteId;
-                        existing.Title = remoteTrack.Title;
-                        existing.TotalChapters = remoteTrack.TotalChapters;
-                        existing.Status = remoteTrack.Status;
-                        existing.Score = remoteTrack.Score;
-                        existing.LastChapterRead = remoteTrack.LastChapterRead;
+                        MangaDbContext.DatabaseWriteGate.Release();
                     }
-                    await db.SaveChangesAsync();
                 }
                 catch { }
             }
@@ -990,42 +1016,52 @@ namespace YomicDesktop.IPC
             string malTitle = GetString(payload, "malTitle");
             var manga = await ResolveMangaAsync(mangaId);
             if (manga == null || manga.Id <= 0) return new { ok = false, error = "Komik tidak ditemukan." };
-            using var db = new MangaDbContext();
-            var track = await db.Tracks.FirstOrDefaultAsync(t => t.MangaId == manga.Id && t.TrackerName == "MyAnimeList");
-            if (track == null)
+            MangaTrack track;
+            await MangaDbContext.DatabaseWriteGate.WaitAsync();
+            try
             {
-                if (remoteId <= 0)
+                using var db = new MangaDbContext();
+                var existingTrack = await db.Tracks.FirstOrDefaultAsync(t => t.MangaId == manga.Id && t.TrackerName == "MyAnimeList");
+                if (existingTrack == null)
                 {
-                    return new { ok = false, error = "Pilih entri manga MyAnimeList terlebih dahulu." };
+                    if (remoteId <= 0)
+                    {
+                        return new { ok = false, error = "Pilih entri manga MyAnimeList terlebih dahulu." };
+                    }
+                    existingTrack = new MangaTrack
+                    {
+                        MangaId = manga.Id,
+                        TrackerName = "MyAnimeList",
+                        RemoteId = remoteId,
+                        Title = !string.IsNullOrWhiteSpace(malTitle) ? malTitle : manga.Title,
+                        TotalChapters = manga.Chapters?.Count ?? 0,
+                        Status = status,
+                        LastChapterRead = chaptersRead,
+                        Score = score
+                    };
+                    db.Tracks.Add(existingTrack);
                 }
-                track = new MangaTrack
+                else
                 {
-                    MangaId = manga.Id,
-                    TrackerName = "MyAnimeList",
-                    RemoteId = remoteId,
-                    Title = !string.IsNullOrWhiteSpace(malTitle) ? malTitle : manga.Title,
-                    TotalChapters = manga.Chapters?.Count ?? 0,
-                    Status = status,
-                    LastChapterRead = chaptersRead,
-                    Score = score
-                };
-                db.Tracks.Add(track);
+                    if (remoteId > 0)
+                    {
+                        existingTrack.RemoteId = remoteId;
+                    }
+                    if (!string.IsNullOrWhiteSpace(malTitle))
+                    {
+                        existingTrack.Title = malTitle;
+                    }
+                    existingTrack.Status = status;
+                    existingTrack.LastChapterRead = chaptersRead;
+                    existingTrack.Score = score;
+                }
+                await db.SaveChangesAsync();
+                track = existingTrack;
             }
-            else
+            finally
             {
-                if (remoteId > 0)
-                {
-                    track.RemoteId = remoteId;
-                }
-                if (!string.IsNullOrWhiteSpace(malTitle))
-                {
-                    track.Title = malTitle;
-                }
-                track.Status = status;
-                track.LastChapterRead = chaptersRead;
-                track.Score = score;
+                MangaDbContext.DatabaseWriteGate.Release();
             }
-            await db.SaveChangesAsync();
             if (MalService.IsConnected && track.RemoteId > 0)
             {
                 await MalService.UpdateMangaStatusAsync(track.RemoteId, status, chaptersRead, score);
@@ -1049,10 +1085,18 @@ namespace YomicDesktop.IPC
             var manga = await ResolveMangaAsync(mangaId);
             if (manga != null && manga.Id > 0)
             {
-                using var db = new MangaDbContext();
-                var tracks = await db.Tracks.Where(t => t.MangaId == manga.Id).ToListAsync();
-                db.Tracks.RemoveRange(tracks);
-                await db.SaveChangesAsync();
+                await MangaDbContext.DatabaseWriteGate.WaitAsync();
+                try
+                {
+                    using var db = new MangaDbContext();
+                    var tracks = await db.Tracks.Where(t => t.MangaId == manga.Id).ToListAsync();
+                    db.Tracks.RemoveRange(tracks);
+                    await db.SaveChangesAsync();
+                }
+                finally
+                {
+                    MangaDbContext.DatabaseWriteGate.Release();
+                }
             }
             return new { ok = true };
         }
@@ -1120,11 +1164,8 @@ namespace YomicDesktop.IPC
                     screenshotBase64
                 };
                 var jsonPayload = JsonSerializer.Serialize(requestBody);
-                using var handler = new System.Net.Http.HttpClientHandler { AllowAutoRedirect = false };
-                using var client = new System.Net.Http.HttpClient(handler)
-                {
-                    Timeout = TimeSpan.FromSeconds(35)
-                };
+                using var client = NetworkService.CreateOptimizedHttpClient(useCookies: false, allowAutoRedirect: false);
+                client.Timeout = TimeSpan.FromSeconds(35);
                 using var content = new System.Net.Http.StringContent(jsonPayload, Encoding.UTF8, "application/json");
                 using var response = await client.PostAsync(validatedFeedbackUri, content);
                 bool isSuccess = false;

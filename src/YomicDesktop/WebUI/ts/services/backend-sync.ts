@@ -4,7 +4,7 @@
 
 import type { YomicApp } from '../app.js';
 import { applyStaticDomTranslations } from '../i18n.js';
-import { AppBootstrapPayload, CategoryItem, DownloadQueueItem, MangaItem } from '../types.js';
+import { AppBootstrapPayload, CategoryItem, DownloadQueueItem, ExtensionItem, MangaItem } from '../types.js';
 import { updateDownloadsProgressInPlace } from '../views/downloads.js';
 import { updateDetailChapterDownloadsInPlace } from '../views/manga-detail.js';
 import { updateAppUpdateOverlayProgress } from '../views/settings.js';
@@ -34,6 +34,37 @@ export function bindBackendEvents(this: YomicApp): void {
     if (!Array.isArray(queue)) return;
     this.downloads.length = 0;
     this.downloads.push(...queue);
+
+    // Sync completed chapter downloads into in-memory mangaList so Library's "Downloaded" filter
+    // and manga.downloadedCount stay fresh even when the user is not viewing Manga Detail.
+    let libraryCountsChanged = false;
+    for (const dl of queue) {
+      if (dl.status !== 'completed') continue;
+      const manga = this.mangaList.find((m) => m.id === dl.mangaId);
+      if (!manga) continue;
+      let mangaChanged = false;
+      if (Array.isArray(manga.chapters) && manga.chapters.length > 0) {
+        const ch = manga.chapters.find(
+          (c) =>
+            (dl.chapterUrl && c.url && c.url.toLowerCase() === dl.chapterUrl.toLowerCase()) ||
+            (typeof dl.chapterNumber === 'number' && Math.abs(c.number - dl.chapterNumber) < 0.01)
+        );
+        if (ch && !ch.isDownloaded) {
+          ch.isDownloaded = true;
+          mangaChanged = true;
+        }
+        const recomputed = manga.chapters.filter((c) => c.isDownloaded).length;
+        if (manga.downloadedCount !== recomputed) {
+          manga.downloadedCount = recomputed;
+          mangaChanged = true;
+        }
+      } else if ((manga.downloadedCount || 0) === 0) {
+        manga.downloadedCount = 1;
+        mangaChanged = true;
+      }
+      if (mangaChanged) libraryCountsChanged = true;
+    }
+
     this.updateSidebarCounters();
     if (this.activeDetailMangaId) {
       const container = document.getElementById('viewContainer');
@@ -53,6 +84,24 @@ export function bindBackendEvents(this: YomicApp): void {
         if (!inPlaceUpdated) {
           this.renderDownloadsView(container);
         }
+      }
+    } else if (libraryCountsChanged && this.currentTab === 'library') {
+      const container = document.getElementById('viewContainer');
+      if (container) this.renderLibraryView(container);
+    }
+  });
+  this.bridge.on<ExtensionItem[]>('event:extensions-updated', (exts) => {
+    if (!Array.isArray(exts)) return;
+    this.extensions.length = 0;
+    this.extensions.push(...exts);
+    this.updateSidebarCounters();
+    this.persistLocalCache();
+    if (!this.activeDetailMangaId) {
+      const container = document.getElementById('viewContainer');
+      if (container && this.currentTab === 'extensions') {
+        this.renderExtensionsView(container);
+      } else if (container && this.currentTab === 'browse' && !this.activeBrowseSourceId) {
+        this.renderBrowseView(container);
       }
     }
   });
@@ -238,6 +287,7 @@ export function hydrateInitialState(this: YomicApp): void {
     Object.assign(this.settings, data.settings);
     this.readerMode = this.settings.defaultReaderMode || 'webtoon';
     this.applyTheme(this.settings.isDarkMode);
+    this.toggleSidebarCollapse(Boolean(this.settings.compactSidebar), false);
   }
 }
 
@@ -282,9 +332,14 @@ export async function bootstrapFromBackend(this: YomicApp): Promise<void> {
       this.downloads.push(...data.downloads);
     }
     if (data.settings) {
+      const preservedCompactSidebar = Boolean(this.settings.compactSidebar);
       Object.assign(this.settings, data.settings);
+      if (typeof data.settings.compactSidebar !== 'boolean') {
+        this.settings.compactSidebar = preservedCompactSidebar;
+      }
       this.readerMode = this.settings.defaultReaderMode || 'webtoon';
       this.applyTheme(this.settings.isDarkMode);
+      this.toggleSidebarCollapse(Boolean(this.settings.compactSidebar), false);
       applyStaticDomTranslations(this.settings.appLanguage);
     }
     if (Array.isArray(data.announcements) && data.announcements.length > 0) {

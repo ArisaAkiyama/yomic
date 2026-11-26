@@ -265,6 +265,7 @@ export const SOLAR_PATHS: Record<string, string> = {
   'fire-linear': '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M12 21C16.4183 21 20 17.6421 20 13.5C20 10.5 18 7.5 15.5 5.5C15.5 8 14 9.5 12.5 9.5C12.5 6.5 11 3.5 8.5 2C8.5 5.5 4 8.5 4 13.5C4 17.6421 7.58172 21 12 21Z"/><path d="M12 21C13.933 21 15.5 19.433 15.5 17.5C15.5 15.8 14.2 14.2 12 12.5C9.8 14.2 8.5 15.8 8.5 17.5C8.5 19.433 10.067 21 12 21Z"/></g>',
   'award-linear': '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><circle cx="12" cy="9" r="6"/><path d="M8.5 14L7 22L12 19.5L17 22L15.5 14"/></g>',
   'user-line': '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M5 20C5 16.6863 8.13401 14 12 14C15.866 14 19 16.6863 19 20"/></g>',
+  'warning': '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"><path d="M5.31171 10.7615C8.23007 5.58716 9.68925 3 12 3C14.3107 3 15.7699 5.58716 18.6883 10.7615L19.0519 11.4063C21.4771 15.7061 22.6897 17.856 21.5937 19.428C20.4978 21 17.7864 21 12.3637 21H11.6363C6.21356 21 3.50217 21 2.40626 19.428C1.31034 17.856 2.52291 15.7061 4.94805 11.4063L5.31171 10.7615Z"/><path d="M12 8V13"/><path stroke-linejoin="round" d="M12 16H12.0001"/></g>',
 };
 
 /** Backwards-compatible alias */

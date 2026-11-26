@@ -56,12 +56,13 @@ var source = {
         return this.getSeriesPage(page, query || "", "", null, null, "");
     },
 
-    getMangaList: function(page, status, genre, type) {
+    getMangaList: function(page, status, genre, type, sort) {
         let statusStr = "";
         if (status === 1) statusStr = "ongoing";
         else if (status === 2) statusStr = "completed";
         else if (status === 3) statusStr = "hiatus";
-        return this.getSeriesPage(page, "", statusStr, genre, type, "");
+        let orderStr = sort === "latest" ? "update" : "popular";
+        return this.getSeriesPage(page, "", statusStr, genre, type, orderStr);
     },
 
     // ── Manga Listing ─────────────────────────────────────────────────────────

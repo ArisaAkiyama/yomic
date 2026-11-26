@@ -97,6 +97,17 @@ namespace Yomic.Core.Services
         }
 
         public DownloadService(SourceManager sourceManager, LibraryService libraryService, NetworkService networkService, SettingsService? settingsService = null)
+            : this(sourceManager, libraryService, networkService, settingsService, DownloadPathService.BaseDirectory, loadQueue: true)
+        {
+        }
+
+        internal DownloadService(
+            SourceManager sourceManager,
+            LibraryService libraryService,
+            NetworkService networkService,
+            SettingsService? settingsService,
+            string customBaseDir,
+            bool loadQueue)
         {
             _sourceManager = sourceManager;
             _libraryService = libraryService;
@@ -111,12 +122,22 @@ namespace Yomic.Core.Services
                 _settingsService.DownloadSpeedModeChanged += _onDownloadSpeedModeChanged;
             }
             
-            // Base directory: AppData/Yomic/Downloads
-            _downloadBaseDir = DownloadPathService.BaseDirectory;
+            _downloadBaseDir = customBaseDir;
             if (!Directory.Exists(_downloadBaseDir))
                 Directory.CreateDirectory(_downloadBaseDir);
             
-            LoadQueue();
+            if (loadQueue)
+            {
+                LoadQueue();
+            }
+        }
+
+        internal void RegisterActiveForTesting(DownloadRequest req)
+        {
+            lock (_processingLock)
+            {
+                _activeDownloads.Add(req);
+            }
         }
 
         private (int MaxChapters, int MaxPagesPerChapter) GetConcurrencyLimits()
@@ -140,7 +161,8 @@ namespace Yomic.Core.Services
             {
                 if (_sharedDownloadClient == null)
                 {
-                    _sharedDownloadClient = _networkService.CreateOptimizedHttpClient(useCookies: false);
+                    // Disable automatic redirects so per-hop Cookie scoping prevents cross-origin cookie leakage
+                    _sharedDownloadClient = _networkService.CreateOptimizedHttpClient(useCookies: false, allowAutoRedirect: false);
                     _sharedDownloadClient.Timeout = Timeout.InfiniteTimeSpan;
                 }
                 return _sharedDownloadClient;
@@ -258,8 +280,9 @@ namespace Yomic.Core.Services
                                 if (dto.Status == "Downloading" || dto.Status == "Queued")
                                 {
                                     var req = FromDto(dto);
+                                    if (req == null) continue;
                                     req.Status = "Queued";
-                                    if (!_queue.Any(x => x.Chapter.Url == req.Chapter.Url))
+                                    if (!_queue.Any(x => x.Chapter.Url == req.Chapter.Url && x.Manga.Source == req.Manga.Source))
                                     {
                                         _queue.Add(req);
                                     }
@@ -270,10 +293,16 @@ namespace Yomic.Core.Services
                     else if (data.Current != null && (data.Current.Status == "Downloading" || data.Current.Status == "Queued"))
                     {
                         var req = FromDto(data.Current);
-                        req.Status = "Queued";
-                        lock (_queueLock)
+                        if (req != null)
                         {
-                            _queue.Add(req);
+                            req.Status = "Queued";
+                            lock (_queueLock)
+                            {
+                                if (!_queue.Any(x => x.Chapter.Url == req.Chapter.Url && x.Manga.Source == req.Manga.Source))
+                                {
+                                    _queue.Add(req);
+                                }
+                            }
                         }
                     }
                     
@@ -281,11 +310,15 @@ namespace Yomic.Core.Services
                     {
                         lock (_queueLock)
                         {
-                            foreach(var dto in data.Queue)
+                            foreach (var dto in data.Queue)
                             {
                                 var req = FromDto(dto);
+                                if (req == null) continue;
                                 if (req.Status == "Downloading") req.Status = "Queued";
-                                _queue.Add(req);
+                                if (!_queue.Any(x => x.Chapter.Url == req.Chapter.Url && x.Manga.Source == req.Manga.Source))
+                                {
+                                    _queue.Add(req);
+                                }
                             }
                         }
                     }
@@ -294,9 +327,13 @@ namespace Yomic.Core.Services
                     {
                         lock (_historyLock)
                         {
-                            foreach(var dto in data.History)
+                            foreach (var dto in data.History)
                             {
-                                _history.Add(FromDto(dto));
+                                var req = FromDto(dto);
+                                if (req != null)
+                                {
+                                    _history.Add(req);
+                                }
                             }
                         }
                     }
@@ -383,9 +420,9 @@ namespace Yomic.Core.Services
             };
         }
 
-        private static DownloadRequest FromDto(DownloadRequestDto dto)
+        private static DownloadRequest? FromDto(DownloadRequestDto? dto)
         {
-            if (dto == null) return null!;
+            if (dto == null || dto.Manga == null || dto.Chapter == null) return null;
             var manga = new Manga
             {
                 Id = dto.Manga.Id,
@@ -423,6 +460,7 @@ namespace Yomic.Core.Services
 
         public void QueueDownload(Manga manga, Chapter chapter)
         {
+            if (_isDisposed) return;
             if (DownloadPathService.IsChapterDownloaded(manga, chapter))
                 return;
 
@@ -461,11 +499,12 @@ namespace Yomic.Core.Services
 
         public void ProcessQueue()
         {
+            if (_isDisposed) return;
             var requestsToStart = new List<DownloadRequest>();
 
             lock (_processingLock)
             {
-                if (_isPaused) return;
+                if (_isPaused || _isDisposed) return;
 
                 var (maxChapters, _) = GetConcurrencyLimits();
                 lock (_queueLock)
@@ -558,7 +597,10 @@ namespace Yomic.Core.Services
                 else if (request.Status == "Paused")
                 {
                     var oldCts = request.CancellationTokenSource;
-                    request.CancellationTokenSource = new CancellationTokenSource();
+                    if (!_isDisposed)
+                    {
+                        request.CancellationTokenSource = new CancellationTokenSource();
+                    }
                     try { oldCts.Dispose(); } catch { }
                     lock (_queueLock)
                     {
@@ -628,10 +670,13 @@ namespace Yomic.Core.Services
                 if (DownloadPathService.IsChapterDownloaded(request.Manga, request.Chapter))
                 {
                     request.Progress = 100;
-                    request.Status = "Completed";
+                    lock (_processingLock)
+                    {
+                        request.Status = "Completed";
+                    }
                     request.Chapter.IsDownloaded = true;
                     StatusChanged?.Invoke(this, request);
-                    await _libraryService.UpdateChapterDownloadStatusByUrlAsync(request.Chapter.Url, true);
+                    await _libraryService.UpdateChapterDownloadStatusByUrlAsync(request.Chapter.Url, true, request.Manga?.Id ?? 0);
                     return;
                 }
 
@@ -743,39 +788,10 @@ namespace Yomic.Core.Services
                                         using var pageCts = CancellationTokenSource.CreateLinkedTokenSource(request.CancellationTokenSource.Token);
                                         pageCts.CancelAfter(PageDownloadTimeout);
 
-                                        try
-                                        {
-                                             using var req = new HttpRequestMessage(HttpMethod.Get, requestUrl)
-                                             {
-                                                 Version = System.Net.HttpVersion.Version20,
-                                                 VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
-                                             };
-                                             if (requestUrl.Contains("mangamillion"))
-                                             {
-                                                 req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
-                                                 req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "cors");
-                                                 req.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-site");
-                                                 req.Headers.TryAddWithoutValidation("Origin", "https://mangamillion.shueisha.co.jp");
-                                             }
-                                             if (customHeaders.ContainsKey("Referer"))
-                                             {
-                                                 var customRef = customHeaders["Referer"];
-                                                 if (customRef != "none" && customRef != "null" &&
-                                                     Uri.TryCreate(customRef, UriKind.Absolute, out var customRefUri))
-                                                 {
-                                                     req.Headers.Referrer = customRefUri;
-                                                 }
-                                             }
-                                             else if (Uri.TryCreate(refererUrl, UriKind.Absolute, out var defaultRefUri))
-                                             {
-                                                 req.Headers.Referrer = defaultRefUri;
-                                             }
-
-                                             if (customHeaders.ContainsKey("User-Agent")) req.Headers.UserAgent.TryParseAdd(customHeaders["User-Agent"]);
-                                             else if (customHeaders.ContainsKey("UserAgent")) req.Headers.UserAgent.TryParseAdd(customHeaders["UserAgent"]);
-                                             else req.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
-
-                                             using var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, pageCts.Token);
+                                         try
+                                         {
+                                             using var response = await SendPageRequestWithSafeRedirectsAsync(
+                                                 client, requestUrl, customHeaders, refererUrl, pageCts.Token);
                                             if ((int)response.StatusCode == 429 || (int)response.StatusCode == 503)
                                             {
                                                 var retryAfterDelay = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMilliseconds(2500 * (pageRetry + 1));
@@ -794,6 +810,11 @@ namespace Yomic.Core.Services
                                             if (customHeaders.ContainsKey("AesKey") && customHeaders.ContainsKey("AesIv"))
                                             {
                                                 data = DecryptAes256Cbc(data, customHeaders["AesKey"], customHeaders["AesIv"]);
+                                            }
+
+                                            if (!IsValidDownloadedImagePayload(data))
+                                            {
+                                                throw new InvalidDataException("Downloaded page payload is HTML/XML (possible Cloudflare/WAF block) instead of an image.");
                                             }
 
                                             // Write to .part file first
@@ -930,12 +951,15 @@ namespace Yomic.Core.Services
                         }
                     }
 
-                    request.Status = "Completed";
+                    lock (_processingLock)
+                    {
+                        request.Status = "Completed";
+                    }
                     request.Chapter.IsDownloaded = true;
                     StatusChanged?.Invoke(this, request);
 
-                    // 5. Update DB (use URL since ID might be 0 for dynamic chapters)
-                    await _libraryService.UpdateChapterDownloadStatusByUrlAsync(request.Chapter.Url, true);
+                    // 5. Update DB (scope by MangaId when available to avoid relative chapter URL collisions)
+                    await _libraryService.UpdateChapterDownloadStatusByUrlAsync(request.Chapter.Url, true, request.Manga?.Id ?? 0);
                     
                     LogService.Success("Download", $"Completed: {request.Chapter.Name}");
                 }
@@ -943,9 +967,18 @@ namespace Yomic.Core.Services
             catch (Exception ex)
             {
                  // If cancelled/paused, we might catch TaskCanceledException here or generic Exception
-                 if (request.Status == "Paused" || request.Status == "Cancelled") 
+                 if (request.Status == "Paused")
                  {
-                     // Expected interrupt
+                     // Expected interrupt — preserve .tmp for resume
+                 }
+                 else if (request.Status == "Cancelled")
+                 {
+                     try
+                     {
+                         var tempDir = DownloadPathService.GetChapterTempDirectory(request.Manga, request.Chapter);
+                         if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+                     }
+                     catch { }
                  }
                  else
                  {
@@ -953,6 +986,111 @@ namespace Yomic.Core.Services
                    throw;
                  }
             }
+        }
+
+        internal static bool IsValidDownloadedImagePayload(byte[]? data)
+        {
+            return Yomic.Core.Helpers.UrlSecurityHelper.IsValidImagePayload(data);
+        }
+
+        internal static async Task<HttpResponseMessage> SendPageRequestWithSafeRedirectsAsync(
+            HttpClient client,
+            string initialUrl,
+            Dictionary<string, string> customHeaders,
+            string refererUrl,
+            CancellationToken ct)
+        {
+            const int maxRedirects = 5;
+            string currentUrl = initialUrl;
+
+            for (int hop = 0; hop <= maxRedirects; hop++)
+            {
+                if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(currentUrl, out var targetUri) || targetUri == null)
+                {
+                    throw new HttpRequestException($"Blocked unsafe download URL: {currentUrl}");
+                }
+
+                using var req = new HttpRequestMessage(HttpMethod.Get, targetUri)
+                {
+                    Version = System.Net.HttpVersion.Version20,
+                    VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+                };
+
+                if (Yomic.Core.Helpers.UrlSecurityHelper.IsHostOrSubdomain(currentUrl, "mangamillion.shueisha.co.jp"))
+                {
+                    req.Headers.TryAddWithoutValidation("Sec-Fetch-Dest", "empty");
+                    req.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "cors");
+                    req.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-site");
+                    req.Headers.TryAddWithoutValidation("Origin", "https://mangamillion.shueisha.co.jp");
+                }
+
+                if (customHeaders.TryGetValue("Referer", out var customRef))
+                {
+                    if (customRef != "none" && customRef != "null" &&
+                        Uri.TryCreate(customRef, UriKind.Absolute, out var customRefUri))
+                    {
+                        req.Headers.Referrer = customRefUri;
+                    }
+                }
+                else if (Uri.TryCreate(refererUrl, UriKind.Absolute, out var defaultRefUri))
+                {
+                    req.Headers.Referrer = defaultRefUri;
+                }
+
+                if (customHeaders.TryGetValue("User-Agent", out var customUa))
+                {
+                    req.Headers.UserAgent.TryParseAdd(customUa);
+                }
+                else if (customHeaders.TryGetValue("UserAgent", out var customUa2))
+                {
+                    req.Headers.UserAgent.TryParseAdd(customUa2);
+                }
+                else
+                {
+                    req.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+                }
+
+                // Inject host-scoped Cloudflare cookies & matching User-Agent per hop (prevents cross-origin cookie leaks on 302)
+                if (CloudflareBypassService.IsInstanceCreated)
+                {
+                    var savedCookies = CloudflareBypassService.Instance.SavedCookies;
+                    var relevantCookies = savedCookies
+                        .Where(c => Yomic.Core.Helpers.UrlSecurityHelper.CookieMatchesRequest(targetUri, c.Domain, c.Secure ?? false))
+                        .ToList();
+
+                    if (relevantCookies.Count > 0)
+                    {
+                        var cookieHeader = string.Join("; ", relevantCookies.Select(c => $"{c.Name}={c.Value}"));
+                        req.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
+                    }
+
+                    if (!string.IsNullOrEmpty(CloudflareBypassService.Instance.BypassUserAgent) &&
+                        (relevantCookies.Count > 0 || currentUrl.Contains("nhentai", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        req.Headers.Remove("User-Agent");
+                        req.Headers.TryAddWithoutValidation("User-Agent", CloudflareBypassService.Instance.BypassUserAgent);
+                    }
+                }
+
+                var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+                int status = (int)response.StatusCode;
+                if (status is 301 or 302 or 303 or 307 or 308 && response.Headers.Location != null)
+                {
+                    var location = response.Headers.Location;
+                    var nextUri = location.IsAbsoluteUri ? location : new Uri(targetUri, location);
+                    response.Dispose();
+                    if (hop == maxRedirects)
+                    {
+                        throw new HttpRequestException($"Too many redirects while downloading page: {initialUrl}");
+                    }
+                    currentUrl = nextUri.AbsoluteUri;
+                    continue;
+                }
+
+                return response;
+            }
+
+            throw new HttpRequestException($"Failed to download page after redirects: {initialUrl}");
         }
 
         private static async Task<T> WithTimeout<T>(Task<T> task, TimeSpan timeout, CancellationToken cancellationToken, string timeoutMessage)
@@ -1045,6 +1183,7 @@ namespace Yomic.Core.Services
 
         public void Resume()
         {
+            if (_isDisposed) return;
             _isPaused = false;
 
             var resumedItems = new List<DownloadRequest>();
@@ -1073,13 +1212,29 @@ namespace Yomic.Core.Services
             if (request == null) return;
 
             bool isActive = false;
+            bool pausedInQueue = false;
+            // Acquire _processingLock -> _queueLock atomically (same lock order as ProcessQueue/QueueDownload)
+            // so a request promoted from _queue to _activeDownloads cannot slip through a lock gap.
             lock (_processingLock)
             {
-                if (_activeDownloads.Contains(request))
+                if (_activeDownloads.Contains(request) &&
+                    request.Status != "Completed" &&
+                    request.Status != "Cancelled")
                 {
                     request.Status = "Paused";
                     try { request.CancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
                     isActive = true;
+                }
+                else
+                {
+                    lock (_queueLock)
+                    {
+                        if (_queue.Contains(request))
+                        {
+                            request.Status = "Paused";
+                            pausedInQueue = true;
+                        }
+                    }
                 }
             }
 
@@ -1087,16 +1242,6 @@ namespace Yomic.Core.Services
             {
                 StatusChanged?.Invoke(this, request);
                 return;
-            }
-
-            bool pausedInQueue = false;
-            lock (_queueLock)
-            {
-                if (_queue.Contains(request))
-                {
-                    request.Status = "Paused";
-                    pausedInQueue = true;
-                }
             }
 
             if (pausedInQueue)
@@ -1108,7 +1253,7 @@ namespace Yomic.Core.Services
 
         public void Resume(DownloadRequest request)
         {
-            if (request == null) return;
+            if (_isDisposed || request == null) return;
 
             // Clear global pause lockout so single-item Resume works even after Pause All
             _isPaused = false;
@@ -1145,22 +1290,44 @@ namespace Yomic.Core.Services
 
         public void Cancel(DownloadRequest request)
         {
-            // If it's currently active
+            if (request == null) return;
+
             bool isActive = false;
+            bool removedFromQueue = false;
+            // Acquire _processingLock -> _queueLock atomically (matching ProcessQueue lock order)
             lock (_processingLock)
             {
-                if (_activeDownloads.Contains(request))
+                if (_activeDownloads.Contains(request) && request.Status != "Completed")
                 {
                     request.Status = "Cancelled";
                     try { request.CancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
                     isActive = true;
+                }
+                else
+                {
+                    lock (_queueLock)
+                    {
+                        if (_queue.Contains(request))
+                        {
+                            _queue.Remove(request);
+                            removedFromQueue = true;
+                        }
+                    }
                 }
             }
 
             if (isActive)
             {
                 StatusChanged?.Invoke(this, request); // Update UI
-                // It will be handled in catch/finally
+                return;
+            }
+
+            if (removedFromQueue)
+            {
+                request.Status = "Cancelled";
+                try { request.CancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
+                QueueChanged?.Invoke(this, request);
+                SaveQueue();
                 return;
             }
             
@@ -1179,26 +1346,29 @@ namespace Yomic.Core.Services
             {
                 QueueChanged?.Invoke(this, request);
                 SaveQueue();
-                return;
             }
-            
-            // Try to remove from queue
-            bool removedFromQueue = false;
-            lock (_queueLock)
+        }
+
+        /// <summary>
+        /// Waits until all active download workers have exited (up to <paramref name="timeout"/>),
+        /// used before exclusive SQLite maintenance operations such as backup restore.
+        /// </summary>
+        public async Task<bool> WaitForActiveDownloadsToStopAsync(TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (DateTime.UtcNow < deadline)
             {
-                if (_queue.Contains(request))
+                bool anyActive;
+                lock (_processingLock)
                 {
-                    _queue.Remove(request);
-                    removedFromQueue = true;
+                    anyActive = _activeDownloads.Count > 0;
                 }
+                if (!anyActive) return true;
+                await Task.Delay(25).ConfigureAwait(false);
             }
-            
-            if (removedFromQueue)
+            lock (_processingLock)
             {
-                request.Status = "Cancelled";
-                try { request.CancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
-                QueueChanged?.Invoke(this, request);
-                SaveQueue();
+                return _activeDownloads.Count == 0;
             }
         }
 
@@ -1224,6 +1394,11 @@ namespace Yomic.Core.Services
             {
                 foreach (var active in _activeDownloads)
                 {
+                    // Mark active downloads as Paused BEFORE cancelling so DownloadChapterAsync preserves .tmp progress for resume
+                    if (active.Status != "Completed" && active.Status != "Cancelled")
+                    {
+                        active.Status = "Paused";
+                    }
                     try { active.CancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
                 }
             }
@@ -1260,7 +1435,7 @@ namespace Yomic.Core.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DownloadService] AES Decryption Error: {ex.Message}");
-                return cipherText;
+                return Array.Empty<byte>();
             }
         }
     }

@@ -166,7 +166,8 @@ namespace YomicDesktop.Views
             bool startHidden = true)
         {
             if (string.IsNullOrWhiteSpace(chapterUrl) || dispatcher == null ||
-                !Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(chapterUrl, out _))
+                !Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(chapterUrl, out _) ||
+                !await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(chapterUrl))
             {
                 return new List<string>();
             }
@@ -225,15 +226,16 @@ namespace YomicDesktop.Views
             Activate();
         }
 
-        private static string BuildDefaultExtractScript(string? readySelector)
+        internal static string BuildDefaultExtractScript(string? readySelector)
         {
             string selector = string.IsNullOrWhiteSpace(readySelector)
                 ? "img[data-chapter-page], [data-reader-chapter-id] img"
                 : readySelector;
-            string escapedSelector = selector.Replace("\\", "\\\\").Replace("'", "\\'");
+            // Serialize via System.Text.Json so quotes, backslashes, CR/LF, and unicode line separators can never break out of JS string literal
+            string jsonSelector = JsonSerializer.Serialize(selector);
             return $$"""
                 (() => {
-                    const imgs = Array.from(document.querySelectorAll('{{escapedSelector}}'))
+                    const imgs = Array.from(document.querySelectorAll({{jsonSelector}}))
                         .map(img => img.getAttribute('data-chapter-page') || img.getAttribute('data-src') || img.src)
                         .filter(src => src && (src.startsWith('http://') || src.startsWith('https://')));
                     return imgs.length > 0 ? Array.from(new Set(imgs)) : null;
@@ -282,6 +284,48 @@ namespace YomicDesktop.Views
                 _webView.CoreWebView2.IsMuted = !_isRevealed;
                 _webView.CoreWebView2.NewWindowRequested += (_, args) => args.Handled = true;
                 _webView.CoreWebView2.DownloadStarting += (_, args) => args.Cancel = true;
+                _webView.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+                _webView.CoreWebView2.WebResourceRequested += async (senderObj, args) =>
+                {
+                    string reqUri = args.Request?.Uri ?? string.Empty;
+                    if (string.IsNullOrEmpty(reqUri) ||
+                        reqUri.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ||
+                        reqUri.StartsWith("blob:", StringComparison.OrdinalIgnoreCase) ||
+                        reqUri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+                    var deferral = args.GetDeferral();
+                    try
+                    {
+                        bool isSafe = Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(reqUri, out _) &&
+                                      await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(reqUri);
+                        if (!isSafe)
+                        {
+                            var wv = senderObj as CoreWebView2;
+                            if (wv != null)
+                            {
+                                args.Response = wv.Environment.CreateWebResourceResponse(Stream.Null, 403, "Forbidden", "");
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            var wv = senderObj as CoreWebView2;
+                            if (wv != null)
+                            {
+                                args.Response = wv.Environment.CreateWebResourceResponse(Stream.Null, 403, "Forbidden", "");
+                            }
+                        }
+                        catch { }
+                    }
+                    finally
+                    {
+                        try { deferral.Complete(); } catch { }
+                    }
+                };
                 _webView.CoreWebView2.NavigationStarting += (_sender, args) =>
                 {
                     if (!string.IsNullOrWhiteSpace(args.Uri) &&

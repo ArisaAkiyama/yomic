@@ -60,7 +60,7 @@ var source = {
         var fullPath = path + (queryParams || "");
 
         for (var attempt = 0; attempt < this.mirrorUrls.length; attempt++) {
-            var activeBase = this.mirrorUrls[(this.currentMirrorIndex + attempt) % this.mirrorUrls.length];
+            var activeBase = this.mirrorUrls[this.currentMirrorIndex % this.mirrorUrls.length];
             var url = activeBase + fullPath;
 
             try {
@@ -91,8 +91,9 @@ var source = {
                             "X-WM-Visit": token
                         }
                     });
-                    if (res.status === 200) {
-                        try { return JSON.parse(res.body); } catch (e) { return null; }
+                    if (res && res.status === 200) {
+                        // Let outer try/catch handle non-JSON HTML error pages so failover switches to the next mirror
+                        return JSON.parse(res.body);
                     }
                 }
 
@@ -137,7 +138,7 @@ var source = {
         return this.getApiMangaPage(page, params);
     },
 
-    getMangaList: function(page, status, genre, type) {
+    getMangaList: function(page, status, genre, type, sort) {
         var params = "";
 
         // 1. Status Filter
@@ -190,11 +191,12 @@ var source = {
             }
         }
 
+        var orderParam = sort === "latest" ? "&orderBy=Update" : "&orderBy=Popular";
         if (params !== "") {
-            return this.getApiMangaPage(page, params);
+            return this.getApiMangaPage(page, params + orderParam);
         }
 
-        return this.getPopularManga(page);
+        return sort === "latest" ? this.getLatestUpdates(page) : this.getPopularManga(page);
     },
 
     getApiMangaPage: function(page, params) {

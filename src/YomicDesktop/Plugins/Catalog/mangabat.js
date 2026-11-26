@@ -28,7 +28,7 @@ var source = {
         return this.getMangaPage("/search/story/" + this.normalizeSearchQuery(query) + "?page=" + page);
     },
 
-    getMangaList: function(page, status, genre, type) {
+    getMangaList: function(page, status, genre, type, sort) {
         page = Math.max(1, page || 1);
         
         let genreSlug = "all";
@@ -51,7 +51,8 @@ var source = {
             forcedStatus = 2;
         }
 
-        let path = "/genre/" + genreSlug + "?state=" + state + "&type=topview&page=" + page;
+        let listType = sort === "latest" ? "latest" : "topview";
+        let path = "/genre/" + genreSlug + "?state=" + state + "&type=" + listType + "&page=" + page;
         return this.getMangaPage(path, forcedStatus);
     },
 
@@ -240,11 +241,11 @@ var source = {
         }
 
         let document = Html.parse(html, absUrl);
-        let images = document.querySelectorAll("div.container-chapter-reader > img, .container-chapter-reader img, img");
+        let images = document.querySelectorAll("div.container-chapter-reader > img, .container-chapter-reader img, .reading-content img, #vungdoc img");
         let seen = {};
         for (let i = 0; i < images.length; i++) {
-            let src = images[i].absUrl("src");
-            if (!src || seen[src]) continue;
+            let src = images[i].absUrl("data-src") || images[i].absUrl("data-lazy-src") || images[i].absUrl("src");
+            if (!src || src.indexOf("data:image") === 0 || seen[src]) continue;
             seen[src] = true;
             pages.push(src + "|Referer=" + this.baseUrl + "/");
         }
@@ -437,7 +438,7 @@ var source = {
                 "Referer": this.baseUrl + "/"
             }
         });
-        if (response.status < 200 || response.status >= 300) return "";
+        if (!response || response.status < 200 || response.status >= 300) return "";
         return response.body;
     },
 
@@ -448,7 +449,7 @@ var source = {
                 "Referer": this.baseUrl + "/"
             }
         });
-        if (response.status < 200 || response.status >= 300) return null;
+        if (!response || response.status < 200 || response.status >= 300) return null;
         try { return JSON.parse(response.body); } catch (e) { return null; }
     },
 

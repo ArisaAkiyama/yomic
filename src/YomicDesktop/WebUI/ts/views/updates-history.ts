@@ -55,9 +55,9 @@ export function renderUpdatesView(this: YomicApp, container: HTMLElement): void 
   }
 
   const groups: Array<{ header: string; items: ActivityUpdateItem[] }> = [];
-  if (todayUpdates.length > 0) groups.push({ header: 'Hari Ini', items: todayUpdates });
-  if (yesterdayUpdates.length > 0) groups.push({ header: 'Kemarin', items: yesterdayUpdates });
-  if (olderUpdates.length > 0) groups.push({ header: 'Sebelumnya', items: olderUpdates });
+  if (todayUpdates.length > 0) groups.push({ header: this.l('Hari Ini', 'Today'), items: todayUpdates });
+  if (yesterdayUpdates.length > 0) groups.push({ header: this.l('Kemarin', 'Yesterday'), items: yesterdayUpdates });
+  if (olderUpdates.length > 0) groups.push({ header: this.l('Sebelumnya', 'Earlier'), items: olderUpdates });
 
   let bodyHtml = '';
 
@@ -183,7 +183,7 @@ export function renderUpdatesView(this: YomicApp, container: HTMLElement): void 
   this.bindCommonCardTriggers(container);
 }
 
-function formatHistoryReadingProgress(page?: number, totalPages?: number): string {
+function formatHistoryReadingProgress(page?: number, totalPages?: number, isEn = false): string {
   if (!page || page <= 0) return '';
   let curPage = page;
   if (curPage > 1000) {
@@ -194,10 +194,11 @@ function formatHistoryReadingProgress(page?: number, totalPages?: number): strin
       return `${pct}%`;
     }
   }
+  const pagePrefix = isEn ? 'Page' : 'Hal.';
   if (totalPages && totalPages > 0) {
-    return `Hal. ${Math.min(curPage, totalPages)}/${totalPages}`;
+    return `${pagePrefix} ${Math.min(curPage, totalPages)}/${totalPages}`;
   }
-  return `Hal. ${curPage}`;
+  return `${pagePrefix} ${curPage}`;
 }
 
 export function renderHistoryView(this: YomicApp, container: HTMLElement): void {
@@ -231,7 +232,7 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
           .map((m) => {
             const fallbackSvg = buildMangaCoverSvg(m);
             const coverSrc = this.getMangaCoverHtmlSrc(m);
-            const pageStr = formatHistoryReadingProgress(m.lastReadPage, m.lastReadTotalPages);
+            const pageStr = formatHistoryReadingProgress(m.lastReadPage, m.lastReadTotalPages, this.settings.appLanguage === 'en');
             const chMeta = pageStr ? `Ch. ${m.lastReadChapter} (${pageStr})` : `Ch. ${m.lastReadChapter}`;
             return `
               <article class="manga-card" data-open-detail="${escapeXml(m.id)}">
@@ -292,7 +293,7 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
                 .map((m) => {
                   const fallbackSvg = buildMangaCoverSvg(m);
                   const coverSrc = this.getMangaCoverHtmlSrc(m);
-                  const pageStr = formatHistoryReadingProgress(m.lastReadPage, m.lastReadTotalPages);
+                  const pageStr = formatHistoryReadingProgress(m.lastReadPage, m.lastReadTotalPages, this.settings.appLanguage === 'en');
                   return `
                     <div class="v1-update-row">
                       <div class="v1-update-left" data-open-detail="${escapeXml(m.id)}">

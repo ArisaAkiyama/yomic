@@ -105,8 +105,8 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
   this.setTopbarHeader(this.t('library.title'));
   const checkSvg = getIconSvg('check', { size: 13, strokeWidth: 2.5 });
   const filterModes: Array<{ id: LibraryFilterMode; label: string }> = [
-    { id: 'all', label: 'Semua' },
-    { id: 'unread', label: 'Belum Dibaca' },
+    { id: 'all', label: this.l('Semua', 'All') },
+    { id: 'unread', label: this.l('Belum Dibaca', 'Unread') },
     { id: 'reading', label: this.l('Sedang Dibaca', 'Reading') },
     { id: 'completed', label: this.t('library.filterCompleted') },
     { id: 'downloaded', label: this.l('Tersimpan Offline', 'Downloaded') }
@@ -270,7 +270,7 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
                         const count = libraryManga.filter((m) => m.categoryIds && m.categoryIds.includes(cat.id)).length;
                         const isSelected = this.libraryCategoryFilter === cat.id;
                         return `
-                          <div class="v1-filter-modal-item v1-cat-filter-item ${isSelected ? 'selected' : ''}" data-lib-cat="${cat.id}">
+                          <div class="v1-filter-modal-item v1-cat-filter-item ${isSelected ? 'selected' : ''}" data-lib-cat="${cat.id}" role="button" tabindex="0" aria-pressed="${isSelected ? 'true' : 'false'}">
                             <span class="v1-filter-modal-check">${isSelected ? checkSvg : ''}</span>
                             <span class="v1-filter-item-name">${escapeXml(cat.name)}</span>
                             <span class="v1-cat-count-badge tabular-nums">${count}</span>
@@ -600,7 +600,7 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
     });
   });
   container.querySelectorAll<HTMLElement>('[data-lib-cat]').forEach((el) => {
-    el.addEventListener('click', (ev) => {
+    const selectCat = (ev: Event) => {
       if ((ev.target as HTMLElement).closest('.v1-cat-item-delete-btn')) return;
       ev.stopPropagation();
       const val = el.dataset.libCat;
@@ -610,7 +610,16 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
         this.libraryCategoryFilter = Number(val);
       }
       this.renderLibraryView(container);
-    });
+    };
+    el.addEventListener('click', selectCat);
+    if (el.tagName !== 'BUTTON') {
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          selectCat(ev);
+        }
+      });
+    }
   });
   container.querySelectorAll<HTMLButtonElement>('[data-delete-cat]').forEach((btn) => {
     btn.addEventListener('click', async (ev) => {
@@ -712,16 +721,20 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
   bindCardContextMenus(container);
   document.getElementById('ctxMarkRead')?.addEventListener('click', () => {
     if (ctxManga) {
+      const targetManga = ctxManga;
+      const prevUnread = targetManga.unreadCount;
+      const prevLastViewed = targetManga.lastViewedEpoch;
+      const prevReadFlags = targetManga.chapters.map((c) => c.isRead);
       const nowEpoch = Date.now();
-      ctxManga.unreadCount = 0;
-      ctxManga.lastViewedEpoch = nowEpoch;
-      ctxManga.chapters.forEach((c) => {
+      targetManga.unreadCount = 0;
+      targetManga.lastViewedEpoch = nowEpoch;
+      targetManga.chapters.forEach((c) => {
         c.isRead = true;
       });
       this.readingStatsData = null;
       if (this.bridge.isWebViewHost) {
         void this.bridge
-          .invoke<MangaItem>('manga:mark-chapters', { mangaId: ctxManga.id, mode: 'all-read' })
+          .invoke<MangaItem>('manga:mark-chapters', { mangaId: targetManga.id, mode: 'all-read' })
           .then((res) => {
             if (res) {
               res.unreadCount = 0;
@@ -732,25 +745,35 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
             if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
           })
           .catch(() => {
+            targetManga.unreadCount = prevUnread;
+            targetManga.lastViewedEpoch = prevLastViewed;
+            targetManga.chapters.forEach((c, idx) => {
+              if (idx < prevReadFlags.length) c.isRead = prevReadFlags[idx];
+            });
             this.showToast(this.l('Gagal menyinkronkan status baca ke database.', 'Failed to sync read status to database.'), 'warning');
+            if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
           });
       }
-      this.showToast(this.l(`Seluruh bab ${ctxManga.title} ditandai sudah dibaca.`, `All chapters of ${ctxManga.title} marked as read.`));
+      this.showToast(this.l(`Seluruh bab ${targetManga.title} ditandai sudah dibaca.`, `All chapters of ${targetManga.title} marked as read.`));
     }
     this.contextMenuMangaId = null;
     this.renderLibraryView(container);
   });
   document.getElementById('ctxMarkUnread')?.addEventListener('click', () => {
     if (ctxManga) {
-      ctxManga.unreadCount = ctxManga.totalChapters;
-      ctxManga.lastViewedEpoch = 0;
-      ctxManga.chapters.forEach((c) => {
+      const targetManga = ctxManga;
+      const prevUnread = targetManga.unreadCount;
+      const prevLastViewed = targetManga.lastViewedEpoch;
+      const prevReadFlags = targetManga.chapters.map((c) => c.isRead);
+      targetManga.unreadCount = targetManga.totalChapters;
+      targetManga.lastViewedEpoch = 0;
+      targetManga.chapters.forEach((c) => {
         c.isRead = false;
       });
       this.readingStatsData = null;
       if (this.bridge.isWebViewHost) {
         void this.bridge
-          .invoke<MangaItem>('manga:mark-chapters', { mangaId: ctxManga.id, mode: 'all-unread' })
+          .invoke<MangaItem>('manga:mark-chapters', { mangaId: targetManga.id, mode: 'all-unread' })
           .then((res) => {
             if (res) {
               res.unreadCount = res.totalChapters;
@@ -761,40 +784,65 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
             if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
           })
           .catch(() => {
+            targetManga.unreadCount = prevUnread;
+            targetManga.lastViewedEpoch = prevLastViewed;
+            targetManga.chapters.forEach((c, idx) => {
+              if (idx < prevReadFlags.length) c.isRead = prevReadFlags[idx];
+            });
             this.showToast(this.l('Gagal menyinkronkan status belum dibaca ke database.', 'Failed to sync unread status to database.'), 'warning');
+            if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
           });
       }
-      this.showToast(this.l(`${ctxManga.title} ditandai belum dibaca.`, `${ctxManga.title} marked as unread.`));
+      this.showToast(this.l(`${targetManga.title} ditandai belum dibaca.`, `${targetManga.title} marked as unread.`));
     }
     this.contextMenuMangaId = null;
     this.renderLibraryView(container);
   });
   document.getElementById('ctxDeleteDownloads')?.addEventListener('click', () => {
     if (ctxManga) {
-      ctxManga.downloadedCount = 0;
-      ctxManga.chapters.forEach((c) => {
+      const targetManga = ctxManga;
+      const prevDlCount = targetManga.downloadedCount;
+      const prevDlFlags = targetManga.chapters.map((c) => c.isDownloaded);
+      targetManga.downloadedCount = 0;
+      targetManga.chapters.forEach((c) => {
         c.isDownloaded = false;
       });
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke('downloads:delete-manga', { mangaId: ctxManga.id }).catch(() => {
+        void this.bridge.invoke('downloads:delete-manga', { mangaId: targetManga.id }).catch(() => {
+          targetManga.downloadedCount = prevDlCount;
+          targetManga.chapters.forEach((c, idx) => {
+            if (idx < prevDlFlags.length) c.isDownloaded = prevDlFlags[idx];
+          });
           this.showToast(this.l('Gagal menghapus unduhan dari disk.', 'Failed to delete downloads from disk.'), 'warning');
+          if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
         });
       }
-      this.showToast(this.l(`Unduhan untuk ${ctxManga.title} telah dihapus.`, `Downloads for ${ctxManga.title} deleted.`));
+      this.showToast(this.l(`Unduhan untuk ${targetManga.title} telah dihapus.`, `Downloads for ${targetManga.title} deleted.`));
     }
     this.contextMenuMangaId = null;
     this.renderLibraryView(container);
   });
   document.getElementById('ctxRemoveLibrary')?.addEventListener('click', () => {
     if (ctxManga) {
-      ctxManga.inLibrary = false;
+      const targetManga = ctxManga;
+      const prevInLibrary = targetManga.inLibrary;
+      targetManga.inLibrary = false;
       if (this.bridge.isWebViewHost) {
-        void this.bridge.invoke<MangaItem>('manga:toggle-library', { mangaId: ctxManga.id }).catch(() => {
-          this.showToast(this.l('Gagal menghapus komik dari pustaka.', 'Failed to remove comic from library.'), 'warning');
-        });
+        void this.bridge
+          .invoke<MangaItem>('manga:toggle-library', { mangaId: targetManga.id })
+          .then(() => {
+            this.persistLocalCache();
+          })
+          .catch(() => {
+            targetManga.inLibrary = prevInLibrary;
+            this.persistLocalCache();
+            this.showToast(this.l('Gagal menghapus komik dari pustaka.', 'Failed to remove comic from library.'), 'warning');
+            if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
+          });
+      } else {
+        this.persistLocalCache();
       }
-      this.showToast(this.l(`${ctxManga.title} dihapus dari Pustaka.`, `${ctxManga.title} removed from Library.`));
-      this.persistLocalCache();
+      this.showToast(this.l(`${targetManga.title} dihapus dari Pustaka.`, `${targetManga.title} removed from Library.`));
     }
     this.contextMenuMangaId = null;
     this.renderLibraryView(container);
@@ -911,7 +959,12 @@ export function isExplicitManga(this: YomicApp, manga: MangaItem): boolean {
   if (Array.isArray(manga.genres) && manga.genres.some((g) => explicitTags.includes(String(g).trim().toLowerCase()))) {
     return true;
   }
-  const ext = this.extensions.find((e) => e.id === manga.sourceId || e.name.toLowerCase() === (manga.sourceName || '').toLowerCase());
+  const ext = this.extensions.find(
+    (e) =>
+      String(e.sourceId ?? '') === String(manga.sourceId ?? '') ||
+      e.id === manga.sourceId ||
+      e.name.toLowerCase() === (manga.sourceName || '').toLowerCase()
+  );
   if (ext?.isNsfw) return true;
   return (manga.sourceName || '').toLowerCase().includes('nhentai');
 }

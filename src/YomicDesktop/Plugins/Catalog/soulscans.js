@@ -144,9 +144,10 @@ var source = {
         };
     },
 
-    getMangaList: function(page, status, genre, type) {
+    getMangaList: function(page, status, genre, type, sort) {
         let p = page || 1;
-        let url = `${this.apiUrl}/search?type=COMIC&limit=${this.pageSize}&page=${p}`;
+        let sortKey = sort === "latest" ? "updated_at" : "views";
+        let url = `${this.apiUrl}/search?type=COMIC&limit=${this.pageSize}&page=${p}&sort=${sortKey}&order=desc`;
         if (status === 1) url += "&status=ongoing";
         else if (status === 2 || status === 4) url += "&status=completed";
 
@@ -235,7 +236,7 @@ var source = {
                 name += " - " + chTitle;
             }
 
-            let dateUpload = u.created_at ? new Date(u.created_at).getTime() : 0;
+            let dateUpload = u.created_at ? ((ts => isNaN(ts) ? 0 : ts)(new Date(u.created_at).getTime())) : 0;
             chapters.push({
                 name: name,
                 url: this.getChapterPath(seriesSlug, chSlug),

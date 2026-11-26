@@ -18,8 +18,8 @@ var source = {
     isNsfw: true,
     isHasMorePages: true,
     pageSize: 20,
-    genres: ['Action', 'Adult', 'Adventure', 'Comedy', 'Cooking', 'Crime', 'Cultivation', 'Demon', 'Demons', 'Drama', 'Ecchi', 'Fantasy', 'Game', 'Gender Bender', 'Gore', 'Harem', 'Historical', 'Horror', 'Isekai', 'Josei', 'Magic', 'Martial Arts', 'Mature', 'Mecha', 'Medical', 'Military', 'Music', 'Mystery', 'Psychological', 'Reincarnation', 'Romance', 'School', 'School Life', 'Sci-Fi', 'Seinen', 'Shoujo', 'Shounen', 'Slice of Life', 'Smut', 'Sports', 'Super Power', 'Supernatural', 'Survival', 'Thriller', 'Time Travel', 'Tragedy', 'Webtoon'],
-    formats: ['Manga', 'Manhwa', 'Manhua'],
+    genres: [],
+    formats: [],
 
     requestUrl: function(url, headers) {
         let reqHeaders = headers || {};
@@ -83,7 +83,7 @@ var source = {
         let res = this.requestUrl(url, { "Accept": "application/json" });
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: page || 1 };
 
-        let json = (() => { try { return JSON.parse(res.body) || {}; } catch (e) { return {}; } })();
+        let json = (() => { try { let p = JSON.parse(res.body); return Array.isArray(p) ? p : []; } catch (e) { return []; } })();
         let items = [];
         for (let s of json) {
             let title = (s.title && s.title.rendered) ? s.title.rendered : (s.slug || "");

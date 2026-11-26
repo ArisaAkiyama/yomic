@@ -18,8 +18,8 @@ var source = {
     isNsfw: false,
     isHasMorePages: true,
     pageSize: 20,
-    genres: ['Action', 'Adult', 'Adventure', 'Comedy', 'Cooking', 'Crime', 'Cultivation', 'Demon', 'Demons', 'Drama', 'Ecchi', 'Fantasy', 'Game', 'Gender Bender', 'Gore', 'Harem', 'Historical', 'Horror', 'Isekai', 'Josei', 'Magic', 'Martial Arts', 'Mature', 'Mecha', 'Medical', 'Military', 'Music', 'Mystery', 'Psychological', 'Reincarnation', 'Romance', 'School', 'School Life', 'Sci-Fi', 'Seinen', 'Shoujo', 'Shounen', 'Slice of Life', 'Smut', 'Sports', 'Super Power', 'Supernatural', 'Survival', 'Thriller', 'Time Travel', 'Tragedy', 'Webtoon'],
-    formats: ['Manga', 'Manhwa', 'Manhua'],
+    genres: [],
+    formats: [],
 
     apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVlZm5hb2p4aXZ2eGVhbWxqc2tuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc3MTU5MjksImV4cCI6MjA2MzI5MTkyOX0._lEBN5puTvATwtYodg4zbcoTwg0ss3j2BebD8WoHt9A",
 
@@ -47,7 +47,7 @@ var source = {
         let url = this.apiUrl + "/Book?select=id,judul,cover&type=not.ilike.*novel*&order=id.desc&offset=" + offset + "&limit=20";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let books = (() => { try { return JSON.parse(res.body) || []; } catch (e) { return []; } })();
+        let books = (() => { try { let p = JSON.parse(res.body); return Array.isArray(p) ? p : []; } catch (e) { return []; } })();
         let items = books.map(b => ({
             title: b.judul,
             url: "/detail/" + b.id,
@@ -63,7 +63,7 @@ var source = {
         let url = this.apiUrl + "/Chapter?select=bookId,Book!inner(id,judul,cover)&Book.type=not.ilike.*novel*&order=created_at.desc&offset=" + offset + "&limit=30";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let chapters = (() => { try { return JSON.parse(res.body) || []; } catch (e) { return []; } })();
+        let chapters = (() => { try { let p = JSON.parse(res.body); return Array.isArray(p) ? p : []; } catch (e) { return []; } })();
         let seen = {};
         let items = [];
         for (let ch of chapters) {
@@ -85,7 +85,7 @@ var source = {
         let url = this.apiUrl + "/Book?select=id,judul,cover&type=not.ilike.*novel*&judul=ilike.*" + encodeURIComponent(query || "") + "*&order=updated_at.desc&offset=" + offset + "&limit=20";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
-        let books = (() => { try { return JSON.parse(res.body) || []; } catch (e) { return []; } })();
+        let books = (() => { try { let p = JSON.parse(res.body); return Array.isArray(p) ? p : []; } catch (e) { return []; } })();
         let items = books.map(b => ({
             title: b.judul,
             url: "/detail/" + b.id,
@@ -109,7 +109,7 @@ var source = {
         if (!res || res.status !== 200 || !res.body) {
             return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
         }
-        let books = (() => { try { return JSON.parse(res.body) || []; } catch (e) { return []; } })();
+        let books = (() => { try { let p = JSON.parse(res.body); return Array.isArray(p) ? p : []; } catch (e) { return []; } })();
         if (books.length === 0) return { title: "", url: url, thumbnailUrl: "", author: "", status: 0, description: "", genre: [] };
         let b = books[0];
 
@@ -141,7 +141,7 @@ var source = {
         let chUrl = this.apiUrl + "/Chapter?select=id,bookId,chapter,nama,created_at&bookId=eq." + bookId + "&order=chapter.desc";
         let res = this.requestUrl(chUrl);
         if (!res || res.status !== 200 || !res.body) return [];
-        let chs = (() => { try { return JSON.parse(res.body) || []; } catch (e) { return []; } })();
+        let chs = (() => { try { let p = JSON.parse(res.body); return Array.isArray(p) ? p : []; } catch (e) { return []; } })();
 
         return chs.map(ch => ({
             name: ch.nama ? ch.nama : ("Chapter " + ch.chapter),
@@ -155,7 +155,7 @@ var source = {
         let apiUrl = this.apiUrl + "/Chapter?select=id,bookId,isigambar&id=eq." + chId;
         let res = this.requestUrl(apiUrl);
         if (!res || res.status !== 200 || !res.body) return [];
-        let chapters = (() => { try { return JSON.parse(res.body) || []; } catch (e) { return []; } })();
+        let chapters = (() => { try { let p = JSON.parse(res.body); return Array.isArray(p) ? p : []; } catch (e) { return []; } })();
         if (chapters.length === 0 || !chapters[0].isigambar) return [];
 
         try {

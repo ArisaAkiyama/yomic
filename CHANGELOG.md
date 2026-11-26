@@ -2,6 +2,25 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [2.4.0] - 2026-11-26
+
+Update Details：
+◆ Add deep SSRF & DNS-rebinding defense in UrlSecurityHelper.cs blocking RFC 6890/2544/TEST-NET IPv4 ranges and IPv6 transition/tunnel ranges (::/96, SIIT, NAT64, 6to4, Teredo, RFC 6666), plus dual-stack DoH/System-DNS resolution verification (IsSafeResolvedPublicUrlAsync with 60s anti-rebinding cache), IsHostOrSubdomain helper, and strict magic-byte image payload validation (IsValidImagePayload for JPEG, PNG, GIF, WebP, BMP, TIFF, ICO, AVIF/HEIF, JPEG XL, and strict SVG).
+◆ Add manual per-hop redirect validation (IsTrustedUpdateDownloadUri), 250 MB installer download safety cap, concurrency guard (_isInstalling), and official .sha256 sidecar checksum fetching & parsing (ParseSha256SidecarText & TryFetchSidecarSha256Async) in UpdateService.
+◆ Add unified process-wide SQLite write & maintenance lock (MangaDbContext.DatabaseWriteGate) shared across LibraryService, BackendIpcController writes, and BackupService restore swaps, paired with ReplaceSqliteFileWithRetry, strict WAL/SHM removal checks against SQLITE_CORRUPT, and DownloadService.WaitForActiveDownloadsToStopAsync preserving .tmp progress before restore.
+◆ Add deferred background Jint plugin loading (SourceManager deferExtensionLoad + EnsureExtensionsLoadedAsync) and non-blocking cached announcement bootstrap (event:announcements-updated) so MainWindow opens instantly without UI-thread freezes.
+◆ Add bounded single-flight next-chapter page list preloading (_preloadedPageListCache, max 32 entries, 10-min TTL) triggered within 3 pages of chapter end in BackendIpcController.Reader.cs and transient src-* memory eviction during long browsing sessions.
+◆ Add manual per-hop redirect handling with strict host-scoped Cookie & Authorization isolation across DownloadService (SendPageRequestWithSafeRedirectsAsync), WebResourceImageProxy, and JsMangaSource to prevent cross-origin cookie/auth leakage on 302 redirects, plus magic-byte image validation and curl --resolve DoH public-IP pinning.
+◆ Add host-specific Cloudflare pre-solved cookie lookup (HasPreSolvedCookiesFor), parallel IPv4+IPv6 DoH SSRF guards with race-free ConditionalWeakTable page tracking (_guardedPages), automatic headless popup closure, and parent-domain cookie merge cleanup in CloudflareBypassService.
+◆ Add parallel IPv4/IPv6 DoH resolution with 5-minute caching and zero ISP DNS leakage when DoH succeeds (NetworkService.ResolveHostIpsAsync), socket-level SSRF blocking with 3s per-IP connect caps, and single-flight connectivity checks (_isCheckingConnectivity).
+◆ Add official-GitHub-only index.min.json fetching in ExtensionRepositoryService (preventing third-party CDN manifest forgery), cached repo DoH resolution (_repoDohCache), and atomic index cache writes (WriteIndexCacheAtomically).
+◆ Add MyAnimeList auth epoch protection (_authEpoch & TryApplyRefreshedTokens in MyAnimeListService) preventing stale background token refreshes from reviving logged-out sessions, plus strict host-only keyword matching in SourceIdMigrationService.
+◆ Add optimistic WebUI updates with full state snapshot rollback on backend errors across Library (library.ts), Manga Detail (manga-detail.ts — MAL tracker, bookmarks, chapter read/download actions, Hiatus status badge), and Settings (settings.ts — history/cache/library maintenance), plus real-time sync of completed downloads into Library downloadedCount and filters (backend-sync.ts).
+◆ Add Reader image fit/zoom builder (buildReaderImgStyle), debounced progress-save flush/cancel before chapter switching to prevent cross-chapter progress corruption, URL-hashed cover cache precedence in WebResourceImageProxy, modal/busy-dialog Tab focus trapping (app.ts & settings.ts), capture-phase Escape isolation in tutorial.ts, and formatted reading progress in updates-history.ts.
+◆ Improve 90+ bundled JavaScript extensions in Plugins/Catalog with getMangaList sort ("latest" vs popular) support (including komiku.js and Blogger/Madara/MangaStream sources), mangadex.js chapter feed offset & totalChapters pagination fix, cleaned unsupported filter metadata, and null-safe JSON feed parsing.
+◆ Improve Inno Setup installer (Installer/Yomic.iss) with graceful close before force-kill so App.OnExit cleanly flushes SQLite WAL/logs and shuts down Puppeteer on upgrades.
+◆ Add upgraded Windows CI pipeline (.github/workflows/ci-desktop.yml enforcing strict tsc compile, automated version parity across csproj/iss/updater/WebUI, -warnaserror Release builds, and clean self-contained publish verification) and massively expanded automated test suites (new BehavioralServicesTests.cs + expanded CoreServicesTests, IntegrityAndCatalogTests, and WebUI node:test coverage).
+
 ## [2.3.0] - 2026-11-24
 
 Update Details：

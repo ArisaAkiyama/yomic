@@ -5,7 +5,7 @@
 
 #define MyAppName "Yomic"
 #define MyAppPublisher "ArisaAkiyama"
-#define MyAppVersion "2.3.0"
+#define MyAppVersion "2.4.0"
 #ifndef MySourceDir
   #define MySourceDir "..\dist\Yomic_v2"
 #endif
@@ -37,7 +37,7 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-AppMutex=Local\Yomic_SingleInstance_Mutex
+; Note: Do NOT set AppMutex here because Inno checks AppMutex BEFORE PrepareToInstall() can gracefully close Yomic.exe.
 CloseApplications=force
 RestartApplications=no
 
@@ -199,10 +199,13 @@ var
   ResultCode: Integer;
   BootstrapperPath: String;
 begin
-  // 1. Gracefully request close first so App.OnExit (Puppeteer 2s + WAL/log flush) completes cleanly before force close
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Sleep(2500);
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // 1. Gracefully request close first so App.OnExit (Puppeteer 2s + WAL/log flush) completes cleanly before force close;
+  //    skip the 2.5s grace wait when Yomic.exe is not running (ResultCode <> 0, e.g. 128 on fresh installs).
+  if Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+  begin
+    Sleep(2500);
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Yomic.Desktop.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
   // 2. Remove legacy Yomic v1 registry/uninstaller entries if present under another AppId

@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://img.yomic.local https: data: blob:; connect-src 'self' https://img.yomic.local; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none';" />
   <title>Yomic</title>
-  <link rel="stylesheet" href="./styles/tokens.css?v=2.3.0" />
-  <link rel="stylesheet" href="./styles/main.css?v=2.3.0" />
-  <script src="./preload-theme.js?v=2.3.0"></script>
+  <link rel="stylesheet" href="./styles/tokens.css?v=2.4.0" />
+  <link rel="stylesheet" href="./styles/main.css?v=2.4.0" />
+  <script src="./preload-theme.js?v=2.4.0"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -210,7 +210,7 @@
                   <span class="v1-reader-image-label" data-i18n="reader.autoCropLabel">Potong Tepi Putih (Auto-Crop)</span>
                   <span class="v1-reader-image-desc" data-i18n="reader.autoCropDesc">Pangkas margin kosong / letterbox</span>
                 </div>
-                <div id="toggleReaderCrop" class="toggle-switch" role="switch" aria-checked="false" aria-label="Auto-Crop Borders" tabindex="0">
+                <div id="toggleReaderCrop" class="toggle-switch" role="switch" aria-checked="false" aria-label="Potong Tepi Putih (Auto-Crop)" data-i18n-aria="reader.autoCropLabel" tabindex="0">
                   <div class="toggle-thumb"></div>
                 </div>
               </div>
@@ -219,7 +219,7 @@
                   <span class="v1-reader-image-label" data-i18n="reader.sharpenLabel">Penajaman Gambar (Sharpening)</span>
                   <span class="v1-reader-image-desc" data-i18n="reader.sharpenDesc">Tingkatkan kejernihan teks &amp; garis</span>
                 </div>
-                <div id="toggleReaderSharpen" class="toggle-switch" role="switch" aria-checked="false" aria-label="Image Sharpening" tabindex="0">
+                <div id="toggleReaderSharpen" class="toggle-switch" role="switch" aria-checked="false" aria-label="Penajaman Gambar (Sharpening)" data-i18n-aria="reader.sharpenLabel" tabindex="0">
                   <div class="toggle-thumb"></div>
                 </div>
               </div>
@@ -228,7 +228,7 @@
                   <span class="v1-reader-image-label" data-i18n="reader.optimizeLabel">Optimasi Gambar Cerdas</span>
                   <span class="v1-reader-image-desc" data-i18n="reader.optimizeDesc">Hemat memori dan beban GPU</span>
                 </div>
-                <div id="toggleReaderOpt" class="toggle-switch" role="switch" aria-checked="true" aria-label="Smart Image Optimization" tabindex="0">
+                <div id="toggleReaderOpt" class="toggle-switch" role="switch" aria-checked="true" aria-label="Optimasi Gambar Cerdas" data-i18n-aria="reader.optimizeLabel" tabindex="0">
                   <div class="toggle-thumb"></div>
                 </div>
               </div>
@@ -245,7 +245,7 @@
 
           <!-- Row 1: Circle Prev | Floating Scrubber Pill (Current - Slider - Total) | Circle Next -->
           <div class="v1-reader-pill-row">
-            <button id="btnPrevChapter" class="v1-reader-circle-nav-btn" title="Chapter Sebelumnya (Shift+←)" aria-label="Chapter Sebelumnya" data-i18n-title="reader.prevChapterTitle" data-i18n-aria="reader.prevChapterAria">
+            <button id="btnPrevChapter" class="v1-reader-circle-nav-btn" title="Chapter Sebelumnya ([)" aria-label="Chapter Sebelumnya" data-i18n-title="reader.prevChapterTitle" data-i18n-aria="reader.prevChapterAria">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12H4M10 18L4 12L10 6"/></svg>
             </button>
 
@@ -258,24 +258,24 @@
               <span id="readerPageTotalText" class="v1-reader-pill-num total tabular-nums">5</span>
             </div>
 
-            <button id="btnNextChapter" class="v1-reader-circle-nav-btn" title="Chapter Selanjutnya (Shift+→)" aria-label="Chapter Selanjutnya" data-i18n-title="reader.nextChapterTitle" data-i18n-aria="reader.nextChapterAria">
+            <button id="btnNextChapter" class="v1-reader-circle-nav-btn" title="Chapter Selanjutnya (])" aria-label="Chapter Selanjutnya" data-i18n-title="reader.nextChapterTitle" data-i18n-aria="reader.nextChapterAria">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12H20M14 6L20 12L14 18"/></svg>
             </button>
           </div>
 
           <!-- Row 2: Floating Mobile-Style Dock (3 Buttons: Mode Baca, Tampilan, Daftar Chapter — No Auto-Scroll) -->
           <div class="v1-reader-dock-card">
-            <button id="btnReaderModeFlyout" class="v1-reader-dock-btn" type="button" title="Mode Baca" aria-label="Mode Baca">
+            <button id="btnReaderModeFlyout" class="v1-reader-dock-btn" type="button" title="Mode Baca" aria-label="Mode Baca" data-i18n-title="reader.modeDockAria" data-i18n-aria="reader.modeDockAria">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5C2 4.67157 2.67157 4 3.5 4H7.5C9.98528 4 12 6.01472 12 8.5V20C12 18.3431 10.6569 17 9 17H3.5C2.67157 17 2 16.3284 2 15.5V5.5Z"/><path d="M22 5.5C22 4.67157 21.3284 4 20.5 4H16.5C14.0147 4 12 6.01472 12 8.5V20C12 18.3431 13.3431 17 15 17H20.5C21.3284 17 22 16.3284 22 15.5V5.5Z"/></svg>
               <span id="readerModeDockLabel">Webtoon</span>
             </button>
 
-            <button id="btnReaderImageFlyout" class="v1-reader-dock-btn" type="button" title="Tampilan &amp; Kualitas Gambar" aria-label="Tampilan">
+            <button id="btnReaderImageFlyout" class="v1-reader-dock-btn" type="button" title="Tampilan &amp; Kualitas Gambar" aria-label="Tampilan" data-i18n-title="reader.displayDockTitle" data-i18n-aria="reader.displayDockLabel">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10.5 6h9M3 6h3.5M6 4v4M13.5 12h7M3 12h6.5M10 10v4M16.5 18h4M3 18h9.5M13 16v4"/></svg>
               <span data-i18n="reader.displayDockLabel">Tampilan</span>
             </button>
 
-            <button id="btnReaderChapterListDock" class="v1-reader-dock-btn" type="button" title="Daftar Chapter" aria-label="Daftar Chapter">
+            <button id="btnReaderChapterListDock" class="v1-reader-dock-btn" type="button" title="Daftar Chapter" aria-label="Daftar Chapter" data-i18n-title="reader.chapterListAria" data-i18n-aria="reader.chapterListAria">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"><path d="M4 6h16M4 12h12M4 18h8"/></svg>
               <span data-i18n="reader.chapterListAria">Daftar Chapter</span>
             </button>
@@ -297,7 +297,7 @@
             <span data-i18n="announcements.title">Pengumuman &amp; Info Developer</span>
           </div>
           <div class="announcement-header-actions">
-            <button id="btnRefreshAnnouncements" class="modal-close-btn announcement-refresh-btn" title="Muat Ulang Pengumuman" aria-label="Muat Ulang Pengumuman">
+            <button id="btnRefreshAnnouncements" class="modal-close-btn announcement-refresh-btn" title="Muat Ulang Pengumuman" aria-label="Muat Ulang Pengumuman" data-i18n-title="announcements.refresh" data-i18n-aria="announcements.refresh">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M18.364 8.04928L17.6569 7.34217C14.5327 4.21798 9.46734 4.21798 6.34315 7.34217C3.21895 10.4664 3.21895 15.5317 6.34315 18.6559C9.46734 21.7801 14.5327 21.7801 17.6569 18.6559C19.4737 16.8391 20.234 14.3658 19.9377 11.9995M18.364 3.80664V8.04928H14.1213"/></svg>
             </button>
             <button id="btnCloseAnnouncements" class="modal-close-btn" title="Tutup" aria-label="Tutup" data-i18n-title="modal.close" data-i18n-aria="modal.close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6L18 18"/></svg></button>
@@ -378,7 +378,7 @@
                 <span id="feedbackAttachmentName" class="feedback-attachment-name"></span>
                 <span id="feedbackAttachmentSize" class="feedback-attachment-size"></span>
               </div>
-              <button id="btnRemoveFeedbackAttachment" type="button" class="feedback-attachment-remove" title="Hapus lampiran" aria-label="Hapus lampiran">
+              <button id="btnRemoveFeedbackAttachment" type="button" class="feedback-attachment-remove" title="Hapus lampiran" aria-label="Hapus lampiran" data-i18n-title="feedback.removeAttachment" data-i18n-aria="feedback.removeAttachment">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6L18 18"/></svg>
               </button>
             </div>
@@ -450,9 +450,9 @@
           <button id="btnTutorialSkip" class="v1-btn-ghost tutorial-skip-btn" data-i18n="tutorial.skip">Lewati</button>
           
           <div id="tutorialStepDots" class="tutorial-step-dots" role="tablist" aria-label="Indikator langkah" data-i18n-aria="tutorial.stepsAria">
-            <button class="tutorial-dot active" data-slide-index="0" title="Langkah 1" aria-label="Langkah 1" data-i18n-title="tutorial.step1" data-i18n-aria="tutorial.step1"></button>
-            <button class="tutorial-dot" data-slide-index="1" title="Langkah 2" aria-label="Langkah 2" data-i18n-title="tutorial.step2" data-i18n-aria="tutorial.step2"></button>
-            <button class="tutorial-dot" data-slide-index="2" title="Langkah 3" aria-label="Langkah 3" data-i18n-title="tutorial.step3" data-i18n-aria="tutorial.step3"></button>
+            <button class="tutorial-dot active" role="tab" aria-selected="true" data-slide-index="0" title="Langkah 1" aria-label="Langkah 1" data-i18n-title="tutorial.step1" data-i18n-aria="tutorial.step1"></button>
+            <button class="tutorial-dot" role="tab" aria-selected="false" data-slide-index="1" title="Langkah 2" aria-label="Langkah 2" data-i18n-title="tutorial.step2" data-i18n-aria="tutorial.step2"></button>
+            <button class="tutorial-dot" role="tab" aria-selected="false" data-slide-index="2" title="Langkah 3" aria-label="Langkah 3" data-i18n-title="tutorial.step3" data-i18n-aria="tutorial.step3"></button>
           </div>
 
           <div class="tutorial-nav-buttons">
@@ -487,7 +487,7 @@
         <div class="app-update-notes-card">
           <div id="appUpdateNotesBody" class="app-update-notes-body"></div>
         </div>
-        <div id="appUpdateVersionText" class="app-update-version">Version: 2.3.0</div>
+        <div id="appUpdateVersionText" class="app-update-version">Version: 2.4.0</div>
         <div class="app-update-actions">
           <button id="btnStartAppUpdateNow" type="button" class="app-update-primary-btn" style="display: none;">Update Now</button>
         </div>
@@ -498,6 +498,6 @@
     <div id="toastContainer" class="toast-container" aria-live="polite"></div>
   </div>
 
-  <script type="module" src="./dist/app.js?v=2.3.0"></script>
+  <script type="module" src="./dist/app.js?v=2.4.0"></script>
 </body>
 </html>

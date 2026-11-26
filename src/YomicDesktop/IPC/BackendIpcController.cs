@@ -45,9 +45,53 @@ namespace YomicDesktop.IPC
         private static readonly ConcurrentDictionary<string, int> _chapterTotalPagesCache = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<long, int> _mangaLastTotalPagesCache = new();
         private static readonly ConcurrentDictionary<string, long> _chapterLastPageReadCache = new(StringComparer.OrdinalIgnoreCase);
+        private static string MakeChapterCacheKey(long sourceId, string chapterUrl) => $"{sourceId}|{chapterUrl}";
+        private static string MakeDownloadQueueItemId(long sourceId, string chapterUrl) => $"dl-{ComputeShortHash($"{sourceId}|{chapterUrl}")}";
+        // Bounded short-TTL cache + single-flight gate for preloaded next-chapter page lists
+        private static readonly ConcurrentDictionary<string, (List<string> Pages, DateTime ExpiresUtc)> _preloadedPageListCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, byte> _preloadingChapterUrls = new(StringComparer.Ordinal);
+        private const int MaxPreloadedPageListEntries = 32;
+        private static readonly TimeSpan PreloadedPageListTtl = TimeSpan.FromMinutes(10);
+
+        internal static bool TryGetPreloadedPageList(string key, out List<string> pages)
+        {
+            if (_preloadedPageListCache.TryGetValue(key, out var entry))
+            {
+                if (entry.ExpiresUtc > DateTime.UtcNow && entry.Pages.Count > 0)
+                {
+                    pages = new List<string>(entry.Pages);
+                    return true;
+                }
+                _preloadedPageListCache.TryRemove(key, out _);
+            }
+            pages = new List<string>();
+            return false;
+        }
+
+        internal static void StorePreloadedPageList(string key, List<string> pages)
+        {
+            if (string.IsNullOrEmpty(key) || pages == null || pages.Count == 0) return;
+            var now = DateTime.UtcNow;
+            if (_preloadedPageListCache.Count >= MaxPreloadedPageListEntries)
+            {
+                foreach (var kv in _preloadedPageListCache)
+                {
+                    if (kv.Value.ExpiresUtc <= now)
+                    {
+                        _preloadedPageListCache.TryRemove(kv.Key, out _);
+                    }
+                }
+                if (_preloadedPageListCache.Count >= MaxPreloadedPageListEntries)
+                {
+                    var oldestKey = _preloadedPageListCache.OrderBy(kv => kv.Value.ExpiresUtc).Select(kv => kv.Key).FirstOrDefault();
+                    if (oldestKey != null) _preloadedPageListCache.TryRemove(oldestKey, out _);
+                }
+            }
+            _preloadedPageListCache[key] = (new List<string>(pages), now.Add(PreloadedPageListTtl));
+        }
         private DateTime _lastDownloadEventPush = DateTime.MinValue;
-        private static readonly SemaphoreSlim _mangaInsertLock = new(1, 1);
-        private static readonly SemaphoreSlim _readerProgressDbLock = new(1, 1);
+        private static readonly SemaphoreSlim _mangaInsertLock = MangaDbContext.DatabaseWriteGate;
+        private static readonly SemaphoreSlim _readerProgressDbLock = MangaDbContext.DatabaseWriteGate;
         private int _isSyncingLibrary = 0;
         private int _isMalAuthInProgress = 0;
         private volatile bool _suppressDownloadSaveOnDispose = false;
@@ -75,7 +119,8 @@ namespace YomicDesktop.IPC
             HttpSource.DnsOverHttpsProviderGetter = () => SettingsService.DnsOverHttpsProvider;
             JsMangaSource.SelectedLanguage = string.Equals(SettingsService.MangaDexLanguage, "id", StringComparison.OrdinalIgnoreCase) ? "id" : "en";
             NetworkService = new NetworkService(SettingsService);
-            SourceManager = new SourceManager();
+            // Defer Jint plugin initialization to a background thread so MainWindow shows immediately without UI-thread freeze
+            SourceManager = new SourceManager(deferExtensionLoad: true);
             SourceStatusService = new SourceStatusService(SourceManager, SettingsService, NetworkService);
             ExtensionRepoService = new ExtensionRepositoryService(SourceManager, SettingsService, SourceStatusService);
             LibraryService = new LibraryService();
@@ -144,12 +189,20 @@ namespace YomicDesktop.IPC
             DownloadService.QueueChanged += OnDownloadQueueChanged;
             _ = Task.Run(async () =>
             {
-                await SourceIdMigrationService.RunIfNeededAsync(SourceManager);
-                var updatedExts = await ExtensionRepoService.AutoUpdateInstalledExtensionsAsync();
-                if (updatedExts > 0)
+                try
                 {
-                    var dtos = await GetExtensionsDtosAsync(false);
-                    PushEvent("event:extensions-updated", dtos);
+                    await SourceManager.EnsureExtensionsLoadedAsync();
+                    await SourceIdMigrationService.RunIfNeededAsync(SourceManager);
+                    var updatedExts = await ExtensionRepoService.AutoUpdateInstalledExtensionsAsync();
+                    if (updatedExts > 0)
+                    {
+                        var dtos = await GetExtensionsDtosAsync(false);
+                        PushEvent("event:extensions-updated", dtos);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogService.Warning("IPC", $"Startup migration/auto-update failed: {ex.Message}");
                 }
             });
         }
@@ -399,27 +452,32 @@ namespace YomicDesktop.IPC
             return defaultVal;
         }
 
-        public void Dispose()
+        private static void SafeDispose(Action action)
         {
             try
             {
-                if (!_suppressDownloadSaveOnDispose)
-                {
-                    DownloadService.SaveQueueSynchronously();
-                }
-                DownloadService.Dispose();
-                ExtensionRepoService.Dispose();
-                SourceManager.Dispose();
-                ImageProxy.Dispose();
-                MalService.Dispose();
-                SettingsService.Dispose();
-                AnnouncementService.Dispose();
-                UpdateService.Dispose();
-                SourceStatusService.Dispose();
-                NetworkService.Dispose();
-                LogService.CloseAndFlush();
+                action();
             }
             catch { }
+        }
+
+        public void Dispose()
+        {
+            if (!_suppressDownloadSaveOnDispose)
+            {
+                SafeDispose(() => DownloadService.SaveQueueSynchronously());
+            }
+            SafeDispose(() => DownloadService.Dispose());
+            SafeDispose(() => ExtensionRepoService.Dispose());
+            SafeDispose(() => SourceManager.Dispose());
+            SafeDispose(() => ImageProxy.Dispose());
+            SafeDispose(() => MalService.Dispose());
+            SafeDispose(() => SettingsService.Dispose());
+            SafeDispose(() => AnnouncementService.Dispose());
+            SafeDispose(() => UpdateService.Dispose());
+            SafeDispose(() => SourceStatusService.Dispose());
+            SafeDispose(() => NetworkService.Dispose());
+            SafeDispose(() => LogService.CloseAndFlush());
         }
     }
 }

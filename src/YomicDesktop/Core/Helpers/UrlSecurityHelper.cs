@@ -1,7 +1,15 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Yomic.Core.Helpers
 {
@@ -78,8 +86,16 @@ namespace Yomic.Core.Helpers
                 if (b[0] == 169 && b[1] == 254) return true;
                 // 172.16.0.0/12 (RFC1918 private)
                 if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
+                // 192.0.0.0/24 (RFC 6890 IETF Protocol Assignments) & 192.0.2.0/24 (TEST-NET-1)
+                if (b[0] == 192 && b[1] == 0 && (b[2] == 0 || b[2] == 2)) return true;
                 // 192.168.0.0/16 (RFC1918 private)
                 if (b[0] == 192 && b[1] == 168) return true;
+                // 198.18.0.0/15 (RFC 2544 benchmarking)
+                if (b[0] == 198 && (b[1] == 18 || b[1] == 19)) return true;
+                // 198.51.100.0/24 (TEST-NET-2)
+                if (b[0] == 198 && b[1] == 51 && b[2] == 100) return true;
+                // 203.0.113.0/24 (TEST-NET-3)
+                if (b[0] == 203 && b[1] == 0 && b[2] == 113) return true;
                 // 224.0.0.0/4+ (multicast & reserved)
                 if (b[0] >= 224) return true;
             }
@@ -92,6 +108,35 @@ namespace Yomic.Core.Helpers
                 byte[] b = ip.GetAddressBytes();
                 // fc00::/7 (Unique Local Address)
                 if ((b[0] & 0xFE) == 0xFC) return true;
+                // ::/96 (IPv4-compatible IPv6, e.g. ::127.0.0.1)
+                bool first8Zero = b[0] == 0 && b[1] == 0 && b[2] == 0 && b[3] == 0 &&
+                                  b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0;
+                if (first8Zero && b[8] == 0 && b[9] == 0 && b[10] == 0 && b[11] == 0) return true;
+                // ::ffff:0:0/96 (RFC 2765 SIIT IPv4-translated, e.g. ::ffff:0:127.0.0.1)
+                if (first8Zero && b[8] == 0xFF && b[9] == 0xFF && b[10] == 0 && b[11] == 0) return true;
+                // 64:ff9b::/96 (NAT64 well-known) & 64:ff9b:1::/48 (NAT64 local-use)
+                if (b[0] == 0x00 && b[1] == 0x64 && b[2] == 0xFF && b[3] == 0x9B)
+                {
+                    if ((b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 0 && b[10] == 0 && b[11] == 0) ||
+                        (b[4] == 0x00 && b[5] == 0x01))
+                    {
+                        return true;
+                    }
+                }
+                // 2002::/16 (6to4 tunnel embedding IPv4 in bytes [2..5])
+                if (b[0] == 0x20 && b[1] == 0x02) return true;
+                // 2001:0::/32 (Teredo tunnel) & 2001:db8::/32 (Documentation)
+                if (b[0] == 0x20 && b[1] == 0x01 &&
+                    ((b[2] == 0x00 && b[3] == 0x00) || (b[2] == 0x0D && b[3] == 0xB8)))
+                {
+                    return true;
+                }
+                // 100::/64 (RFC 6666 Discard-Only)
+                if (b[0] == 0x01 && b[1] == 0x00 && b[2] == 0 && b[3] == 0 &&
+                    b[4] == 0 && b[5] == 0 && b[6] == 0 && b[7] == 0)
+                {
+                    return true;
+                }
             }
 
             return false;
@@ -184,6 +229,172 @@ namespace Yomic.Core.Helpers
             {
                 return false;
             }
+        }
+
+        public static bool IsHostOrSubdomain(string? rawUrl, string expectedDomain)
+        {
+            if (string.IsNullOrWhiteSpace(rawUrl) || string.IsNullOrWhiteSpace(expectedDomain))
+                return false;
+            if (!Uri.TryCreate(rawUrl.Trim(), UriKind.Absolute, out var uri))
+                return false;
+            string host = uri.IdnHost.TrimEnd('.');
+            string target = expectedDomain.Trim().TrimStart('.').TrimEnd('.');
+            if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(target))
+                return false;
+            return host.Equals(target, StringComparison.OrdinalIgnoreCase) ||
+                   host.EndsWith("." + target, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Validates that <paramref name="bytes"/> matches an allowlisted image format magic signature
+        /// (JPEG, PNG, WebP, GIF, BMP, AVIF/HEIF, TIFF, ICO, or strict SVG), rejecting HTML, JSON errors,
+        /// plain-text blocks, truncated bodies, and corrupt undecrypted ciphertext.
+        /// </summary>
+        public static bool IsValidImagePayload(byte[]? bytes)
+        {
+            if (bytes == null || bytes.Length < 4) return false;
+
+            // JPEG: FF D8 FF
+            if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+                return true;
+
+            // PNG: 89 50 4E 47 0D 0A 1A 0A
+            if (bytes.Length >= 8 &&
+                bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 &&
+                bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A)
+                return true;
+
+            // GIF: GIF87a / GIF89a
+            if (bytes.Length >= 6 &&
+                bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x38 &&
+                (bytes[4] == 0x37 || bytes[4] == 0x39) && bytes[5] == 0x61)
+                return true;
+
+            // WebP: RIFF....WEBP
+            if (bytes.Length >= 12 &&
+                bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+                bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50)
+                return true;
+
+            // BMP: BM (minimum 14-byte header)
+            if (bytes.Length >= 14 && bytes[0] == 0x42 && bytes[1] == 0x4D)
+                return true;
+
+            // TIFF: II*\0 or MM\0*
+            if ((bytes[0] == 0x49 && bytes[1] == 0x49 && bytes[2] == 0x2A && bytes[3] == 0x00) ||
+                (bytes[0] == 0x4D && bytes[1] == 0x4D && bytes[2] == 0x00 && bytes[3] == 0x2A))
+                return true;
+
+            // ICO: 00 00 01 00
+            if (bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0x01 && bytes[3] == 0x00)
+                return true;
+
+            // AVIF / HEIF ISO-BMFF container: ....ftyp + image brand
+            if (bytes.Length >= 12 &&
+                bytes[4] == 0x66 && bytes[5] == 0x74 && bytes[6] == 0x79 && bytes[7] == 0x70)
+            {
+                string brand = Encoding.ASCII.GetString(bytes, 8, 4);
+                if (brand is "avif" or "avis" or "mif1" or "msf1" or "heic" or "heix" or "hevc" or "hevx" or "jxl ")
+                {
+                    return true;
+                }
+            }
+
+            // JPEG XL codestream (FF 0A) or container (00 00 00 0C 4A 58 4C 20 0D 0A 87 0A)
+            if (bytes[0] == 0xFF && bytes[1] == 0x0A)
+                return true;
+            if (bytes.Length >= 12 &&
+                bytes[0] == 0x00 && bytes[1] == 0x00 && bytes[2] == 0x00 && bytes[3] == 0x0C &&
+                bytes[4] == 0x4A && bytes[5] == 0x58 && bytes[6] == 0x4C && bytes[7] == 0x20)
+                return true;
+
+            return false;
+        }
+
+        private static readonly HttpClient _dnsGuardClient = new() { Timeout = TimeSpan.FromSeconds(3) };
+        private static readonly ConcurrentDictionary<string, (bool IsSafe, DateTime ExpiresUtc)> _resolvedHostSafetyCache =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        public static async Task<bool> IsSafeResolvedPublicUrlAsync(string? rawUrl, CancellationToken cancellationToken = default)
+        {
+            if (!IsSafePublicHttpUrl(rawUrl, out var uri) || uri == null)
+                return false;
+
+            string host = uri.IdnHost.TrimEnd('.').Trim('[', ']');
+            if (IPAddress.TryParse(host, out var literalIp))
+            {
+                return !IsPrivateOrLoopbackIp(literalIp);
+            }
+
+            if (_resolvedHostSafetyCache.TryGetValue(host, out var cached) && cached.ExpiresUtc > DateTime.UtcNow)
+            {
+                return cached.IsSafe;
+            }
+
+            var ips = new List<IPAddress>();
+            async Task<(List<IPAddress> Found, bool Ok)> QueryDoHAsync(string qType, int recType)
+            {
+                var found = new List<IPAddress>();
+                try
+                {
+                    using var req = new HttpRequestMessage(
+                        HttpMethod.Get,
+                        $"https://1.1.1.1/dns-query?name={Uri.EscapeDataString(host)}&type={qType}");
+                    req.Headers.TryAddWithoutValidation("Accept", "application/dns-json");
+                    using var res = await _dnsGuardClient.SendAsync(req, cancellationToken).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return (found, false);
+                    var bytes = await ReadContentBoundedAsync(res.Content, 256 * 1024, cancellationToken).ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(bytes);
+                    if (doc.RootElement.TryGetProperty("Answer", out var answers))
+                    {
+                        foreach (var ans in answers.EnumerateArray())
+                        {
+                            if (ans.TryGetProperty("type", out var t) && t.GetInt32() == recType &&
+                                ans.TryGetProperty("data", out var d) &&
+                                IPAddress.TryParse(d.GetString(), out var ip))
+                            {
+                                found.Add(ip);
+                            }
+                        }
+                    }
+                    return (found, true);
+                }
+                catch
+                {
+                    return (found, false);
+                }
+            }
+
+            var aTask = QueryDoHAsync("A", 1);
+            var aaaaTask = QueryDoHAsync("AAAA", 28);
+            await Task.WhenAll(aTask, aaaaTask).ConfigureAwait(false);
+            var aRes = await aTask.ConfigureAwait(false);
+            var aaaaRes = await aaaaTask.ConfigureAwait(false);
+
+            foreach (var ip in aRes.Found.Concat(aaaaRes.Found))
+            {
+                if (!ips.Contains(ip)) ips.Add(ip);
+            }
+
+            // If DoH failed for either record type or returned nothing, also verify against system DNS
+            if (!aRes.Ok || !aaaaRes.Ok || ips.Count == 0)
+            {
+                try
+                {
+                    var sysIps = await Dns.GetHostAddressesAsync(host, cancellationToken).ConfigureAwait(false);
+                    foreach (var ip in sysIps)
+                    {
+                        if (!ips.Contains(ip)) ips.Add(ip);
+                    }
+                }
+                catch { }
+            }
+
+            bool isSafe = ips.Count > 0 && ips.All(ip => !IsPrivateOrLoopbackIp(ip));
+            if (_resolvedHostSafetyCache.Count >= 512) _resolvedHostSafetyCache.Clear();
+            // Short 60s cache balances fast subresource loading with tight DNS-rebinding resistance
+            _resolvedHostSafetyCache[host] = (isSafe, DateTime.UtcNow.AddSeconds(isSafe ? 60 : 15));
+            return isSafe;
         }
     }
 }

@@ -227,7 +227,10 @@ export class YomicApp {
   public readonly activityUpdates: ActivityUpdateItem[] = [];
   public readonly extensions: ExtensionItem[] = [];
   public readonly downloads: DownloadQueueItem[] = [];
-  public readonly settings: AppSettingsState = { ...DEFAULT_APP_SETTINGS };
+  public readonly settings: AppSettingsState = {
+    ...DEFAULT_APP_SETTINGS,
+    customHotkeys: { ...DEFAULT_APP_SETTINGS.customHotkeys }
+  };
   public activeSettingsTab: string = 'hub';
   public readonly tutorial = new TutorialController(this);
 
@@ -475,6 +478,9 @@ export class YomicApp {
           }
           return;
         }
+        // Trap Tab inside busy/loading dialogs even when zero focusable controls exist
+        ev.preventDefault();
+        return;
       }
       // Block background shell navigation/reader hotkeys while a modal dialog is open
       if (ev.key !== 'Escape') {
@@ -520,7 +526,7 @@ export class YomicApp {
       this.toggleSidebarCollapse();
       return;
     }
-    if (this.isHotmatched(ev, this.getEffectiveHotkey('globalToggleFullscreen')) && !this.isReaderOpen) {
+    if (this.isHotmatched(ev, this.getEffectiveHotkey('globalToggleFullscreen'))) {
       ev.preventDefault();
       this.bridge.toggleFullscreen();
       return;
@@ -647,6 +653,7 @@ export class YomicApp {
 
     // 3. Fallback Escape for modals / detail views
     if (ev.key === 'Escape') {
+      const tutorialBackdrop = document.getElementById('tutorialModalBackdrop');
       const annBackdrop = document.getElementById('announcementModalBackdrop');
       const fbBackdrop = document.getElementById('feedbackModalBackdrop');
       const malBackdrop = document.getElementById('malTrackerModalBackdrop');
@@ -656,7 +663,9 @@ export class YomicApp {
       const browseLangBackdrop = document.getElementById('browseLangModalBackdrop');
       const extLangBackdrop = document.getElementById('extLangModalBackdrop');
       const chapterFilterBackdrop = document.getElementById('chapterFilterModalBackdrop');
-      if (annBackdrop?.classList.contains('open')) {
+      if (tutorialBackdrop?.classList.contains('open')) {
+        this.tutorial.close(true);
+      } else if (annBackdrop?.classList.contains('open')) {
         this.closeAnnouncementsModal();
       } else if (fbBackdrop?.classList.contains('open')) {
         this.closeFeedbackModal();
@@ -695,12 +704,18 @@ export class YomicApp {
     }
   }
 
-  public toggleSidebarCollapse(forceState?: boolean): void {
+  public toggleSidebarCollapse(forceState?: boolean, persist = true): void {
     const sidebar = document.getElementById('appSidebar');
     if (!sidebar) return;
     const nextCollapsed = forceState ?? !sidebar.classList.contains('collapsed');
     sidebar.classList.toggle('collapsed', nextCollapsed);
     this.settings.compactSidebar = nextCollapsed;
+    if (persist) {
+      this.persistLocalCache();
+      if (this.bridge.isWebViewHost) {
+        void this.bridge.invoke('settings:update', { key: 'compactSidebar', value: nextCollapsed }).catch(() => {});
+      }
+    }
   }
 
   public navigateToTab(tab: NavTabId): void {
@@ -712,6 +727,11 @@ export class YomicApp {
     if (tab === 'browse') {
       this.activeBrowseSourceId = null;
       this.sourceFeedSearchQuery = '';
+      this.sourceFeedSort = 'popular';
+      this.sourceFeedStatusFilter = 'all';
+      this.sourceFeedTypeFilter = 'all';
+      this.sourceFeedGenreFilter = 'Semua';
+      this.isSourceFeedFilterFlyoutOpen = false;
       this.savedBrowseScrollTop = 0;
       this.viewScrollPositions.delete('browse_sources_list');
       for (const key of Array.from(this.viewScrollPositions.keys())) {
@@ -1248,6 +1268,7 @@ export class YomicApp {
 
   public async setMangaCategories(mangaId: string, categoryIds: number[]): Promise<boolean> {
     const manga = this.mangaList.find((m) => m.id === mangaId);
+    const prevCategoryIds = manga ? [...(manga.categoryIds || [])] : null;
     if (manga) {
       manga.categoryIds = [...categoryIds];
     }
@@ -1263,7 +1284,12 @@ export class YomicApp {
         this.showToast(this.l('Kategori komik berhasil diperbarui.', 'Comic categories updated.'));
         return true;
       } catch (err) {
-        this.showToast(this.l(`Gagal memperbarui kategori: ${String(err)}`, `Failed to update categories: ${String(err)}`));
+        if (manga && prevCategoryIds) {
+          manga.categoryIds = prevCategoryIds;
+          this.persistLocalCache();
+          this.renderCurrentWorkspace(true);
+        }
+        this.showToast(this.l(`Gagal memperbarui kategori: ${String(err)}`, `Failed to update categories: ${String(err)}`), 'warning');
         return false;
       }
     } else {

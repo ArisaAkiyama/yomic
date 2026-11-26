@@ -124,6 +124,9 @@ public class IntegrityAndCatalogTests
             Assert.DoesNotContain("let fullUrl = this.baseUrl + mangaUrl;", jsText, StringComparison.Ordinal);
             Assert.DoesNotContain("let fullUrl = this.baseUrl + chapterUrl;", jsText, StringComparison.Ordinal);
             Assert.DoesNotMatch(@"if\s*\(\s*[a-zA-Z_$][\w$]*\.status\s*!==?\s*200\b", jsText);
+            Assert.DoesNotMatch(@"if\s*\(\s*[a-zA-Z_$][\w$]*\.status\s*<\s*200\b", jsText);
+            Assert.DoesNotContain(".hpage a, .hpage a.r", jsText, StringComparison.Ordinal);
+            Assert.DoesNotContain("totalResults > 0 ? Math.ceil(totalResults / appPageSize) : (page + 1)", jsText, StringComparison.Ordinal);
         }
     }
 
@@ -182,6 +185,391 @@ public class IntegrityAndCatalogTests
         Assert.Equal($"{themangaBase}/series/foo?all=1", engine2.Evaluate("source.appendAllParam('/series/foo')").AsString());
         Assert.Equal($"{themangaBase}/series/foo?ref=1&all=1", engine2.Evaluate("source.appendAllParam('/series/foo?ref=1')").AsString());
         Assert.Equal($"{themangaBase}/series/foo?all=1", engine2.Evaluate("source.appendAllParam('/series/foo?all=1')").AsString());
+    }
+
+    [Fact]
+    public void CatalogRuntime_FixtureExecution_Batch11PluginRegressionsHandledGracefully()
+    {
+        string catalogDir = FindCatalogDirectory();
+
+        // 1. bacakomikpics.js: HTTP 200 HTML WAF body must return empty items instead of throwing TypeError
+        var bacaEngine = new Jint.Engine(opts => opts.TimeoutInterval(TimeSpan.FromSeconds(5)).LimitRecursion(64));
+        bacaEngine.SetValue("fetch", new Func<string, object?, object>((_, _) => new { status = 200, body = "<html>Cloudflare Challenge</html>" }));
+        bacaEngine.SetValue("Html", new { parse = new Func<string, string, Yomic.Core.Sources.JsDocument>(Yomic.Core.Sources.HtmlParser.parse) });
+        bacaEngine.Execute(File.ReadAllText(Path.Combine(catalogDir, "bacakomikpics.js"), Encoding.UTF8));
+        Assert.Equal(0, bacaEngine.Evaluate("source.getPopularManga(1).items.length").AsNumber());
+
+        // 2. aarlas.js: HTTP 200 HTML WAF body must return empty items/chapters instead of TypeError on json.feed
+        var aarlasEngine = new Jint.Engine(opts => opts.TimeoutInterval(TimeSpan.FromSeconds(5)).LimitRecursion(64));
+        aarlasEngine.SetValue("fetch", new Func<string, object?, object>((_, _) => new { status = 200, body = "<html>WAF</html>" }));
+        aarlasEngine.SetValue("Html", new { parse = new Func<string, string, Yomic.Core.Sources.JsDocument>(Yomic.Core.Sources.HtmlParser.parse) });
+        aarlasEngine.Execute(File.ReadAllText(Path.Combine(catalogDir, "aarlas.js"), Encoding.UTF8));
+        Assert.Equal(0, aarlasEngine.Evaluate("source.getPopularManga(1).items.length").AsNumber());
+        Assert.Equal(0, aarlasEngine.Evaluate("source.getChapterList('https://example.com/manga').length").AsNumber());
+
+        // 3. westmanga.js: 403 -> token-refresh retry returning HTML 200 on mirror 0 must fail over to mirror 1 and succeed
+        var westUrls = new List<string>();
+        int mirror0ApiHits = 0;
+        var westEngine = new Jint.Engine(opts => opts.TimeoutInterval(TimeSpan.FromSeconds(5)).LimitRecursion(64));
+        westEngine.SetValue("log", new Action<object?>(_ => { }));
+        westEngine.SetValue("fetch", new Func<string, object?, object>((url, _) =>
+        {
+            westUrls.Add(url);
+            if (url.Contains("/api/visit-token"))
+            {
+                return new { status = 200, body = "{\"token\":\"tok-test\"}" };
+            }
+            if (url.Contains("westmanga.my"))
+            {
+                mirror0ApiHits++;
+                if (mirror0ApiHits == 1)
+                {
+                    return new { status = 403, body = "" };
+                }
+                return new { status = 200, body = "<html>Mirror 0 Cloudflare HTML</html>" };
+            }
+            return new { status = 200, body = "{\"data\":[{\"title\":\"Mirror One Success\",\"slug\":\"mirror-one\"}],\"paginator\":{\"last_page\":1}}" };
+        }));
+        westEngine.SetValue("Html", new { parse = new Func<string, string, Yomic.Core.Sources.JsDocument>(Yomic.Core.Sources.HtmlParser.parse) });
+        westEngine.Execute(File.ReadAllText(Path.Combine(catalogDir, "westmanga.js"), Encoding.UTF8));
+        Assert.Equal(1, westEngine.Evaluate("source.requestApi('/api/contents', '?page=1').data.length").AsNumber());
+        Assert.Contains(westUrls, u => u.Contains("westmanga.top/api/contents"));
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task CatalogRuntime_FixtureExecution_Batch14TemplatesHandleLazyLoadPaginationMirrorsSortAndNaNDates()
+    {
+        string catalogDir = FindCatalogDirectory();
+
+        // 1. MangaStream template (astralscans.js): lazy-load data-src fallback, last-page pagination, no mirror double-fetch, and sort='latest'
+        var astralUrls = new List<string>();
+        bool failAllMirrors = false;
+        var astralEngine = new Jint.Engine(opts => opts.TimeoutInterval(TimeSpan.FromSeconds(5)).LimitRecursion(64));
+        astralEngine.SetValue("log", new Action<object?>(_ => { }));
+        astralEngine.SetValue("fetch", new Func<string, object?, object>((url, _) =>
+        {
+            astralUrls.Add(url);
+            if (failAllMirrors)
+            {
+                return new { status = 500, body = "" };
+            }
+            if (url.Contains("/chapter-1"))
+            {
+                return new
+                {
+                    status = 200,
+                    body = "<div id='readerarea'><img src='data:image/svg+xml;base64,PHN2Zy8+' data-src='https://cdn.example/p1.jpg' /><img src='data:image/svg+xml;base64,PHN2Zy8+' data-lazy-src='https://cdn.example/p2.jpg' /></div>"
+                };
+            }
+            // Page 2 with ONLY Previous link (.hpage a.l) — must NOT claim totalPages = 3
+            return new
+            {
+                status = 200,
+                body = "<div class='bs'><div class='bsx'><a href='https://astralscans.example/manga/test' title='Test'><img src='https://cdn.example/c.jpg'/></a></div></div><div class='hpage'><a class='l' href='?page=1'>Previous</a></div>"
+            };
+        }));
+        astralEngine.SetValue("Html", new { parse = new Func<string, string, Yomic.Core.Sources.JsDocument>(Yomic.Core.Sources.HtmlParser.parse) });
+        astralEngine.Execute(File.ReadAllText(Path.Combine(catalogDir, "astralscans.js"), Encoding.UTF8));
+
+        // 1a. Lazy-load data-src fallback extracts both pages instead of 0
+        Assert.Equal(2, astralEngine.Evaluate("source.getPageList('/chapter-1').length").AsNumber());
+        Assert.Equal("https://cdn.example/p1.jpg", astralEngine.Evaluate("source.getPageList('/chapter-1')[0]").AsString());
+
+        // 1b. Last page with .hpage a.l does not cause infinite pagination + sort='latest' sends order=update
+        astralUrls.Clear();
+        Assert.Equal(2, astralEngine.Evaluate("source.getMangaList(2, 1, 'Action', 'Manhwa', 'latest').totalPages").AsNumber());
+        Assert.Contains(astralUrls, u => u.Contains("order=update"));
+
+        // 1c. All mirrors failing does NOT execute a redundant extra fetch(url)
+        astralUrls.Clear();
+        failAllMirrors = true;
+        int mirrorCount = (int)astralEngine.Evaluate("source.mirrorUrls.length").AsNumber();
+        astralEngine.Evaluate("source.requestUrl('https://astralscans.example/manga/down')");
+        Assert.Equal(mirrorCount, astralUrls.Count);
+
+        // 2. Blogger template (inazumanga.js): 0 totalResults must NOT set totalPages = page + 1, and sort='latest' passes orderby=updated
+        var bloggerUrls = new List<string>();
+        var bloggerEngine = new Jint.Engine(opts => opts.TimeoutInterval(TimeSpan.FromSeconds(5)).LimitRecursion(64));
+        bloggerEngine.SetValue("log", new Action<object?>(_ => { }));
+        bloggerEngine.SetValue("fetch", new Func<string, object?, object>((url, _) =>
+        {
+            bloggerUrls.Add(url);
+            return new { status = 200, body = "{\"feed\":{\"openSearch$totalResults\":{\"$t\":\"0\"},\"entry\":[]}}" };
+        }));
+        bloggerEngine.SetValue("Html", new { parse = new Func<string, string, Yomic.Core.Sources.JsDocument>(Yomic.Core.Sources.HtmlParser.parse) });
+        bloggerEngine.Execute(File.ReadAllText(Path.Combine(catalogDir, "inazumanga.js"), Encoding.UTF8));
+        Assert.Equal(1, bloggerEngine.Evaluate("source.getMangaList(1, 1, null, null, 'latest').totalPages").AsNumber());
+        Assert.Contains(bloggerUrls, u => u.Contains("orderby=updated"));
+
+        // 3. JsMangaSource engine-level NaN protection: NaN dateUpload must become 0 (not long.MinValue)
+        string tempPlugin = Path.Combine(Path.GetTempPath(), $"yomic_nan_date_{Guid.NewGuid():N}.js");
+        await File.WriteAllTextAsync(tempPlugin, @"
+var source = {
+    name: 'NaNDateTest',
+    baseUrl: 'https://example.com',
+    language: 'en',
+    version: '1.0.0',
+    getPopularManga: function() { return { items: [], totalPages: 1 }; },
+    getSearchManga: function() { return { items: [], totalPages: 1 }; },
+    getMangaDetails: function(u) { return { title: 'T', url: u }; },
+    getChapterList: function() { return [{ name: 'Ch 1', url: '/c1', dateUpload: NaN, uploadDate: NaN }]; },
+    getPageList: function() { return []; }
+};", Encoding.UTF8);
+        try
+        {
+            using var jsSrc = new Yomic.Core.Sources.JsMangaSource(tempPlugin);
+            var chs = await jsSrc.GetChapterListAsync("/m1");
+            Assert.Single(chs);
+            Assert.Equal(0L, chs[0].DateUpload);
+        }
+        finally
+        {
+            try { File.Delete(tempPlugin); } catch { }
+        }
+    }
+
+    [Fact]
+    public void CatalogRuntime_FixtureExecution_CustomPluginsHonorSortAndChapterParsing()
+    {
+        string catalogDir = FindCatalogDirectory();
+
+        static (Jint.Engine Engine, List<string> Urls) CreatePluginEngine(
+            string scriptPath,
+            Func<string, object?, object> fetchImpl)
+        {
+            var urls = new List<string>();
+            var engine = new Jint.Engine(opts => opts.TimeoutInterval(TimeSpan.FromSeconds(5)).LimitRecursion(64));
+            engine.SetValue("log", new Action<object?>(_ => { }));
+            engine.SetValue("fetch", new Func<string, object?, object>((url, opts) =>
+            {
+                urls.Add(url);
+                return fetchImpl(url, opts);
+            }));
+            engine.SetValue("Html", new { parse = new Func<string, string, Yomic.Core.Sources.JsDocument>(Yomic.Core.Sources.HtmlParser.parse) });
+            engine.Execute(File.ReadAllText(scriptPath, Encoding.UTF8));
+            return (engine, urls);
+        }
+
+        // 1. MangaMillion: sort='latest' -> order=UPDATED_AT, sort='popular' -> order=TOTAL_VIEW_COUNT, genres=[], chapterNumber parsing
+        static string BuildProtobufChapterRecord(string name, byte chapId)
+        {
+            return "\x12" + (char)name.Length + name + "\x18" + (char)chapId;
+        }
+        string mmChapterFixture =
+            BuildProtobufChapterRecord("Chapter 12.5", 42) +
+            BuildProtobufChapterRecord("#100 Special", 100) +
+            BuildProtobufChapterRecord("Prologue", 5) +
+            new string(' ', 24);
+
+        var (mmEngine, mmUrls) = CreatePluginEngine(
+            Path.Combine(catalogDir, "mangamillion.js"),
+            (url, _) =>
+            {
+                if (url.Contains("/api/chapter_list"))
+                    return new { status = 200, body = mmChapterFixture };
+                if (url.Contains("/api/register"))
+                    return new { status = 200, body = "{\"token\":\"tok_test\"}" };
+                return new { status = 200, body = "" };
+            });
+
+        Assert.Equal(0, mmEngine.Evaluate("source.genres.length").AsNumber());
+        mmEngine.Evaluate("source.getMangaList(1, 0, null, null, 'latest')");
+        Assert.Contains(mmUrls, u => u.Contains("order=UPDATED_AT"));
+        mmUrls.Clear();
+        mmEngine.Evaluate("source.getMangaList(1, 0, null, null, 'popular')");
+        Assert.Contains(mmUrls, u => u.Contains("order=TOTAL_VIEW_COUNT"));
+
+        mmEngine.Execute("source.token = 'tok_cached'; var mmChs = source.getChapterList('/en/title/123');");
+        Assert.Equal(3, mmEngine.Evaluate("mmChs.length").AsNumber());
+        Assert.Equal(12.5, mmEngine.Evaluate("mmChs[0].chapterNumber").AsNumber());
+        Assert.Equal(100, mmEngine.Evaluate("mmChs[1].chapterNumber").AsNumber());
+        Assert.Equal(3, mmEngine.Evaluate("mmChs[2].chapterNumber").AsNumber());
+
+        // 2. WestManga: sort='latest' + status=1 sends status=Ongoing and orderBy=Update
+        var (wmEngine, wmUrls) = CreatePluginEngine(
+            Path.Combine(catalogDir, "westmanga.js"),
+            (_, _) => new { status = 200, body = "{\"data\":[],\"paginator\":{\"last_page\":1}}" });
+        wmEngine.Execute("source.cachedToken = 'wm_tok';");
+        wmEngine.Evaluate("source.getMangaList(1, 1, null, null, 'latest')");
+        Assert.Contains(wmUrls, u => u.Contains("status=Ongoing") && u.Contains("orderBy=Update"));
+
+        // 3. Komiku: sort='latest' + status=1 sends statusmanga=ongoing and orderby=modified
+        var (kmEngine, kmUrls) = CreatePluginEngine(
+            Path.Combine(catalogDir, "komiku.js"),
+            (_, _) => new { status = 200, body = "<div></div>" });
+        kmEngine.Evaluate("source.getMangaList(1, 1, null, null, 'latest')");
+        Assert.Contains(kmUrls, u => u.Contains("statusmanga=ongoing") && u.Contains("orderby=modified"));
+
+        // 4. WeebCentral: sort='latest' + status=1 sends Latest Updates + included_status=Ongoing
+        var (wcEngine, wcUrls) = CreatePluginEngine(
+            Path.Combine(catalogDir, "weebcentral.js"),
+            (_, _) => new { status = 200, body = "<div></div>" });
+        wcEngine.Evaluate("source.getMangaList(1, 1, null, null, 'latest')");
+        Assert.Contains(wcUrls, u => (u.Contains("Latest%20Updates") || u.Contains("Latest+Updates")) && u.Contains("included_status=Ongoing"));
+
+        // 5. Kiryuu: sort='latest' + status=1 sends orderby=modified
+        var (krEngine, krUrls) = CreatePluginEngine(
+            Path.Combine(catalogDir, "kiryuu.js"),
+            (_, _) => new { status = 200, body = "[]" });
+        krEngine.Evaluate("source.getMangaList(1, 1, null, null, 'latest')");
+        Assert.Contains(krUrls, u => u.Contains("orderby=modified"));
+
+        // 6. WeebCentral: real genre + format filters wire included_tag and included_type
+        wcUrls.Clear();
+        wcEngine.Evaluate("source.getMangaList(1, 1, 'Action', 'Manhwa', 'latest')");
+        Assert.Contains(wcUrls, u => u.Contains("included_tag=Action") && u.Contains("included_type=Manhwa"));
+    }
+
+    [Fact]
+    public void CatalogRuntime_DeclaredGenresAndFormats_AreConsumedByGetMangaList()
+    {
+        string catalogDir = FindCatalogDirectory();
+        var jsFiles = Directory.GetFiles(catalogDir, "*.js").OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToArray();
+        var violations = new List<string>();
+
+        foreach (var jsPath in jsFiles)
+        {
+            string src = File.ReadAllText(jsPath, Encoding.UTF8);
+            var gMatch = System.Text.RegularExpressions.Regex.Match(src, @"\bgenres\s*:\s*\[([\s\S]*?)\]");
+            var fMatch = System.Text.RegularExpressions.Regex.Match(src, @"\bformats\s*:\s*\[([\s\S]*?)\]");
+            bool hasGenres = gMatch.Success && !string.IsNullOrWhiteSpace(gMatch.Groups[1].Value);
+            bool hasFormats = fMatch.Success && !string.IsNullOrWhiteSpace(fMatch.Groups[1].Value);
+            if (!hasGenres && !hasFormats) continue;
+
+            int mlIdx = src.IndexOf("getMangaList:", StringComparison.Ordinal);
+            if (mlIdx < 0)
+            {
+                violations.Add($"{Path.GetFileName(jsPath)}: declares genres/formats without getMangaList");
+                continue;
+            }
+
+            string gParam = "genre", tParam = "type";
+            var sigMatch = System.Text.RegularExpressions.Regex.Match(
+                src.Substring(mlIdx, Math.Min(120, src.Length - mlIdx)),
+                @"getMangaList\s*:\s*function\s*\(([^)]*)\)");
+            if (sigMatch.Success)
+            {
+                var parts = sigMatch.Groups[1].Value.Split(',').Select(p => p.Trim()).ToArray();
+                if (parts.Length >= 3 && !string.IsNullOrEmpty(parts[2])) gParam = parts[2];
+                if (parts.Length >= 4 && !string.IsNullOrEmpty(parts[3])) tParam = parts[3];
+            }
+
+            int braceStart = src.IndexOf('{', mlIdx);
+            int depth = 0, braceEnd = braceStart;
+            for (int i = braceStart; i < src.Length; i++)
+            {
+                if (src[i] == '{') depth++;
+                else if (src[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0) { braceEnd = i; break; }
+                }
+            }
+            string mlBody = src.Substring(braceStart + 1, Math.Max(0, braceEnd - braceStart - 1));
+
+            if (hasGenres && !System.Text.RegularExpressions.Regex.IsMatch(mlBody, $@"\b{System.Text.RegularExpressions.Regex.Escape(gParam)}\b"))
+                violations.Add($"{Path.GetFileName(jsPath)}: declares non-empty genres[] but getMangaList ignores '{gParam}'");
+            if (hasFormats && !System.Text.RegularExpressions.Regex.IsMatch(mlBody, $@"\b{System.Text.RegularExpressions.Regex.Escape(tParam)}\b"))
+                violations.Add($"{Path.GetFileName(jsPath)}: declares non-empty formats[] but getMangaList ignores '{tParam}'");
+        }
+
+        Assert.True(violations.Count == 0, "Fake plugin filter declarations:\n" + string.Join("\n", violations));
+    }
+
+    [Fact]
+    public void CatalogRuntime_FixtureExecution_Batch21PluginRepairs()
+    {
+        string catalogDir = FindCatalogDirectory();
+
+        static Jint.Engine CreateEngine(string scriptPath, Func<string, object?, object> fetchImpl)
+        {
+            var engine = new Jint.Engine(opts => opts.TimeoutInterval(TimeSpan.FromSeconds(5)).LimitRecursion(64));
+            engine.SetValue("log", new Action<object?>(_ => { }));
+            engine.SetValue("fetch", new Func<string, object?, object>(fetchImpl));
+            engine.SetValue("Html", new { parse = new Func<string, string, Yomic.Core.Sources.JsDocument>(Yomic.Core.Sources.HtmlParser.parse) });
+            engine.Execute(File.ReadAllText(scriptPath, Encoding.UTF8));
+            return engine;
+        }
+
+        // 1. Shinigami: snake_case v1 API for details, chapters, and pages
+        var shEngine = CreateEngine(Path.Combine(catalogDir, "shinigami.js"), (url, _) =>
+        {
+            if (url.Contains("/v1/manga/detail/"))
+                return new { status = 200, body = "{\"data\":{\"title\":\"Test Shngm\",\"cover_image_url\":\"https://cdn.shngm.id/c.jpg\",\"status\":1,\"description\":\"Desc\"}}" };
+            if (url.Contains("/v1/chapter/m1/list"))
+                return new { status = 200, body = "{\"data\":[{\"chapter_id\":\"ch-99\",\"chapter_number\":12.5,\"chapter_title\":\"Boss\",\"release_date\":\"2026-01-01\"}]}" };
+            if (url.Contains("/v1/chapter/detail/ch-99"))
+                return new { status = 200, body = "{\"data\":{\"base_url\":\"https://storage.shngm.id\",\"chapter\":{\"path\":\"/chapter/ch-99/\",\"data\":[\"01.webp\",\"02.webp\"]}}}" };
+            return new { status = 200, body = "{}" };
+        });
+        Assert.Equal("https://cdn.shngm.id/c.jpg", shEngine.Evaluate("source.getMangaDetails('/series/m1').thumbnailUrl").AsString());
+        Assert.Equal("/chapter/ch-99", shEngine.Evaluate("source.getChapterList('/series/m1')[0].url").AsString());
+        Assert.Equal("Chapter 12.5 Boss", shEngine.Evaluate("source.getChapterList('/series/m1')[0].name").AsString());
+        Assert.Equal("https://storage.shngm.id/chapter/ch-99/01.webp", shEngine.Evaluate("source.getPageList('/chapter/ch-99')[0]").AsString());
+
+        // 2. MangaDex: skips externalUrl / pages===0 chapters and paginates translated feed without 50% overlap
+        var mdUrls = new List<string>();
+        var mdEngine = CreateEngine(Path.Combine(catalogDir, "mangadex.js"), (url, _) =>
+        {
+            mdUrls.Add(url);
+            if (url.Contains("/feed"))
+                return new { status = 200, body = "{\"total\":3,\"data\":[{\"id\":\"ext1\",\"attributes\":{\"chapter\":\"1\",\"externalUrl\":\"https://mangaplus.shueisha.co.jp/1\",\"pages\":0}},{\"id\":\"zero2\",\"attributes\":{\"chapter\":\"2\",\"pages\":0}},{\"id\":\"ok3\",\"attributes\":{\"chapter\":\"3\",\"title\":\"Real\",\"pages\":18}}]}" };
+            if (url.Contains("/chapter?"))
+                return new { status = 200, body = "{\"total\":128,\"data\":[{\"id\":\"c1\",\"relationships\":[{\"type\":\"manga\",\"id\":\"m-1\"}]}]}" };
+            if (url.Contains("/manga?"))
+                return new { status = 200, body = "{\"data\":[{\"id\":\"m-1\",\"attributes\":{\"title\":{\"en\":\"One\"},\"status\":\"ongoing\"},\"relationships\":[]}]}" };
+            return new { status = 200, body = "{}" };
+        });
+        Assert.Equal(1, mdEngine.Evaluate("source.getChapterList('/title/11111111-1111-1111-1111-111111111111').length").AsNumber());
+        Assert.Equal("/chapter/ok3", mdEngine.Evaluate("source.getChapterList('/title/11111111-1111-1111-1111-111111111111')[0].url").AsString());
+        mdUrls.Clear();
+        Assert.Equal(2, mdEngine.Evaluate("source.getMangaByTranslatedChapterFeed(2, 'id', 'latest').totalPages").AsNumber());
+        Assert.Contains(mdUrls, u => u.Contains("offset=64"));
+
+        // 3. MangaFire & Kiryuu: multi-page chapter list pagination fetches page 2+
+        var mfEngine = CreateEngine(Path.Combine(catalogDir, "mangafire.js"), (url, _) =>
+        {
+            if (url.Contains("page=1"))
+            {
+                var p1 = string.Join(",", Enumerable.Range(1, 200).Select(i => $"{{\"id\":\"id{i}\",\"number\":{i}}}"));
+                return new { status = 200, body = $"{{\"items\":[{p1}],\"meta\":{{\"hasNext\":true}}}}" };
+            }
+            return new { status = 200, body = "{\"items\":[{\"id\":\"id201\",\"number\":201}],\"meta\":{\"hasNext\":false}}" };
+        });
+        Assert.Equal(201, mfEngine.Evaluate("source.getChapterList('/title/abc-test').length").AsNumber());
+
+        var krChapEngine = CreateEngine(Path.Combine(catalogDir, "kiryuu.js"), (url, _) =>
+        {
+            if (url.Contains("/manga?slug=")) return new { status = 200, body = "[{\"id\":77}]" };
+            if (url.Contains("page=1")) return new { status = 200, body = "<a href='https://kiryuu03.com/manga/x/chapter-2'>Chapter 2</a>" };
+            if (url.Contains("page=2")) return new { status = 200, body = "<a href='https://kiryuu03.com/manga/x/chapter-1'>Chapter 1</a>" };
+            return new { status = 200, body = "" };
+        });
+        Assert.Equal(2, krChapEngine.Evaluate("source.getChapterList('/manga/x/').length").AsNumber());
+
+        // 4. OkyyKomik: scoped status ignores nav "ongoing", and Blogger chapter feed paginates start-index
+        var okEngine = CreateEngine(Path.Combine(catalogDir, "okyykomik.js"), (url, _) =>
+        {
+            if (url.Contains("start-index=151"))
+                return new { status = 200, body = "{\"feed\":{\"openSearch$totalResults\":{\"$t\":\"151\"},\"entry\":[{\"title\":{\"$t\":\"Hero Chapter 1\"},\"link\":[{\"rel\":\"alternate\",\"href\":\"https://okyykomik.blogspot.com/ch-1.html\"}]}]}}" };
+            if (url.Contains("start-index=1"))
+            {
+                var e150 = string.Join(",", Enumerable.Range(2, 150).Select(i => $"{{\"title\":{{\"$t\":\"Hero Chapter {i}\"}},\"link\":[{{\"rel\":\"alternate\",\"href\":\"https://okyykomik.blogspot.com/ch-{i}.html\"}}]}}"));
+                return new { status = 200, body = $"{{\"feed\":{{\"openSearch$totalResults\":{{\"$t\":\"151\"}},\"entry\":[{e150}]}}}}" };
+            }
+            return new { status = 200, body = "<html><body><nav>Ongoing Menu</nav><label data-title='Hero'></label><div id='extra-info'>Status: Tamat</div></body></html>" };
+        });
+        Assert.Equal(2, okEngine.Evaluate("source.getMangaDetails('/hero.html').status").AsNumber());
+        Assert.Equal(151, okEngine.Evaluate("source.getChapterList('/hero.html').length").AsNumber());
+
+        // 5. Mangabat: fallback getPageList ignores unrelated site logo <img> outside reader container
+        var mbEngine = CreateEngine(Path.Combine(catalogDir, "mangabat.js"), (_, _) => new
+        {
+            status = 200,
+            body = "<html><body><header><img src='https://mangabat.com/logo.png'/></header><div class='container-chapter-reader'><img data-src='https://cdn.mb.example/p1.jpg'/></div></body></html>"
+        });
+        Assert.Equal(1, mbEngine.Evaluate("source.getPageList('/ch-1').length").AsNumber());
+        Assert.StartsWith("https://cdn.mb.example/p1.jpg", mbEngine.Evaluate("source.getPageList('/ch-1')[0]").AsString());
     }
 
     [Fact]
