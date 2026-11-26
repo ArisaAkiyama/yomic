@@ -714,12 +714,32 @@ export async function fetchSourceCatalogFeed(this: YomicApp, source: ExtensionIt
         filteredItems = filteredItems.filter((item) => !this.isExplicitManga(item));
       }
       const merged = filteredItems.map((item) => this.upsertMangaItem(item));
+      let newlyAddedCount = merged.length;
       if (resetPage) {
-        this.sourceFeedItems = merged;
+        const seenReset = new Set<string>();
+        this.sourceFeedItems = merged.filter((m) => {
+          const key = (m.url || m.id || '').toLowerCase();
+          if (!key || seenReset.has(key)) return false;
+          seenReset.add(key);
+          return true;
+        });
+        newlyAddedCount = this.sourceFeedItems.length;
       } else {
-        this.sourceFeedItems.push(...merged);
+        const existingKeys = new Set(
+          this.sourceFeedItems.map((m) => (m.url || m.id || '').toLowerCase()).filter(Boolean)
+        );
+        const uniqueNew = merged.filter((m) => {
+          const key = (m.url || m.id || '').toLowerCase();
+          if (!key || existingKeys.has(key)) return false;
+          existingKeys.add(key);
+          return true;
+        });
+        newlyAddedCount = uniqueNew.length;
+        this.sourceFeedItems.push(...uniqueNew);
       }
-      this.sourceFeedHasMore = Boolean(res.hasMore ?? res.hasNextPage);
+      const backendHasMore = Boolean(res.hasMore ?? res.hasNextPage);
+      // Stop infinite scroll immediately if page > 1 produced zero new unique titles (prevents duplicate-card loops)
+      this.sourceFeedHasMore = backendHasMore && (resetPage || newlyAddedCount > 0);
       const hasActiveFilter =
         this.sourceFeedSort !== 'popular' ||
         this.sourceFeedStatusFilter !== 'all' ||
@@ -970,13 +990,14 @@ export function renderSourceCatalogFeed(this: YomicApp, container: HTMLElement, 
               .map((m) => {
                 const fallbackSvg = buildMangaCoverSvg(m);
                 const coverSrc = this.getMangaCoverHtmlSrc(m);
+                const shouldBlur = this.settings.blurExplicitCovers && this.isExplicitManga(m);
                 const bookmarkCornerHtml = m.inLibrary
                   ? `<div class="v1-manga-bookmark-corner" title="${this.l('Tersimpan di Pustaka', 'Saved in Library')}">${getIconSvg('bookmark-bold', { size: 12, color: '#ffffff' })}</div>`
                   : '';
                 return `
                   <article class="manga-card" data-open-detail="${escapeXml(m.id)}">
                     <div class="manga-cover-wrap">
-                      <img class="manga-cover-img" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(m.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
+                      <img class="manga-cover-img${shouldBlur ? ' is-blurred' : ''}" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(m.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
                       ${bookmarkCornerHtml}
                     </div>
                     <div class="manga-card-body">

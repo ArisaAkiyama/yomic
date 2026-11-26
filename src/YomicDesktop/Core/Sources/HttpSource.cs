@@ -145,7 +145,7 @@ namespace Yomic.Core.Sources
                             // so IPv4-only sites never incur 4 sequential DoH round-trips per connection.
                             foreach (var template in dohBases)
                             {
-                                async Task<(List<System.Net.IPAddress> Found, bool Ok)> QueryTypeAsync(string qType)
+                                async Task<(List<System.Net.IPAddress> Found, bool Ok, string? ErrorLog)> QueryTypeAsync(string qType)
                                 {
                                     var found = new List<System.Net.IPAddress>();
                                     try
@@ -155,7 +155,7 @@ namespace Yomic.Core.Sources
                                         request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/dns-json"));
 
                                         using var response = await _dohClient.SendAsync(request, token);
-                                        if (!response.IsSuccessStatusCode) return (found, false);
+                                        if (!response.IsSuccessStatusCode) return (found, false, null);
 
                                         var jsonBytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(response.Content, 256 * 1024, token);
                                         var json = System.Text.Encoding.UTF8.GetString(jsonBytes);
@@ -172,12 +172,11 @@ namespace Yomic.Core.Sources
                                                 }
                                             }
                                         }
-                                        return (found, true);
+                                        return (found, true, null);
                                     }
                                     catch (Exception ex)
                                     {
-                                        logBuilder.AppendLine($"[DoH] Failed {template} ({qType}): {ex.Message}");
-                                        return (found, false);
+                                        return (found, false, $"[DoH] Failed {template} ({qType}): {ex.Message}");
                                     }
                                 }
 
@@ -186,6 +185,10 @@ namespace Yomic.Core.Sources
                                 await Task.WhenAll(aTask, aaaaTask);
                                 var aRes = await aTask;
                                 var aaaaRes = await aaaaTask;
+
+                                // Append to non-thread-safe StringBuilder strictly sequentially after Task.WhenAll
+                                if (!string.IsNullOrEmpty(aRes.ErrorLog)) logBuilder.AppendLine(aRes.ErrorLog);
+                                if (!string.IsNullOrEmpty(aaaaRes.ErrorLog)) logBuilder.AppendLine(aaaaRes.ErrorLog);
 
                                 foreach (var ip in aRes.Found.Concat(aaaaRes.Found))
                                 {
@@ -196,8 +199,8 @@ namespace Yomic.Core.Sources
                                     }
                                 }
 
-                                // Stop at first healthy provider response even when AAAA returns 0 answers for IPv4-only hosts
-                                if (aRes.Ok || aaaaRes.Ok) break;
+                                // Only stop failover if we actually resolved IPs OR both A & AAAA queries succeeded cleanly
+                                if (candidateIps.Count > 0 || (aRes.Ok && aaaaRes.Ok)) break;
                             }
 
                             if (candidateIps.Count > 0)

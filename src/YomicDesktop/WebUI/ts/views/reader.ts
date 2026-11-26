@@ -1204,7 +1204,7 @@ export function bindReaderShellEvents(this: YomicApp): void {
     }
   });
   document.getElementById('btnReaderRefresh')?.addEventListener('click', () => {
-    if (!this.readerMangaId || this.readerChapterNumber <= 0) return;
+    if (!this.readerMangaId || this.readerChapterNumber < 0) return;
     this.showToast(this.l('Memuat ulang halaman komik dari sumber...', 'Reloading comic pages from source...'), 'refresh');
     this.openReader(this.readerMangaId, this.readerChapterNumber, true);
   });
@@ -1352,34 +1352,38 @@ export function bindReaderShellEvents(this: YomicApp): void {
   });
   imgFlyoutMenu?.addEventListener('click', (ev) => ev.stopPropagation());
 
+  const appendCacheBustParam = (rawUrl: string, timestamp: number): string => {
+    if (!rawUrl) return rawUrl;
+    const lower = rawUrl.trim().toLowerCase();
+    // Never mutate data: or blob: URIs (adding ?t=... corrupts inline SVG/data/blob URLs)
+    if (lower.startsWith('data:') || lower.startsWith('blob:')) {
+      return rawUrl;
+    }
+    try {
+      const url = new URL(rawUrl);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return rawUrl;
+      url.searchParams.set('t', String(timestamp));
+      return url.toString();
+    } catch {
+      const clean = rawUrl.replace(/([?&])t=\d+(&|$)/, '$1').replace(/[?&]$/, '');
+      const sep = clean.includes('?') ? '&' : '?';
+      return `${clean}${sep}t=${timestamp}`;
+    }
+  };
+
   const refreshReaderCanvasImages = () => {
     const timestamp = Date.now();
     if (Array.isArray(this.readerPages) && this.readerPages.length > 0) {
-      this.readerPages = this.readerPages.map((pageUrl) => {
-        try {
-          const url = new URL(pageUrl);
-          url.searchParams.set('t', String(timestamp));
-          return url.toString();
-        } catch {
-          const clean = pageUrl.replace(/([?&])t=\d+(&|$)/, '$1').replace(/[?&]$/, '');
-          const sep = clean.includes('?') ? '&' : '?';
-          return `${clean}${sep}t=${timestamp}`;
-        }
-      });
+      this.readerPages = this.readerPages.map((pageUrl) => appendCacheBustParam(pageUrl, timestamp));
     }
 
     const imgs = document.querySelectorAll<HTMLImageElement>('img.reader-page-art');
     imgs.forEach((img) => {
       const rawSrc = img.src;
       if (!rawSrc) return;
-      try {
-        const url = new URL(rawSrc);
-        url.searchParams.set('t', String(timestamp));
-        img.src = url.toString();
-      } catch {
-        const clean = rawSrc.replace(/([?&])t=\d+(&|$)/, '$1').replace(/[?&]$/, '');
-        const sep = clean.includes('?') ? '&' : '?';
-        img.src = `${clean}${sep}t=${timestamp}`;
+      const nextSrc = appendCacheBustParam(rawSrc, timestamp);
+      if (nextSrc !== rawSrc) {
+        img.src = nextSrc;
       }
     });
   };

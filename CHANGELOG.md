@@ -2,6 +2,26 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [2.5.0] - 2026-11-26
+
+Update Details：
+◆ Add per-database reader/writer maintenance barrier (DbMaintenanceState, ConnectionLease, EnterExclusiveMaintenanceAsync, and SqlitePragmaInterceptor connection lifecycle hooks) in MangaDbContext.cs so BackupService.RestoreBackupAsync drains and pauses both concurrent writers and concurrent readers before ClearAllPools(), WAL/SHM deletion, and file swap.
+◆ Add split-horizon DNS & hosts-file SSRF defense (ResolveAndValidateHostForBrowserAsync, ResolveViaConfiguredDoHAsync, ResolveViaSystemDnsAsync) in UrlSecurityHelper.cs querying both System DNS and the configured DoH provider in parallel and failing closed if any resolved IP is private/loopback/link-local, with a 5s cache and cache-bypass on top-level navigations in CloudflareBypassService and WebViewPageExtractorWindow.
+◆ Add atomic single-transaction history and reading progress reset (LibraryService.ClearAllHistoryAndProgressAsync) clearing chapter read flags, partial page progress, LastViewed timestamps, and history entries in one lock/transaction, paired with full UI state snapshot rollback on backend errors in updates-history.ts.
+◆ Add consistent 18+ explicit cover blurring (blurExplicitCovers via CSS blur class) across Source Catalog Feed (browse.ts), Manga Detail (manga-detail.ts), Updates (updates-history.ts), History Grid & List (updates-history.ts), Downloads (downloads.ts), and Library (library.ts).
+◆ Add URL deduplication and zero-new-item infinite-scroll circuit breaker in Browse Source Catalog (fetchSourceCatalogFeed in browse.ts) alongside explicit plugin totalPages handling in BackendIpcController.SourcesAndExtensions.cs to stop duplicate-card infinite scroll loops.
+◆ Add deterministic LF line-ending pinning in .gitattributes for bundled Plugins/Catalog/*.js and index.min.json so SHA-256 digests stay 100% identical across local Windows checkouts, CI runners, and GitHub raw/CDN.
+◆ Add expanded automated regression test coverage in BehavioralServicesTests.cs, IntegrityAndCatalogTests.cs, and tests/WebUI.Tests/webui.test.mjs covering split-horizon DNS SSRF guards, DB maintenance barriers, DoH failover, explicit cover blur, and plugin catalog integrity.
+◆ Improve bundled extension catalog with minor version bumps across 101 updated extensions (e.g. 1.0.0 -> 1.1.0, 1.0.3 -> 1.1.0, 1.0.4 -> 1.1.0, 1.11.2 -> 1.12.0), Blogger paginated chapter feeds up to 1,500 chapters, lazy-load image priority & placeholder filtering in kiryuu.js, graceful empty-list handling in softkomik.js, and synced Git-blob SHA-256 manifests.
+◆ Improve ExtensionRepositoryService.UninstallExtension with strict identifier validation, fallback catalog merging (LoadFallbackCatalogEntriesSync), and atomic source path registration inside _sourcesLock before firing OnSourcesChanged in SourceManager.cs.
+◆ Improve DownloadService cancellation and resource lifecycle by guarding terminal failure status updates under _processingLock (preventing overwrites of concurrent Pause/Cancel) and disposing CancellationTokenSource instances across completed, cancelled, queued, and history download requests.
+◆ Improve real-time download badge synchronization in backend-sync.ts and downloads.ts (matching deleted chapter downloads by normalized chapterUrl or mangaId+chapterNumber and computing completedCountByMangaId accurately) plus CSS polish across Reader, Modals/Dark Stats, and Updater modules.
+◆ Fix silent in-app auto-update failing to relaunch Yomic after installation in Installer/Yomic.iss by removing the postinstall flag from the /SILENT relaunch entry (Inno Setup skips postinstall in /SILENT mode) and defaulting ShouldRelaunchAfterSilentUpdate to relaunch unless /RELAUNCH=0 is explicitly passed.
+◆ Fix active download file-handle locks and IsDownloaded race conditions in BackendIpcController.Downloads.cs by cancelling active/queued chapter downloads before deleting files on disk.
+◆ Fix Reader refresh cache-busting corrupting inline data: and blob: image URIs in reader.ts by introducing appendCacheBustParam to safely update query timestamps only on HTTP/HTTPS URLs.
+◆ Fix premature DoH failover termination in NetworkService.cs and HttpSource.cs (only stopping failover when IPs are resolved or both A & AAAA queries succeed cleanly, and appending StringBuilder logs sequentially after Task.WhenAll for thread safety).
+◆ Fix one-time v1 -> v2 SourceIdMigrationService repeatedly re-running on every launch when orphaned rows from uninstalled extensions remain by always marking migration complete once run with loaded sources.
+
 ## [2.4.0] - 2026-11-26
 
 Update Details：

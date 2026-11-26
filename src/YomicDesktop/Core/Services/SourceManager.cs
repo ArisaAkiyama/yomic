@@ -41,6 +41,8 @@ namespace Yomic.Core.Services
             return dir;
         }
 
+        internal string UserPluginsDirectory => _userPluginsDir;
+
         public void LoadPlugins() => LoadExtensions();
 
         /// <summary>
@@ -120,7 +122,9 @@ namespace Yomic.Core.Services
             }
         }
 
-        public void AddSource(IMangaSource source)
+        public void AddSource(IMangaSource source) => AddSource(source, sourcePath: null);
+
+        private void AddSource(IMangaSource source, string? sourcePath)
         {
             IDisposable? replacedDisposable = null;
             lock (_sourcesLock)
@@ -138,6 +142,12 @@ namespace Yomic.Core.Services
                     {
                         replacedDisposable = d;
                     }
+                }
+
+                // Register source path atomically inside _sourcesLock BEFORE OnSourcesChanged fires
+                if (!string.IsNullOrWhiteSpace(sourcePath))
+                {
+                    _sourceIdToPath[source.Id] = sourcePath;
                 }
             }
             try { replacedDisposable?.Dispose(); } catch { }
@@ -428,11 +438,7 @@ namespace Yomic.Core.Services
             {
                 if (!System.IO.File.Exists(path)) return null;
                 var source = new JsMangaSource(path);
-                AddSource(source);
-                lock (_sourcesLock)
-                {
-                    _sourceIdToPath[source.Id] = path;
-                }
+                AddSource(source, path);
                 return source;
             }
             catch (Exception ex)

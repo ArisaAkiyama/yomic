@@ -229,28 +229,7 @@ namespace YomicDesktop.IPC
 
         private async Task<object> HandleClearAllHistoryAsync()
         {
-            await LibraryService.ClearAllReadHistoryAsync();
-            await MangaDbContext.DatabaseWriteGate.WaitAsync();
-            try
-            {
-                using var db = new MangaDbContext();
-                var viewedMangas = await db.Mangas.Where(m => m.LastViewed > 0).ToListAsync();
-                foreach (var m in viewedMangas)
-                {
-                    m.LastViewed = 0;
-                }
-                var partialChapters = await db.Chapters.Where(c => c.LastPageRead > 0).ToListAsync();
-                foreach (var ch in partialChapters)
-                {
-                    ch.LastPageRead = 0;
-                }
-                db.History.RemoveRange(db.History);
-                await db.SaveChangesAsync();
-            }
-            finally
-            {
-                MangaDbContext.DatabaseWriteGate.Release();
-            }
+            await LibraryService.ClearAllHistoryAndProgressAsync();
             try
             {
                 var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);

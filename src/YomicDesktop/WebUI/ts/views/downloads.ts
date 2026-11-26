@@ -145,11 +145,14 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
             const escapedMangaTitle = escapeXml(dl.mangaTitle);
             const escapedChLabel = escapeXml(dl.chapterLabel);
             const sizeLabel = dl.sizeText && dl.sizeText !== 'Tersimpan' ? `${escapeXml(dl.sizeText)} · ` : '';
+            const shouldBlur =
+              this.settings.blurExplicitCovers &&
+              this.isExplicitManga(manga || ({ id: dl.mangaId, title: dl.mangaTitle, sourceName: dl.sourceName } as MangaItem));
 
             return `
               <div class="v1-update-row">
                 <div class="v1-update-left" data-open-detail="${escapeXml(dl.mangaId)}">
-                  <img class="v1-update-cover" src="${sanitizeImageSrc(thumb) || escapeXml(fallbackSvg)}" alt="${escapedMangaTitle}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
+                  <img class="v1-update-cover${shouldBlur ? ' is-blurred' : ''}" src="${sanitizeImageSrc(thumb) || escapeXml(fallbackSvg)}" alt="${escapedMangaTitle}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
                   <div class="v1-update-info">
                     <div class="v1-update-title" title="${escapedMangaTitle}">${escapedMangaTitle}</div>
                     <div class="v1-update-ch-line">
@@ -177,7 +180,7 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
                            ${getIconSvg(isPaused ? 'play-linear' : 'pause-linear', { size: 15 })}
                          </button>`
                   }
-                  <button class="v1-history-del-btn" data-cancel-dl="${escapeXml(dl.id)}" data-url="${escapeXml(dl.chapterUrl || '')}" data-is-done="${isDone ? '1' : '0'}" data-title="${escapedMangaTitle}" data-chapter="${escapedChLabel}" title="${escapeXml(isDone ? this.l('Hapus File Unduhan', 'Delete Downloaded File') : this.l('Batalkan Unduhan', 'Cancel Download'))}" aria-label="${escapeXml(isDone ? this.l('Hapus File Unduhan', 'Delete Downloaded File') : this.l('Batalkan Unduhan', 'Cancel Download'))}">
+                  <button class="v1-history-del-btn" data-cancel-dl="${escapeXml(dl.id)}" data-manga-id="${escapeXml(dl.mangaId || '')}" data-ch-num="${chapterNum}" data-url="${escapeXml(dl.chapterUrl || '')}" data-is-done="${isDone ? '1' : '0'}" data-title="${escapedMangaTitle}" data-chapter="${escapedChLabel}" title="${escapeXml(isDone ? this.l('Hapus File Unduhan', 'Delete Downloaded File') : this.l('Batalkan Unduhan', 'Cancel Download'))}" aria-label="${escapeXml(isDone ? this.l('Hapus File Unduhan', 'Delete Downloaded File') : this.l('Batalkan Unduhan', 'Cancel Download'))}">
                     ${getIconSvg('delete-bin-line', { size: 16 })}
                   </button>
                 </div>
@@ -388,19 +391,28 @@ export function renderDownloadsView(this: YomicApp, container: HTMLElement): voi
         if (!confirmed) return;
       }
 
+      const dlMangaId = btn.dataset.mangaId || '';
+      const dlChNum = Number(btn.dataset.chNum);
       const syncRemovedDownloadInMemory = () => {
         if (!isDone) return;
+        const normalizedChUrl = chapterUrl.trim().toLowerCase();
         for (const m of this.mangaList) {
-          if (!Array.isArray(m.chapters)) continue;
-          let changed = false;
-          for (const ch of m.chapters) {
-            if (chapterUrl && ch.url && ch.url === chapterUrl && ch.isDownloaded) {
-              ch.isDownloaded = false;
-              changed = true;
+          const isTargetManga = Boolean(dlMangaId && m.id === dlMangaId);
+          if (Array.isArray(m.chapters) && m.chapters.length > 0) {
+            let changed = false;
+            for (const ch of m.chapters) {
+              const urlMatches = Boolean(normalizedChUrl && ch.url && ch.url.trim().toLowerCase() === normalizedChUrl);
+              const numMatches = isTargetManga && Number.isFinite(dlChNum) && Math.abs(ch.number - dlChNum) < 0.01;
+              if ((urlMatches || numMatches) && ch.isDownloaded) {
+                ch.isDownloaded = false;
+                changed = true;
+              }
             }
-          }
-          if (changed) {
-            m.downloadedCount = m.chapters.filter((c) => c.isDownloaded).length;
+            if (changed) {
+              m.downloadedCount = m.chapters.filter((c) => c.isDownloaded).length;
+            }
+          } else if (isTargetManga && (m.downloadedCount || 0) > 0) {
+            m.downloadedCount = Math.max(0, (m.downloadedCount || 0) - 1);
           }
         }
       };

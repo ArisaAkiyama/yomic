@@ -5,7 +5,7 @@
 
 #define MyAppName "Yomic"
 #define MyAppPublisher "ArisaAkiyama"
-#define MyAppVersion "2.4.0"
+#define MyAppVersion "2.5.0"
 #ifndef MySourceDir
   #define MySourceDir "..\dist\Yomic_v2"
 #endif
@@ -86,8 +86,10 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Yomic"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: startupicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
-Filename: "{app}\{#MyAppExeName}"; Flags: nowait postinstall runasoriginaluser; Check: ShouldRelaunchAfterSilentUpdate
+; Interactive wizard install: checked by default on the Finish page
+Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; Silent/in-app auto-update install: MUST NOT have `postinstall` (Inno Setup skips `postinstall` entries in /SILENT mode!)
+Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Flags: nowait skipifnotsilent runasoriginaluser; Check: ShouldRelaunchAfterSilentUpdate
 
 [UninstallRun]
 ; Remove Yomic background auto-update scheduled task on uninstall so no orphaned task remains
@@ -190,7 +192,9 @@ end;
 
 function ShouldRelaunchAfterSilentUpdate(): Boolean;
 begin
-  Result := WizardSilent() and (ExpandConstant('{param:RELAUNCH|0}') = '1');
+  // Default to relaunching Yomic after silent updates (including updates triggered by older versions without /RELAUNCH=1);
+  // pass /RELAUNCH=0 to explicitly suppress auto-launch in scripted/CI installs.
+  Result := WizardSilent() and (ExpandConstant('{param:RELAUNCH|1}') <> '0');
 end;
 
 // Automatically stop any running Yomic v1/v2 instance, clean legacy v1 entries, & install WebView2 if missing

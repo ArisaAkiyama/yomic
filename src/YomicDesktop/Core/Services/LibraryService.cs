@@ -1678,6 +1678,56 @@ namespace Yomic.Core.Services
             }
         }
 
+        /// <summary>
+        /// Atomically clears chapter read flags, partial page progress, manga LastViewed timestamps,
+        /// and reading history entries in a single database lock and SQLite transaction.
+        /// </summary>
+        public async Task ClearAllHistoryAndProgressAsync()
+        {
+            await _dbLock.WaitAsync();
+            try
+            {
+                using var context = CreateDbContext();
+                await using var tx = await context.Database.BeginTransactionAsync();
+
+                var chaptersToReset = await context.Chapters
+                    .Where(c => c.Read || c.LastPageRead > 0)
+                    .ToListAsync();
+                foreach (var chapter in chaptersToReset)
+                {
+                    chapter.Read = false;
+                    chapter.LastPageRead = 0;
+                }
+
+                var viewedMangas = await context.Mangas
+                    .Where(m => m.LastViewed > 0)
+                    .ToListAsync();
+                foreach (var manga in viewedMangas)
+                {
+                    manga.LastViewed = 0;
+                }
+
+                var historyRows = await context.History.ToListAsync();
+                if (historyRows.Count > 0)
+                {
+                    context.History.RemoveRange(historyRows);
+                }
+
+                await context.SaveChangesAsync();
+                await tx.CommitAsync();
+                System.Diagnostics.Debug.WriteLine($"[LibraryService] Atomically cleared read/history state ({chaptersToReset.Count} chapters, {viewedMangas.Count} mangas, {historyRows.Count} history rows).");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LibraryService] Error clearing all history and progress: {ex.Message}");
+                throw;
+            }
+            finally
+            {
+                _dbLock.Release();
+            }
+        }
+
         public async Task ClearAllUpdatesAsync()
         {
             await _dbLock.WaitAsync();

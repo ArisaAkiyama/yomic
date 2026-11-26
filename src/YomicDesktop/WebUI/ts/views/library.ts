@@ -973,7 +973,6 @@ export function buildMangaGridCardHtml(this: YomicApp, manga: MangaItem): string
   const fallbackSvg = buildMangaCoverSvg(manga);
   const coverSrc = this.getMangaCoverHtmlSrc(manga);
   const shouldBlur = this.settings.blurExplicitCovers && this.isExplicitManga(manga);
-  const blurStyle = shouldBlur ? ' style="filter: blur(14px); transform: scale(1.08);"' : '';
   const unreadBadge =
     this.settings.showUnreadBadges && manga.unreadCount > 0
       ? `<span class="badge-unread tabular-nums" title="${this.l(`${manga.unreadCount} bab belum dibaca`, `${manga.unreadCount} unread chapters`)}">${manga.unreadCount}</span>`
@@ -984,7 +983,7 @@ export function buildMangaGridCardHtml(this: YomicApp, manga: MangaItem): string
   return `
     <article class="manga-card" data-open-detail="${escapeXml(manga.id)}">
       <div class="manga-cover-wrap">
-        <img class="manga-cover-img"${blurStyle} src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(manga.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
+        <img class="manga-cover-img${shouldBlur ? ' is-blurred' : ''}" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(manga.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
         ${unreadBadge ? `<div class="card-badges-top">${unreadBadge}</div>` : ''}
       </div>
       <div class="manga-card-body">
@@ -1003,14 +1002,13 @@ export function buildMangaListRowHtml(this: YomicApp, manga: MangaItem): string 
   const fallbackSvg = buildMangaCoverSvg(manga);
   const coverSrc = this.getMangaCoverHtmlSrc(manga);
   const shouldBlur = this.settings.blurExplicitCovers && this.isExplicitManga(manga);
-  const blurStyle = shouldBlur ? ' style="filter: blur(8px);"' : '';
   const malFavicon = manga.malTracked
     ? `<span class="v1-mal-card-favicon" title="${escapeXml(this.l('Tertaut ke MyAnimeList', 'Linked to MyAnimeList'))}" style="display:inline-flex;align-items:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect width="16" height="16" rx="3.5" fill="#2E51A2"/><text x="8" y="10.3" text-anchor="middle" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="6" font-weight="800" letter-spacing="-0.3">MAL</text></svg></span>`
     : '';
   return `
     <div class="v1-lib-list-row" data-open-detail="${escapeXml(manga.id)}">
       <div class="v1-lib-list-left">
-        <img class="v1-lib-list-thumb"${blurStyle} src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(manga.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
+        <img class="v1-lib-list-thumb${shouldBlur ? ' is-blurred' : ''}" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(manga.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
         <div class="v1-lib-list-info">
           <div class="v1-lib-list-title">${escapeXml(manga.title)}</div>
           <div class="manga-card-meta">

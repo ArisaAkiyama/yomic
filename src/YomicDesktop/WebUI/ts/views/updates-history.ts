@@ -107,13 +107,16 @@ export function renderUpdatesView(this: YomicApp, container: HTMLElement): void 
                   ? buildMangaCoverSvg(manga)
                   : buildMangaCoverSvg({ title: u.mangaTitle, sourceName: u.sourceName } as MangaItem);
                 const thumb = sanitizeImageSrc(u.coverUrl || (manga ? this.getMangaCoverHtmlSrc(manga) : '')) || escapeXml(fallbackSvg);
+                const shouldBlur =
+                  this.settings.blurExplicitCovers &&
+                  this.isExplicitManga(manga || ({ title: u.mangaTitle, sourceName: u.sourceName } as MangaItem));
                 const isRead = !u.isNew;
                 const extraChCount = u.extraChaptersCount ?? 0;
                 const playChNum = u.firstUnreadChapterNumber !== undefined && u.firstUnreadChapterNumber > 0 ? u.firstUnreadChapterNumber : u.chapterNumber;
                 return `
                   <div class="v1-update-row ${isRead ? 'is-read' : ''}">
                     <div class="v1-update-left" data-open-detail="${escapeXml(u.mangaId)}">
-                      <img class="v1-update-cover" src="${thumb}" alt="${escapeXml(u.mangaTitle)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
+                      <img class="v1-update-cover${shouldBlur ? ' is-blurred' : ''}" src="${thumb}" alt="${escapeXml(u.mangaTitle)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
                       <div class="v1-update-info">
                         <div class="v1-update-title" title="${escapeXml(u.mangaTitle)}">${escapeXml(u.mangaTitle)}</div>
                         <div class="v1-update-ch-line">
@@ -232,12 +235,13 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
           .map((m) => {
             const fallbackSvg = buildMangaCoverSvg(m);
             const coverSrc = this.getMangaCoverHtmlSrc(m);
+            const shouldBlur = this.settings.blurExplicitCovers && this.isExplicitManga(m);
             const pageStr = formatHistoryReadingProgress(m.lastReadPage, m.lastReadTotalPages, this.settings.appLanguage === 'en');
             const chMeta = pageStr ? `Ch. ${m.lastReadChapter} (${pageStr})` : `Ch. ${m.lastReadChapter}`;
             return `
               <article class="manga-card" data-open-detail="${escapeXml(m.id)}">
                 <div class="manga-cover-wrap">
-                  <img class="manga-cover-img" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(m.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
+                  <img class="manga-cover-img${shouldBlur ? ' is-blurred' : ''}" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(m.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
                 </div>
                 <div class="manga-card-body">
                   <div class="manga-card-title" title="${escapeXml(m.title)}">${escapeXml(m.title)}</div>
@@ -293,11 +297,12 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
                 .map((m) => {
                   const fallbackSvg = buildMangaCoverSvg(m);
                   const coverSrc = this.getMangaCoverHtmlSrc(m);
+                  const shouldBlur = this.settings.blurExplicitCovers && this.isExplicitManga(m);
                   const pageStr = formatHistoryReadingProgress(m.lastReadPage, m.lastReadTotalPages, this.settings.appLanguage === 'en');
                   return `
                     <div class="v1-update-row">
                       <div class="v1-update-left" data-open-detail="${escapeXml(m.id)}">
-                        <img class="v1-update-cover" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(m.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
+                        <img class="v1-update-cover${shouldBlur ? ' is-blurred' : ''}" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(m.title)}" loading="lazy" data-fallback-src="${escapeXml(fallbackSvg)}" />
                         <div class="v1-update-info">
                           <div class="v1-update-title" title="${escapeXml(m.title)}">${escapeXml(m.title)}</div>
                           <div class="v1-update-ch-line">
@@ -371,15 +376,63 @@ export function renderHistoryView(this: YomicApp, container: HTMLElement): void 
       confirmIcon: 'trash-bin-trash-linear'
     });
     if (!confirmed) return;
+    const prevRemovedIds = new Set(this.removedHistoryIds);
+    const prevSnapshots = this.mangaList.map((m) => ({
+      manga: m,
+      lastViewedEpoch: m.lastViewedEpoch,
+      lastReadTimeAgo: m.lastReadTimeAgo,
+      lastReadChapter: m.lastReadChapter,
+      lastReadPage: m.lastReadPage,
+      unreadCount: m.unreadCount,
+      chapters: Array.isArray(m.chapters)
+        ? m.chapters.map((c) => ({ ch: c, isRead: c.isRead, lastPageRead: c.lastPageRead }))
+        : []
+    }));
+
     this.mangaList.forEach((m) => {
       this.removedHistoryIds.add(m.id);
       m.lastViewedEpoch = 0;
       m.lastReadTimeAgo = 'Belum dibaca';
+      m.lastReadChapter = 0;
+      m.lastReadPage = 0;
+      if (Array.isArray(m.chapters) && m.chapters.length > 0) {
+        m.chapters.forEach((c) => {
+          c.isRead = false;
+          c.lastPageRead = 0;
+        });
+        m.unreadCount = m.chapters.length;
+      }
     });
-    if (this.bridge.isWebViewHost) {
-      void this.bridge.invoke('history:clear-all').catch(() => {});
-    }
     this.renderHistoryView(container);
+
+    if (this.bridge.isWebViewHost) {
+      void this.bridge
+        .invoke('history:clear-all')
+        .then(() => {
+          this.showToast(this.t('history.clearedToast'));
+        })
+        .catch(() => {
+          // Rollback local state if backend failed to clear history
+          this.removedHistoryIds.clear();
+          prevRemovedIds.forEach((id) => this.removedHistoryIds.add(id));
+          prevSnapshots.forEach((snap) => {
+            snap.manga.lastViewedEpoch = snap.lastViewedEpoch;
+            snap.manga.lastReadTimeAgo = snap.lastReadTimeAgo;
+            snap.manga.lastReadChapter = snap.lastReadChapter;
+            snap.manga.lastReadPage = snap.lastReadPage;
+            snap.manga.unreadCount = snap.unreadCount;
+            snap.chapters.forEach((cs) => {
+              cs.ch.isRead = cs.isRead;
+              cs.ch.lastPageRead = cs.lastPageRead;
+            });
+          });
+          if (this.currentTab === 'history' && !this.activeDetailMangaId) {
+            this.renderHistoryView(container);
+          }
+          this.showToast(this.l('Gagal menghapus riwayat baca.', 'Failed to clear reading history.'));
+        });
+      return;
+    }
     this.showToast(this.t('history.clearedToast'));
   });
   document.getElementById('btnRefreshHistory')?.addEventListener('click', () => {

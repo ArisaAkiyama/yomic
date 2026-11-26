@@ -165,9 +165,14 @@ namespace YomicDesktop.Views
             Func<string, string, string> localize,
             bool startHidden = true)
         {
+            if (Yomic.Core.Sources.HttpSource.IsOfflineModeProvider?.Invoke() == true)
+            {
+                return new List<string>();
+            }
+
             if (string.IsNullOrWhiteSpace(chapterUrl) || dispatcher == null ||
                 !Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(chapterUrl, out _) ||
-                !await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(chapterUrl))
+                !await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(chapterUrl, bypassCache: true))
             {
                 return new List<string>();
             }
@@ -298,8 +303,11 @@ namespace YomicDesktop.Views
                     var deferral = args.GetDeferral();
                     try
                     {
-                        bool isSafe = Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(reqUri, out _) &&
-                                      await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(reqUri);
+                        bool isOffline = Yomic.Core.Sources.HttpSource.IsOfflineModeProvider?.Invoke() == true;
+                        bool bypassCache = args.ResourceContext == CoreWebView2WebResourceContext.Document;
+                        bool isSafe = !isOffline &&
+                                      Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(reqUri, out _) &&
+                                      await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(reqUri, bypassCache);
                         if (!isSafe)
                         {
                             var wv = senderObj as CoreWebView2;

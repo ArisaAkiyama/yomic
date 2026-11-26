@@ -28,6 +28,159 @@ namespace Yomic.Core.Data
         /// </summary>
         internal static readonly SemaphoreSlim DatabaseWriteGate = new(1, 1);
 
+        // Per-DB-path reader/connection barrier so BackupService.RestoreBackupAsync blocks BOTH
+        // concurrent writers and concurrent readers before ClearAllPools() / WAL deletion / file swap.
+        internal sealed class DbMaintenanceState
+        {
+            public readonly object Sync = new();
+            public int ActiveConnections;
+            public bool MaintenanceActive;
+            public TaskCompletionSource<bool>? MaintenanceCompletedTcs;
+            public TaskCompletionSource<bool>? DrainedTcs;
+        }
+
+        internal sealed class ConnectionLease
+        {
+            private readonly DbMaintenanceState _state;
+            private int _released;
+            internal ConnectionLease(DbMaintenanceState state) => _state = state;
+            public void ReleaseOnce()
+            {
+                if (Interlocked.Exchange(ref _released, 1) == 0)
+                {
+                    ReleaseConnectionSlot(_state);
+                }
+            }
+        }
+
+        private sealed class ExclusiveMaintenanceLease : IDisposable
+        {
+            private readonly DbMaintenanceState _state;
+            private int _disposed;
+            public ExclusiveMaintenanceLease(DbMaintenanceState state) => _state = state;
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+                TaskCompletionSource<bool>? toComplete;
+                lock (_state.Sync)
+                {
+                    _state.MaintenanceActive = false;
+                    toComplete = _state.MaintenanceCompletedTcs;
+                    _state.MaintenanceCompletedTcs = null;
+                    _state.DrainedTcs = null;
+                }
+                toComplete?.TrySetResult(true);
+                DatabaseWriteGate.Release();
+            }
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DbMaintenanceState> _dbMaintenanceStates =
+            new(System.StringComparer.OrdinalIgnoreCase);
+
+        private static string NormalizeDbKey(string? dbPath)
+        {
+            if (string.IsNullOrWhiteSpace(dbPath))
+            {
+                var folder = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
+                dbPath = System.IO.Path.Combine(folder, "Yomic", "manga.db");
+            }
+            try { return System.IO.Path.GetFullPath(dbPath); }
+            catch { return dbPath; }
+        }
+
+        private static DbMaintenanceState GetMaintenanceState(string dbPath) =>
+            _dbMaintenanceStates.GetOrAdd(NormalizeDbKey(dbPath), _ => new DbMaintenanceState());
+
+        internal static async Task<IDisposable> EnterExclusiveMaintenanceAsync(string dbPath, TimeSpan? drainTimeout = null)
+        {
+            await DatabaseWriteGate.WaitAsync().ConfigureAwait(false);
+            var state = GetMaintenanceState(dbPath);
+            Task? drainWaitTask = null;
+            lock (state.Sync)
+            {
+                state.MaintenanceActive = true;
+                state.MaintenanceCompletedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                if (state.ActiveConnections > 0)
+                {
+                    state.DrainedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    drainWaitTask = state.DrainedTcs.Task;
+                }
+            }
+
+            if (drainWaitTask != null)
+            {
+                try
+                {
+                    await drainWaitTask.WaitAsync(drainTimeout ?? System.TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                }
+                catch (System.TimeoutException)
+                {
+                    // Proceed after drain timeout; ReplaceSqliteFileWithRetry still retries locked file swaps safely
+                }
+            }
+
+            return new ExclusiveMaintenanceLease(state);
+        }
+
+        internal static ConnectionLease AcquireConnectionSlotSync(string dbPath)
+        {
+            var state = GetMaintenanceState(dbPath);
+            while (true)
+            {
+                Task? waitTask = null;
+                lock (state.Sync)
+                {
+                    if (!state.MaintenanceActive)
+                    {
+                        state.ActiveConnections++;
+                        return new ConnectionLease(state);
+                    }
+                    waitTask = state.MaintenanceCompletedTcs?.Task;
+                }
+                waitTask?.GetAwaiter().GetResult();
+            }
+        }
+
+        internal static async Task<ConnectionLease> AcquireConnectionSlotAsync(string dbPath, CancellationToken ct)
+        {
+            var state = GetMaintenanceState(dbPath);
+            while (true)
+            {
+                Task? waitTask = null;
+                lock (state.Sync)
+                {
+                    if (!state.MaintenanceActive)
+                    {
+                        state.ActiveConnections++;
+                        return new ConnectionLease(state);
+                    }
+                    waitTask = state.MaintenanceCompletedTcs?.Task;
+                }
+                if (waitTask != null)
+                {
+                    await waitTask.WaitAsync(ct).ConfigureAwait(false);
+                }
+            }
+        }
+
+        private static void ReleaseConnectionSlot(DbMaintenanceState state)
+        {
+            TaskCompletionSource<bool>? drained = null;
+            lock (state.Sync)
+            {
+                if (state.ActiveConnections > 0)
+                {
+                    state.ActiveConnections--;
+                }
+                if (state.ActiveConnections == 0 && state.MaintenanceActive && state.DrainedTcs != null)
+                {
+                    drained = state.DrainedTcs;
+                    state.DrainedTcs = null;
+                }
+            }
+            drained?.TrySetResult(true);
+        }
+
         public MangaDbContext()
         {
         }
@@ -169,7 +322,7 @@ namespace Yomic.Core.Data
 
             // Do NOT use Cache=Shared with WAL — shared-cache causes SQLITE_LOCKED bypassing busy_timeout
             optionsBuilder.UseSqlite($"Data Source={dbPath};Default Timeout=10");
-            optionsBuilder.AddInterceptors(new SqlitePragmaInterceptor());
+            optionsBuilder.AddInterceptors(new SqlitePragmaInterceptor(dbPath));
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -254,6 +407,60 @@ namespace Yomic.Core.Data
         // busy_timeout MUST be configured FIRST before journal_mode=WAL so parallel burst opens never throw SQLITE_BUSY
         internal const string PragmaSql = "PRAGMA busy_timeout=10000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-10000; PRAGMA temp_store=MEMORY;";
 
+        private readonly string _dbPath;
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<DbConnection, object> _activeLeases = new();
+
+        public SqlitePragmaInterceptor() : this(string.Empty) { }
+
+        public SqlitePragmaInterceptor(string dbPath)
+        {
+            _dbPath = dbPath;
+        }
+
+        private static void AttachLease(DbConnection connection, object lease)
+        {
+            lock (_activeLeases)
+            {
+                if (_activeLeases.TryGetValue(connection, out var existing))
+                {
+                    // Release any stale lease if connection was reused
+                    (existing as System.Action)?.Invoke();
+                    _activeLeases.Remove(connection);
+                }
+                _activeLeases.Add(connection, lease);
+            }
+        }
+
+        private static void ReleaseLease(DbConnection connection)
+        {
+            object? lease = null;
+            lock (_activeLeases)
+            {
+                if (_activeLeases.TryGetValue(connection, out lease))
+                {
+                    _activeLeases.Remove(connection);
+                }
+            }
+            if (lease is System.Action releaseAction)
+            {
+                releaseAction();
+            }
+        }
+
+        public override InterceptionResult ConnectionOpening(DbConnection connection, ConnectionEventData eventData, InterceptionResult result)
+        {
+            var lease = MangaDbContext.AcquireConnectionSlotSync(_dbPath);
+            AttachLease(connection, (System.Action)lease.ReleaseOnce);
+            return base.ConnectionOpening(connection, eventData, result);
+        }
+
+        public override async ValueTask<InterceptionResult> ConnectionOpeningAsync(DbConnection connection, ConnectionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default)
+        {
+            var lease = await MangaDbContext.AcquireConnectionSlotAsync(_dbPath, cancellationToken).ConfigureAwait(false);
+            AttachLease(connection, (System.Action)lease.ReleaseOnce);
+            return await base.ConnectionOpeningAsync(connection, eventData, result, cancellationToken).ConfigureAwait(false);
+        }
+
         public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData)
         {
             using var command = connection.CreateCommand();
@@ -266,6 +473,30 @@ namespace Yomic.Core.Data
             using var command = connection.CreateCommand();
             command.CommandText = PragmaSql;
             await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        public override void ConnectionClosed(DbConnection connection, ConnectionEndEventData eventData)
+        {
+            ReleaseLease(connection);
+            base.ConnectionClosed(connection, eventData);
+        }
+
+        public override Task ConnectionClosedAsync(DbConnection connection, ConnectionEndEventData eventData)
+        {
+            ReleaseLease(connection);
+            return base.ConnectionClosedAsync(connection, eventData);
+        }
+
+        public override void ConnectionFailed(DbConnection connection, ConnectionErrorEventData eventData)
+        {
+            ReleaseLease(connection);
+            base.ConnectionFailed(connection, eventData);
+        }
+
+        public override Task ConnectionFailedAsync(DbConnection connection, ConnectionErrorEventData eventData, CancellationToken cancellationToken = default)
+        {
+            ReleaseLease(connection);
+            return base.ConnectionFailedAsync(connection, eventData, cancellationToken);
         }
     }
 }

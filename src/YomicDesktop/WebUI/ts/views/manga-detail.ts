@@ -193,6 +193,7 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
   const librarySvg = manga.inLibrary
     ? getIconSvg('bookmark-bold', { size: 24 })
     : getIconSvg('bookmark', { size: 24 });
+  const shouldBlurCover = this.settings.blurExplicitCovers && this.isExplicitManga(manga);
   return `
     <div class="v1-detail-wrap">
       <!-- AMBIENT BACKGROUND -->
@@ -214,7 +215,7 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
       <div class="v1-header-grid">
         <!-- Left Column: Sharp Cover Image -->
         <div class="v1-cover-border">
-          <img class="v1-cover-img" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(manga.title)}" data-fallback-src="${escapeXml(fallbackSvg)}" />
+          <img class="v1-cover-img${shouldBlurCover ? ' is-blurred' : ''}" src="${sanitizeImageSrc(coverSrc) || escapeXml(fallbackSvg)}" alt="${escapeXml(manga.title)}" data-fallback-src="${escapeXml(fallbackSvg)}" />
         </div>
         <!-- Right Column: Title, Vertical Meta Stack, 5-Col Action Grid, Genres, Expandable Synopsis -->
         <div class="v1-info-col">

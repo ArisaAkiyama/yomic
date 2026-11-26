@@ -554,21 +554,70 @@ namespace Yomic.Core.Services
                     }
                     catch (Exception ex)
                     {
+                        bool interrupted;
+                        lock (_processingLock)
+                        {
+                            interrupted = request.Status == "Paused" ||
+                                          request.Status == "Cancelled" ||
+                                          request.CancellationTokenSource.IsCancellationRequested;
+                            if (interrupted && request.Status != "Paused")
+                            {
+                                request.Status = "Cancelled";
+                            }
+                        }
+                        if (interrupted)
+                        {
+                            break;
+                        }
+
                         if (request.RetryCount < maxRetries)
                         {
-                             request.RetryCount++;
-                             request.Status = $"Retrying ({request.RetryCount}/{maxRetries})...";
-                             StatusChanged?.Invoke(this, request);
-                             
-                             LogService.Warning("Download", $"Retry {request.RetryCount} for {request.Chapter.Name}");
-                             await Task.Delay(2000 * request.RetryCount, request.CancellationTokenSource.Token); 
+                            bool stillActive;
+                            lock (_processingLock)
+                            {
+                                stillActive = request.Status != "Paused" &&
+                                              request.Status != "Cancelled" &&
+                                              !request.CancellationTokenSource.IsCancellationRequested;
+                                if (stillActive)
+                                {
+                                    request.RetryCount++;
+                                    request.Status = $"Retrying ({request.RetryCount}/{maxRetries})...";
+                                }
+                            }
+                            if (!stillActive) break;
+
+                            StatusChanged?.Invoke(this, request);
+                            LogService.Warning("Download", $"Retry {request.RetryCount} for {request.Chapter.Name}");
+                            try
+                            {
+                                await Task.Delay(2000 * request.RetryCount, request.CancellationTokenSource.Token);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                lock (_processingLock)
+                                {
+                                    if (request.Status != "Paused") request.Status = "Cancelled";
+                                }
+                                break;
+                            }
                         }
                         else
                         {
-                            // Final failure
-                            request.Status = "Error";
-                            LogService.Error("Download", $"Max retries exceeded: {ex.Message}");
-                            StatusChanged?.Invoke(this, request);
+                            // Final failure — never overwrite concurrent Pause/Cancel
+                            bool markedError = false;
+                            lock (_processingLock)
+                            {
+                                if (request.Status != "Paused" && request.Status != "Cancelled")
+                                {
+                                    request.Status = "Error";
+                                    markedError = true;
+                                }
+                            }
+                            if (markedError)
+                            {
+                                LogService.Error("Download", $"Max retries exceeded: {ex.Message}");
+                                StatusChanged?.Invoke(this, request);
+                            }
                             break; // Exit loop to finally
                         }
                     }
@@ -589,6 +638,7 @@ namespace Yomic.Core.Services
                 // Completion Logic (Cancelled items are dropped cleanly instead of sticking in _history as "Queued")
                 if (request.Status == "Completed" || request.Status == "Error")
                 {
+                    try { request.CancellationTokenSource.Dispose(); } catch { }
                     lock (_historyLock)
                     {
                         _history.Add(request);
@@ -1279,9 +1329,15 @@ namespace Yomic.Core.Services
 
         public void ClearCompleted()
         {
+            List<DownloadRequest> removed;
             lock (_historyLock)
             {
+                removed = _history.Where(x => x.Status == "Completed" || x.Status == "Cancelled" || x.Status == "Error").ToList();
                 _history.RemoveAll(x => x.Status == "Completed" || x.Status == "Cancelled" || x.Status == "Error");
+            }
+            foreach (var item in removed)
+            {
+                try { item.CancellationTokenSource.Dispose(); } catch { }
             }
             // Notify?
             QueueChanged?.Invoke(this, new DownloadRequest()); // Trigger refresh
@@ -1326,6 +1382,7 @@ namespace Yomic.Core.Services
             {
                 request.Status = "Cancelled";
                 try { request.CancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
+                try { request.CancellationTokenSource.Dispose(); } catch { }
                 QueueChanged?.Invoke(this, request);
                 SaveQueue();
                 return;
@@ -1344,6 +1401,7 @@ namespace Yomic.Core.Services
             
             if (removedFromHistory)
             {
+                try { request.CancellationTokenSource.Dispose(); } catch { }
                 QueueChanged?.Invoke(this, request);
                 SaveQueue();
             }
@@ -1401,6 +1459,24 @@ namespace Yomic.Core.Services
                     }
                     try { active.CancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
                 }
+            }
+
+            lock (_queueLock)
+            {
+                foreach (var queued in _queue)
+                {
+                    try { queued.CancellationTokenSource.Dispose(); } catch { }
+                }
+                _queue.Clear();
+            }
+
+            lock (_historyLock)
+            {
+                foreach (var hist in _history)
+                {
+                    try { hist.CancellationTokenSource.Dispose(); } catch { }
+                }
+                _history.Clear();
             }
 
             // Detach shared client without disposing synchronously if active downloads are still unwinding

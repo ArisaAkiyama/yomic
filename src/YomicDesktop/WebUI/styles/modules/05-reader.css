@@ -579,10 +579,10 @@
 /* Reader Canvas & Edge Navigation */
 .reader-canvas-scroll {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: safe center;
   padding: 20px 16px 120px 16px;
   scroll-behavior: auto;
   cursor: default;

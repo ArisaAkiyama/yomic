@@ -193,12 +193,12 @@ namespace Yomic.Core.Services
 
         public Task<bool> RestoreBackupAsync(string sourceZipPath)
         {
-            return Task.Run(() =>
+            return Task.Run(async () =>
             {
                 string stagingDir = Path.Combine(Path.GetTempPath(), $"YomicRestore_{Guid.NewGuid():N}");
                 string? rollbackDbPath = null;
                 string? rollbackSettingsPath = null;
-                bool dbGateHeld = false;
+                IDisposable? maintenanceLease = null;
                 try
                 {
                     if (!File.Exists(sourceZipPath))
@@ -261,10 +261,9 @@ namespace Yomic.Core.Services
 
                     Directory.CreateDirectory(_appDataFolder);
 
-                    // Acquire exclusive DB maintenance gate so no background LibraryService/DownloadService/Reader
-                    // write can race with ClearAllPools(), WAL deletion, file swap, or rollback.
-                    MangaDbContext.DatabaseWriteGate.Wait();
-                    dbGateHeld = true;
+                    // Acquire exclusive DB maintenance barrier so BOTH concurrent writers AND concurrent readers
+                    // on _dbPath drain and pause before ClearAllPools(), WAL deletion, file swap, or rollback.
+                    maintenanceLease = await MangaDbContext.EnterExclusiveMaintenanceAsync(_dbPath).ConfigureAwait(false);
 
                     // 2. Replace manga.db safely with WAL-preserving rollback snapshot BEFORE removing live WAL/SHM
                     if (hasDbEntry)
@@ -322,10 +321,7 @@ namespace Yomic.Core.Services
                 }
                 finally
                 {
-                    if (dbGateHeld)
-                    {
-                        MangaDbContext.DatabaseWriteGate.Release();
-                    }
+                    try { maintenanceLease?.Dispose(); } catch { }
                     if (Directory.Exists(stagingDir))
                     {
                         try { Directory.Delete(stagingDir, recursive: true); } catch { }

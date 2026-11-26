@@ -573,6 +573,89 @@ var source = {
     }
 
     [Fact]
+    public void CatalogRuntime_FixtureExecution_Batch24LazyLoadBloggerAndSinglePage()
+    {
+        string catalogDir = FindCatalogDirectory();
+
+        static Jint.Engine CreateEngine(string scriptPath, Func<string, object?, object> fetchImpl)
+        {
+            var engine = new Jint.Engine(opts => opts.TimeoutInterval(TimeSpan.FromSeconds(5)).LimitRecursion(64));
+            engine.SetValue("log", new Action<object?>(_ => { }));
+            engine.SetValue("fetch", new Func<string, object?, object>(fetchImpl));
+            engine.SetValue("Html", new { parse = new Func<string, string, Yomic.Core.Sources.JsDocument>(Yomic.Core.Sources.HtmlParser.parse) });
+            engine.Execute(File.ReadAllText(scriptPath, Encoding.UTF8));
+            return engine;
+        }
+
+        // 1. Lazy-load placeholder rejection in getPageList (data:image/svg+xml & loading.gif skipped in favor of data-src/data-lazy-src)
+        string lazyHtml = "<html><body><div id='readerarea' class='chapter-content post-body entry-content reading-content separator'>" +
+                          "<img src='data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' data-src='https://cdn.example/real-01.jpg' />" +
+                          "<img src='https://cdn.example/loading.gif' data-lazy-src='https://cdn.example/real-02.jpg' />" +
+                          "<img src='data:image/gif;base64,R0lGODlhAQABAAAAACw=' />" +
+                          "</div></body></html>";
+
+        foreach (var pluginFile in new[] { "areakomik.js", "kiryuu.js", "inazumanga.js", "mikoroku.js" })
+        {
+            var eng = CreateEngine(Path.Combine(catalogDir, pluginFile), (_, _) => new { status = 200, body = lazyHtml });
+            var len = eng.Evaluate("source.getPageList('https://cdn.example/ch-1').length").AsNumber();
+            Assert.Equal(2, len);
+            Assert.StartsWith("https://cdn.example/real-01.jpg", eng.Evaluate("source.getPageList('https://cdn.example/ch-1')[0]").AsString());
+            Assert.StartsWith("https://cdn.example/real-02.jpg", eng.Evaluate("source.getPageList('https://cdn.example/ch-1')[1]").AsString());
+        }
+
+        // 2. ZeistManga Blogger pagination (aarlas.js & inazumanga.js paginate start-index past Blogger's 150-entry cap)
+        foreach (var bloggerFile in new[] { "aarlas.js", "inazumanga.js" })
+        {
+            var eng = CreateEngine(Path.Combine(catalogDir, bloggerFile), (url, _) =>
+            {
+                if (url.Contains("start-index=151"))
+                {
+                    return new
+                    {
+                        status = 200,
+                        body = "{\"feed\":{\"entry\":[" +
+                               "{\"id\":{\"$t\":\"e151\"},\"category\":[{\"term\":\"Chapter\"}],\"title\":{\"$t\":\"Chapter 151\"},\"link\":[{\"rel\":\"alternate\",\"href\":\"https://blog.example/ch-151.html\"}]}," +
+                               "{\"id\":{\"$t\":\"e152\"},\"category\":[{\"term\":\"Chapter\"}],\"title\":{\"$t\":\"Chapter 152\"},\"link\":[{\"rel\":\"alternate\",\"href\":\"https://blog.example/ch-152.html\"}]}" +
+                               "]}}"
+                    };
+                }
+                if (url.Contains("start-index=1"))
+                {
+                    var batch150 = string.Join(",", Enumerable.Range(1, 150).Select(i =>
+                        $"{{\"id\":{{\"$t\":\"e{i}\"}},\"category\":[{{\"term\":\"Chapter\"}}],\"title\":{{\"$t\":\"Chapter {i}\"}},\"link\":[{{\"rel\":\"alternate\",\"href\":\"https://blog.example/ch-{i}.html\"}}]}}"));
+                    return new { status = 200, body = $"{{\"feed\":{{\"entry\":[{batch150}]}}}}" };
+                }
+                return new { status = 200, body = "<html><body><article class='oh a2'><header><h1>Epic Title</h1></header></article><script>clwd.run('Epic Title')</script></body></html>" };
+            });
+            Assert.Equal(152, eng.Evaluate("source.getChapterList('/series/epic').length").AsNumber());
+        }
+
+        // 3. MikoRoku: empty Blogger feed returns [] (no broken /detail.html fallback)
+        var mikoEngine = CreateEngine(Path.Combine(catalogDir, "mikoroku.js"), (url, _) =>
+        {
+            if (url.Contains("all-manga.json"))
+                return new { status = 200, body = "[{\"slug\":\"demo\",\"title\":\"Demo\",\"img\":\"https://cdn.example/c.jpg\",\"rating\":\"8.0\"}]" };
+            return new { status = 200, body = "{\"feed\":{\"entry\":[]}}" };
+        });
+        Assert.Equal(0, mikoEngine.Evaluate("source.getChapterList('/detail.html?slug=demo').length").AsNumber());
+
+        // 4. Softkomik: missing __NEXT_DATA__ returns [] without throwing
+        var softEngine = CreateEngine(Path.Combine(catalogDir, "softkomik.js"), (_, _) => new { status = 200, body = "<html><body>Blocked</body></html>" });
+        Assert.Equal(0, softEngine.Evaluate("source.getPageList('/m/chapter/1').length").AsNumber());
+
+        // 5. StoryAboutUs non-array JSON guard + single-page plugins stop on page 2 and declare isHasMorePages: false
+        var sauEngine = CreateEngine(Path.Combine(catalogDir, "storyaboutus.js"), (_, _) => new { status = 200, body = "{\"error\":\"maintenance\"}" });
+        Assert.Equal(0, sauEngine.Evaluate("source.getSearchManga('test', 1).items.length").AsNumber());
+
+        foreach (var singleFile in new[] { "storyaboutus.js", "mikoroku.js", "omicaso.js", "bacakomikpics.js", "comicaso.js", "komikrealm.js", "koronaxscan.js" })
+        {
+            var eng = CreateEngine(Path.Combine(catalogDir, singleFile), (_, _) => new { status = 200, body = "[]" });
+            Assert.False(eng.Evaluate("Boolean(source.isHasMorePages)").AsBoolean(), $"{singleFile} must set isHasMorePages: false");
+            Assert.Equal(0, eng.Evaluate("source.getPopularManga(2).items.length").AsNumber());
+        }
+    }
+
+    [Fact]
     public void CatalogRuntime_AllPluginsLoadAndInitializeInRealJintEngine()
     {
         string catalogDir = FindCatalogDirectory();
@@ -600,5 +683,34 @@ var source = {
         }
 
         Assert.True(failures.Count == 0, "Jint catalog load failures:\n" + string.Join("\n", failures));
+    }
+
+    [Fact]
+    public void InstallerScript_AutoRelaunchesAfterSilentUpdateWithoutPostinstallTrap()
+    {
+        string repoRoot = Path.GetFullPath(Path.Combine(FindCatalogDirectory(), "..", "..", "..", ".."));
+        string issPath = Path.Combine(repoRoot, "Installer", "Yomic.iss");
+        Assert.True(File.Exists(issPath), $"Missing installer script at {issPath}");
+        string iss = File.ReadAllText(issPath, Encoding.UTF8);
+
+        // Silent relaunch [Run] line must NOT include 'postinstall' (Inno Setup skips postinstall in /SILENT mode)
+        var silentRunLine = iss.Split('\n')
+            .FirstOrDefault(l => l.Contains("ShouldRelaunchAfterSilentUpdate", StringComparison.Ordinal) &&
+                                 l.TrimStart().StartsWith("Filename:", StringComparison.OrdinalIgnoreCase));
+        Assert.False(string.IsNullOrWhiteSpace(silentRunLine), "Missing silent relaunch [Run] entry in Yomic.iss");
+        Assert.DoesNotContain("postinstall", silentRunLine!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("nowait", silentRunLine!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skipifnotsilent", silentRunLine!, StringComparison.OrdinalIgnoreCase);
+
+        // Interactive Finish-page launch must remain enabled by default (not unchecked)
+        var interactiveRunLine = iss.Split('\n')
+            .FirstOrDefault(l => l.Contains("skipifsilent", StringComparison.OrdinalIgnoreCase) &&
+                                 l.TrimStart().StartsWith("Filename:", StringComparison.OrdinalIgnoreCase));
+        Assert.False(string.IsNullOrWhiteSpace(interactiveRunLine), "Missing interactive [Run] entry in Yomic.iss");
+        Assert.Contains("postinstall", interactiveRunLine!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("unchecked", interactiveRunLine!, StringComparison.OrdinalIgnoreCase);
+
+        // Default RELAUNCH behavior in silent mode should relaunch unless explicitly /RELAUNCH=0
+        Assert.Contains("{param:RELAUNCH|1}", iss, StringComparison.Ordinal);
     }
 }

@@ -589,4 +589,65 @@ describe('i18n & Static WebUI Integrity', () => {
     cloned.customHotkeys.readerNextPage = 'x';
     assert.equal(mockData.DEFAULT_APP_SETTINGS.customHotkeys.readerNextPage, undefined);
   });
+
+  it('Batch 24 CSS & views enforce safe-center zoom, hover-unblur across all views, Chapter 0 reload, and multi-complete download counts', () => {
+    const readerCss = fs.readFileSync(path.join(webUiRoot, 'styles', 'modules', '05-reader.css'), 'utf8');
+    const refineCss = fs.readFileSync(path.join(webUiRoot, 'styles', 'modules', '07-refinements-updater.css'), 'utf8');
+    const modalsCss = fs.readFileSync(path.join(webUiRoot, 'styles', 'modules', '06-modals-dark-stats.css'), 'utf8');
+    assert.ok(readerCss.includes('align-items: safe center;'), '05-reader.css must use align-items: safe center');
+    assert.ok(refineCss.includes('justify-content: safe center;'), '07-refinements-updater.css must use justify-content: safe center');
+    assert.ok(modalsCss.includes('.v1-cover-img.is-blurred:hover'), '06-modals-dark-stats.css must unblur detail/list/update covers on hover');
+
+    for (const rel of ['library.ts', 'browse.ts', 'manga-detail.ts', 'updates-history.ts', 'downloads.ts']) {
+      const src = fs.readFileSync(path.join(webUiRoot, 'ts', 'views', rel), 'utf8');
+      assert.ok(src.includes('blurExplicitCovers') && src.includes('is-blurred'), `${rel} must apply is-blurred when blurExplicitCovers is enabled`);
+    }
+
+    const readerTs = fs.readFileSync(path.join(webUiRoot, 'ts', 'views', 'reader.ts'), 'utf8');
+    assert.ok(readerTs.includes('this.readerChapterNumber < 0'), 'reader.ts must allow refreshing Chapter 0');
+    assert.ok(readerTs.includes("lower.startsWith('data:') || lower.startsWith('blob:')"), 'reader.ts must skip data:/blob: URIs in refreshReaderCanvasImages');
+
+    const settingsTs = fs.readFileSync(path.join(webUiRoot, 'ts', 'views', 'settings.ts'), 'utf8');
+    assert.ok(settingsTs.includes('this.tutorial.refreshLocale();'), 'settings.ts must refresh tutorial locale on language change');
+    assert.ok(settingsTs.includes('this.toggleSidebarCollapse(false, false);'), 'settings.ts must reset sidebar collapse on factory reset');
+
+    // Multi-complete downloadCount sync for unloaded chapters
+    const prevDoc = globalThis.document;
+    globalThis.document = { getElementById: () => ({ id: 'viewContainer' }), documentElement: { lang: 'en' } };
+    try {
+      const handlers = new Map();
+      const mockApp = {
+        bridge: { on(ev, fn) { handlers.set(ev, fn); } },
+        extensions: [],
+        downloads: [],
+        mangaList: [{ id: 'db-99', chapters: [], downloadedCount: 0 }],
+        currentTab: 'library',
+        activeDetailMangaId: null,
+        activeBrowseSourceId: null,
+        syncProgress: { active: false, current: 0, total: 1 },
+        isManualBrowseRefreshing: false,
+        browseVerificationProgress: { active: false, current: 0, total: 0 },
+        downloadingExtProgress: new Map(),
+        announcements: [],
+        updateSidebarCounters() {},
+        persistLocalCache() {},
+        renderExtensionsView() {},
+        renderBrowseView() {},
+        renderLibraryView() {},
+        renderUpdatesView() {},
+        renderDownloadsView() {},
+        applyBackendAnnouncements() {},
+        showToast() {},
+        l(id) { return id; }
+      };
+      bindBackendEvents.call(mockApp);
+      handlers.get('event:downloads-updated')([
+        { id: 'd1', mangaId: 'db-99', chapterUrl: '/c1', chapterNumber: 1, status: 'completed', progressPercent: 100 },
+        { id: 'd2', mangaId: 'db-99', chapterUrl: '/c2', chapterNumber: 2, status: 'completed', progressPercent: 100 }
+      ]);
+      assert.equal(mockApp.mangaList[0].downloadedCount, 2, 'Expected downloadedCount to reflect all completed chapters even when chapters[] is unloaded');
+    } finally {
+      globalThis.document = prevDoc;
+    }
+  });
 });

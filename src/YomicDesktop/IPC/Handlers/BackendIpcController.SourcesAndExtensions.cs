@@ -333,7 +333,8 @@ namespace YomicDesktop.IPC
                 SourceId = source.Id,
                 Page = page,
                 TotalPages = Math.Max(page, totalPages),
-                HasMore = page < totalPages || (rawItems.Count >= 12 && source.IsHasMorePages),
+                // Honor explicit totalPages from plugins; only fall back to item-count heuristic when totalPages was unknown (<= 0)
+                HasMore = page < totalPages || (totalPages <= 0 && rawItems.Count >= 12 && source.IsHasMorePages),
                 Items = dtos
             };
         }

@@ -381,7 +381,8 @@ namespace Yomic.Core.Services
                         if (!candidateIps.Contains(ip)) candidateIps.Add(ip);
                     }
 
-                    if (aRes.Ok || aaaaRes.Ok) break;
+                    // Only stop failover if we resolved at least one IP OR both A and AAAA queries succeeded cleanly
+                    if (candidateIps.Count > 0 || (aRes.Ok && aaaaRes.Ok)) break;
                 }
 
                 // Append system DNS addresses ONLY if DoH yielded no IPs (prevents leaking DNS queries to ISP)

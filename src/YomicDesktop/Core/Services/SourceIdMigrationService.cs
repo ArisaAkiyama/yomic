@@ -21,12 +21,18 @@ namespace Yomic.Core.Services
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Yomic", "source_id_migration_v1.done");
 
-        public static async Task RunIfNeededAsync(SourceManager sourceManager)
+        public static Task RunIfNeededAsync(SourceManager sourceManager)
         {
+            return RunIfNeededAsync(sourceManager, customDbPath: null, customFlagFile: null);
+        }
+
+        internal static async Task RunIfNeededAsync(SourceManager sourceManager, string? customDbPath, string? customFlagFile)
+        {
+            string flagFile = string.IsNullOrWhiteSpace(customFlagFile) ? MigrationFlagFile : customFlagFile;
             try
             {
                 // One-time v1 -> v2 migration: skip once completed so uninstalled/disabled extensions are never hijacked!
-                if (File.Exists(MigrationFlagFile))
+                if (File.Exists(flagFile))
                 {
                     return;
                 }
@@ -43,7 +49,7 @@ namespace Yomic.Core.Services
                 await MangaDbContext.DatabaseWriteGate.WaitAsync();
                 try
                 {
-                    using var db = new MangaDbContext();
+                    using var db = string.IsNullOrWhiteSpace(customDbPath) ? new MangaDbContext() : new MangaDbContext(customDbPath);
                     var allManga = await db.Mangas.ToListAsync();
                     var existingPairs = new HashSet<(string Url, long Source)>(
                         allManga.Select(m => ((m.Url ?? string.Empty).Trim().ToLowerInvariant(), m.Source)));
@@ -53,7 +59,7 @@ namespace Yomic.Core.Services
                     if (orphanedManga.Count == 0)
                     {
                         LogService.Info("SourceIdMigration", "All manga have valid Source IDs. Marking migration as done.");
-                        MarkMigrationDone();
+                        MarkMigrationDone(flagFile);
                         return;
                     }
 
@@ -164,10 +170,9 @@ namespace Yomic.Core.Services
                         LogService.Success("SourceIdMigration", $"Successfully migrated {fixedCount}/{orphanedManga.Count} manga Source IDs.");
                     }
 
-                    if (fixedCount == orphanedManga.Count)
-                    {
-                        MarkMigrationDone();
-                    }
+                    // Always mark the one-time v1 -> v2 migration done after running with loaded sources;
+                    // remaining unmatched rows belong to uninstalled/removed extensions and must not re-trigger migration forever.
+                    MarkMigrationDone(flagFile);
                 }
                 finally
                 {
@@ -187,14 +192,14 @@ namespace Yomic.Core.Services
             return host.ToLowerInvariant();
         }
 
-        private static void MarkMigrationDone()
+        private static void MarkMigrationDone(string flagFile)
         {
             try
             {
-                var dir = Path.GetDirectoryName(MigrationFlagFile);
+                var dir = Path.GetDirectoryName(flagFile);
                 if (!string.IsNullOrEmpty(dir))
                     Directory.CreateDirectory(dir);
-                File.WriteAllText(MigrationFlagFile, DateTime.UtcNow.ToString("O"));
+                File.WriteAllText(flagFile, DateTime.UtcNow.ToString("O"));
             }
             catch { }
         }

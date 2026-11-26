@@ -181,7 +181,6 @@ namespace Yomic.Core.Services
                         "--disable-infobars",
                         "--disable-blink-features=AutomationControlled",
                         "--enable-features=EncryptedClientHello", 
-                        "--dns-over-https-url=https://cloudflare-dns.com/dns-query", 
                         "--window-size=1920,1080",
                         "--disable-dev-shm-usage"
                     }
@@ -216,94 +215,6 @@ namespace Yomic.Core.Services
             {
                 _initLock.Release();
             }
-        }
-
-        private static readonly System.Net.Http.HttpClient _dohGuardClient = new() { Timeout = TimeSpan.FromSeconds(4) };
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (System.Net.IPAddress[] Ips, DateTime ExpiresUtc)> _dohGuardCache =
-            new(StringComparer.OrdinalIgnoreCase);
-
-        private static async Task<System.Net.IPAddress[]?> ResolveHostIpsViaDoHFirstAsync(string host)
-        {
-            if (System.Net.IPAddress.TryParse(host, out var literalIp))
-            {
-                return new[] { literalIp };
-            }
-
-            if (_dohGuardCache.TryGetValue(host, out var cached) && cached.ExpiresUtc > DateTime.UtcNow)
-            {
-                return cached.Ips;
-            }
-
-            // Query Cloudflare DoH for BOTH A (IPv4) and AAAA (IPv6) records in parallel (matching Chromium's --dns-over-https-url)
-            // so dual-stack private IPv6 AAAA records are strictly caught without serial latency.
-            async Task<(List<System.Net.IPAddress> Found, bool Ok)> QueryDoHAsync(string qType, int recType)
-            {
-                var found = new List<System.Net.IPAddress>();
-                try
-                {
-                    using var req = new System.Net.Http.HttpRequestMessage(
-                        System.Net.Http.HttpMethod.Get,
-                        $"https://1.1.1.1/dns-query?name={Uri.EscapeDataString(host)}&type={qType}");
-                    req.Headers.TryAddWithoutValidation("Accept", "application/dns-json");
-                    using var res = await _dohGuardClient.SendAsync(req);
-                    if (!res.IsSuccessStatusCode) return (found, false);
-                    var bytes = await Yomic.Core.Helpers.UrlSecurityHelper.ReadContentBoundedAsync(res.Content, 256 * 1024);
-                    using var doc = System.Text.Json.JsonDocument.Parse(bytes);
-                    if (doc.RootElement.TryGetProperty("Answer", out var answers))
-                    {
-                        foreach (var ans in answers.EnumerateArray())
-                        {
-                            if (ans.TryGetProperty("type", out var t) && t.GetInt32() == recType &&
-                                ans.TryGetProperty("data", out var d) &&
-                                System.Net.IPAddress.TryParse(d.GetString(), out var ip) &&
-                                !found.Contains(ip))
-                            {
-                                found.Add(ip);
-                            }
-                        }
-                    }
-                    return (found, true);
-                }
-                catch
-                {
-                    return (found, false);
-                }
-            }
-
-            var aTask = QueryDoHAsync("A", 1);
-            var aaaaTask = QueryDoHAsync("AAAA", 28);
-            await Task.WhenAll(aTask, aaaaTask);
-            var aRes = await aTask;
-            var aaaaRes = await aaaaTask;
-
-            var list = new List<System.Net.IPAddress>();
-            foreach (var ip in aRes.Found.Concat(aaaaRes.Found))
-            {
-                if (!list.Contains(ip)) list.Add(ip);
-            }
-
-            // If either DoH query failed or yielded 0 IPs, also merge System DNS so private AAAA/A records cannot slip past
-            if (!aRes.Ok || !aaaaRes.Ok || list.Count == 0)
-            {
-                try
-                {
-                    var sysIps = await System.Net.Dns.GetHostAddressesAsync(host);
-                    foreach (var ip in sysIps)
-                    {
-                        if (!list.Contains(ip)) list.Add(ip);
-                    }
-                }
-                catch { }
-            }
-
-            System.Net.IPAddress[]? resolved = list.Count > 0 ? list.ToArray() : null;
-            if (resolved != null && resolved.Length > 0 && aRes.Ok && aaaaRes.Ok)
-            {
-                if (_dohGuardCache.Count >= 512) _dohGuardCache.Clear();
-                // Tight 60s cache reduces DNS-rebinding exposure
-                _dohGuardCache[host] = (resolved, DateTime.UtcNow.AddSeconds(60));
-            }
-            return resolved;
         }
 
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPage, Task> _guardedPages = new();
@@ -341,20 +252,29 @@ namespace Yomic.Core.Services
                         return;
                     }
 
+                    if (Yomic.Core.Sources.HttpSource.IsOfflineModeProvider?.Invoke() == true)
+                    {
+                        await e.Request.AbortAsync(RequestAbortErrorCode.InternetDisconnected);
+                        return;
+                    }
+
                     if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(reqUrl, out var parsed) || parsed == null)
                     {
                         await e.Request.AbortAsync(RequestAbortErrorCode.BlockedByClient);
                         return;
                     }
 
-                    // Validate DNS via Cloudflare DoH first (aligned with Chromium's DoH resolver) to block SSRF without ISP-DNS false blocks
-                    var ips = await ResolveHostIpsViaDoHFirstAsync(parsed.IdnHost.TrimEnd('.'));
+                    // Validate against BOTH System DNS (what Chromium connects through) and user DoH provider.
+                    // Bypass short cache on top-level navigation requests to minimize DNS-rebinding window.
+                    var (ips, isSafe) = await Yomic.Core.Helpers.UrlSecurityHelper.ResolveAndValidateHostForBrowserAsync(
+                        parsed.IdnHost.TrimEnd('.'),
+                        bypassCache: e.Request.IsNavigationRequest);
                     if (ips == null || ips.Length == 0)
                     {
                         await e.Request.AbortAsync(RequestAbortErrorCode.NameNotResolved);
                         return;
                     }
-                    if (ips.Any(Yomic.Core.Helpers.UrlSecurityHelper.IsPrivateOrLoopbackIp))
+                    if (!isSafe)
                     {
                         await e.Request.AbortAsync(RequestAbortErrorCode.BlockedByClient);
                         return;
@@ -375,7 +295,8 @@ namespace Yomic.Core.Services
             {
                 throw new System.Net.Http.HttpRequestException("Offline Mode is enabled.");
             }
-            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out _))
+            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out _) ||
+                !await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(url, bypassCache: true))
             {
                 throw new ArgumentException("Blocked unsafe URL for Cloudflare token extraction.", nameof(url));
             }
@@ -474,7 +395,8 @@ namespace Yomic.Core.Services
             {
                 throw new System.Net.Http.HttpRequestException("Offline Mode is enabled.");
             }
-            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out _))
+            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out _) ||
+                !await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(url, bypassCache: true))
             {
                 throw new ArgumentException("Blocked unsafe URL for Cloudflare content fetch.", nameof(url));
             }
@@ -582,7 +504,8 @@ namespace Yomic.Core.Services
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var downloadPath = System.IO.Path.Combine(appData, "Yomic", "puppeteer");
             
-            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out _))
+            if (!Yomic.Core.Helpers.UrlSecurityHelper.IsSafePublicHttpUrl(url, out _) ||
+                !await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(url, bypassCache: true))
             {
                 throw new ArgumentException("Blocked unsafe URL for interactive Cloudflare verification.", nameof(url));
             }
@@ -614,7 +537,6 @@ namespace Yomic.Core.Services
                     {
                         "--disable-infobars",
                         "--disable-blink-features=AutomationControlled",
-                        "--dns-over-https-url=https://cloudflare-dns.com/dns-query",
                         "--window-size=1100,800",
                         "--disable-dev-shm-usage"
                     },

@@ -872,4 +872,314 @@ var source = {
         Assert.Equal("https://mangamillion.shueisha.co.jp", originHandler.ObservedRequests[0].Origin);
         Assert.Null(originHandler.ObservedRequests[1].Origin);
     }
+
+    [Fact]
+    public async Task UrlSecurityHelper_SplitHorizonDns_BlocksWhenSystemDnsReturnsPrivateEvenIfDoHReturnsPublic()
+    {
+        var prevSys = Yomic.Core.Helpers.UrlSecurityHelper.SystemDnsResolverOverride;
+        var prevDoH = Yomic.Core.Helpers.UrlSecurityHelper.DoHResolverOverride;
+        var prevOffline = HttpSource.IsOfflineModeProvider;
+        var prevDohProv = HttpSource.DnsOverHttpsProviderGetter;
+        try
+        {
+            HttpSource.IsOfflineModeProvider = () => false;
+            HttpSource.DnsOverHttpsProviderGetter = () => 2;
+            Yomic.Core.Helpers.UrlSecurityHelper.ClearResolvedHostSafetyCache();
+
+            // 1. Split-horizon attack: DoH sees public IP, System DNS (used by Chromium/WebView2) resolves loopback -> MUST BLOCK
+            Yomic.Core.Helpers.UrlSecurityHelper.DoHResolverOverride = (_, _, _) =>
+                Task.FromResult(new[] { IPAddress.Parse("93.184.216.34") });
+            Yomic.Core.Helpers.UrlSecurityHelper.SystemDnsResolverOverride = (_, _) =>
+                Task.FromResult(new[] { IPAddress.Loopback });
+
+            bool splitHorizonSafe = await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(
+                "https://split-horizon.example/ch-1",
+                bypassCache: true);
+            Assert.False(splitHorizonSafe);
+
+            // 2. Both resolvers return public IP -> allowed
+            Yomic.Core.Helpers.UrlSecurityHelper.SystemDnsResolverOverride = (_, _) =>
+                Task.FromResult(new[] { IPAddress.Parse("93.184.216.34") });
+
+            bool allPublicSafe = await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(
+                "https://public-only.example/ch-1",
+                bypassCache: true);
+            Assert.True(allPublicSafe);
+
+            // 3. Offline Mode must fail closed
+            HttpSource.IsOfflineModeProvider = () => true;
+            bool offlineSafe = await Yomic.Core.Helpers.UrlSecurityHelper.IsSafeResolvedPublicUrlAsync(
+                "https://public-only.example/ch-1",
+                bypassCache: true);
+            Assert.False(offlineSafe);
+        }
+        finally
+        {
+            Yomic.Core.Helpers.UrlSecurityHelper.SystemDnsResolverOverride = prevSys;
+            Yomic.Core.Helpers.UrlSecurityHelper.DoHResolverOverride = prevDoH;
+            HttpSource.IsOfflineModeProvider = prevOffline;
+            HttpSource.DnsOverHttpsProviderGetter = prevDohProv;
+            Yomic.Core.Helpers.UrlSecurityHelper.ClearResolvedHostSafetyCache();
+        }
+    }
+
+    [Fact]
+    public async Task SourceManager_LoadJsExtension_RegistersPathBeforeFiringOnSourcesChanged()
+    {
+        string tempDir = CreateTempDir("sm_path_order");
+        string localDir = Path.Combine(tempDir, "local");
+        string userDir = Path.Combine(tempDir, "user");
+        try
+        {
+            Directory.CreateDirectory(localDir);
+            Directory.CreateDirectory(userDir);
+            string pluginPath = Path.Combine(userDir, "ordercheck.js");
+            await File.WriteAllTextAsync(pluginPath, @"
+var source = {
+    name: 'OrderCheckExt',
+    baseUrl: 'https://ordercheck.example',
+    language: 'en',
+    version: '1.0.0',
+    getPopularManga: function() { return { items: [], totalPages: 1 }; },
+    getSearchManga: function() { return { items: [], totalPages: 1 }; },
+    getMangaDetails: function(u) { return { title: 'T', url: u }; },
+    getChapterList: function() { return []; },
+    getPageList: function() { return []; }
+};", Encoding.UTF8);
+
+            using var sm = new SourceManager(localDir, userDir, deferExtensionLoad: false);
+            sm.RemoveSource(sm.GetSources().First().Id);
+
+            string? pathObservedInEvent = null;
+            bool installedObservedInEvent = false;
+            int eventCount = 0;
+
+            sm.OnSourcesChanged += () =>
+            {
+                eventCount++;
+                var src = sm.GetSources().FirstOrDefault(s => s.Name.Contains("OrderCheckExt", StringComparison.OrdinalIgnoreCase));
+                if (src != null)
+                {
+                    pathObservedInEvent = sm.GetSourcePath(src.Id);
+                    installedObservedInEvent = sm.IsInstalledSource(src.Id);
+                }
+            };
+
+            // Re-write file (RemoveSource deleted it) and load directly
+            await File.WriteAllTextAsync(pluginPath, @"
+var source = {
+    name: 'OrderCheckExt',
+    baseUrl: 'https://ordercheck.example',
+    language: 'en',
+    version: '1.0.0',
+    getPopularManga: function() { return { items: [], totalPages: 1 }; },
+    getSearchManga: function() { return { items: [], totalPages: 1 }; },
+    getMangaDetails: function(u) { return { title: 'T', url: u }; },
+    getChapterList: function() { return []; },
+    getPageList: function() { return []; }
+};", Encoding.UTF8);
+
+            var loaded = sm.LoadJsExtension(pluginPath);
+            Assert.NotNull(loaded);
+            Assert.Equal(1, eventCount);
+            Assert.Equal(pluginPath, pathObservedInEvent);
+            Assert.True(installedObservedInEvent);
+        }
+        finally
+        {
+            CleanupTempDir(tempDir);
+        }
+    }
+
+    [Fact]
+    public async Task MangaDbContext_EnterExclusiveMaintenanceAsync_BlocksNewReadersUntilLeaseDisposed()
+    {
+        string tempDir = CreateTempDir("db_maint_barrier");
+        string dbPath = Path.Combine(tempDir, "barrier.db");
+        try
+        {
+            using (var init = new MangaDbContext(dbPath))
+            {
+                await init.Database.EnsureCreatedAsync();
+            }
+
+            Task<int> readerTask;
+            using (await MangaDbContext.EnterExclusiveMaintenanceAsync(dbPath))
+            {
+                readerTask = Task.Run(async () =>
+                {
+                    using var db = new MangaDbContext(dbPath);
+                    return await db.Mangas.CountAsync();
+                });
+
+                // Reader MUST remain blocked while exclusive maintenance lease is active
+                await Task.Delay(120);
+                Assert.False(readerTask.IsCompleted);
+            }
+
+            // Once maintenance lease is released, reader unblocks and succeeds
+            int count = await readerTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(0, count);
+        }
+        finally
+        {
+            CleanupTempDir(tempDir);
+        }
+    }
+
+    [Fact]
+    public async Task SourceIdMigrationService_WritesDoneMarkerEvenWhenOrphanedMangaBelongsToUninstalledExtension()
+    {
+        string tempDir = CreateTempDir("mig_uninstalled");
+        string dbPath = Path.Combine(tempDir, "mig.db");
+        string flagPath = Path.Combine(tempDir, "migration.done");
+        string localDir = Path.Combine(tempDir, "local");
+        string userDir = Path.Combine(tempDir, "user");
+        try
+        {
+            Directory.CreateDirectory(localDir);
+            Directory.CreateDirectory(userDir);
+            await File.WriteAllTextAsync(Path.Combine(userDir, "activeext.js"), @"
+var source = {
+    name: 'ActiveExt',
+    baseUrl: 'https://active.example',
+    language: 'en',
+    version: '1.0.0',
+    getPopularManga: function() { return { items: [], totalPages: 1 }; },
+    getSearchManga: function() { return { items: [], totalPages: 1 }; },
+    getMangaDetails: function(u) { return { title: 'T', url: u }; },
+    getChapterList: function() { return []; },
+    getPageList: function() { return []; }
+};", Encoding.UTF8);
+
+            using (var db = new MangaDbContext(dbPath))
+            {
+                await db.Database.EnsureCreatedAsync();
+                db.Mangas.Add(new Manga
+                {
+                    Source = 999888777L,
+                    Url = "https://uninstalled-site.invalid/manga/ghost",
+                    Title = "Uninstalled Extension Manga",
+                    Favorite = true
+                });
+                await db.SaveChangesAsync();
+            }
+
+            using var sm = new SourceManager(localDir, userDir, deferExtensionLoad: false);
+            await SourceIdMigrationService.RunIfNeededAsync(sm, dbPath, flagPath);
+
+            Assert.True(File.Exists(flagPath), "One-time migration flag must be written even when orphaned rows belong to uninstalled extensions.");
+        }
+        finally
+        {
+            CleanupTempDir(tempDir);
+        }
+    }
+
+    [Fact]
+    public async Task ExtensionRepositoryService_UninstallExtension_WorksWithoutPriorCatalogFetchAndRejectsUnknown()
+    {
+        string tempDir = CreateTempDir("ext_uninstall");
+        string localDir = Path.Combine(tempDir, "local");
+        string userDir = Path.Combine(tempDir, "user");
+        string settingsPath = Path.Combine(tempDir, "settings.json");
+        try
+        {
+            Directory.CreateDirectory(localDir);
+            Directory.CreateDirectory(userDir);
+            string pluginPath = Path.Combine(userDir, "demouninstall.js");
+            await File.WriteAllTextAsync(pluginPath, @"
+var source = {
+    name: 'DemoUninstall',
+    baseUrl: 'https://demo.example',
+    language: 'id',
+    version: '1.0.0',
+    getPopularManga: function() { return { items: [], totalPages: 1 }; },
+    getSearchManga: function() { return { items: [], totalPages: 1 }; },
+    getMangaDetails: function(u) { return { title: 'T', url: u }; },
+    getChapterList: function() { return []; },
+    getPageList: function() { return []; }
+};", Encoding.UTF8);
+
+            using var settings = new SettingsService(settingsPath);
+            using var network = new NetworkService(settings);
+            using var sm = new SourceManager(localDir, userDir, deferExtensionLoad: false);
+            var status = new SourceStatusService(sm, settings, network);
+            using var repo = new ExtensionRepositoryService(sm, settings, status);
+
+            // Uninstall by package ID WITHOUT ever fetching/populating _cachedRepoEntries
+            var (ok, _) = repo.UninstallExtension("yomic.id.demouninstall");
+            Assert.True(ok);
+            Assert.Empty(sm.GetSources());
+            Assert.False(File.Exists(pluginPath));
+
+            // Unknown / already-removed extension must return false (never silent no-op success)
+            var (okMissing, _) = repo.UninstallExtension("yomic.id.doesnotexist");
+            Assert.False(okMissing);
+        }
+        finally
+        {
+            CleanupTempDir(tempDir);
+        }
+    }
+
+    [Fact]
+    public async Task LibraryService_ClearAllHistoryAndProgressAsync_AtomicallyClearsReadLastPageLastViewedAndHistory()
+    {
+        string tempDir = CreateTempDir("clear_hist_atomic");
+        string dbPath = Path.Combine(tempDir, "hist_atomic.db");
+        try
+        {
+            using (var init = new MangaDbContext(dbPath))
+            {
+                await init.Database.EnsureCreatedAsync();
+            }
+
+            var library = new LibraryService(dbPath);
+            var manga = new Manga
+            {
+                Source = 424242,
+                Url = "https://example.test/manga/atomic-hist",
+                Title = "Atomic History Manga"
+            };
+            await library.AddToLibraryAsync(manga);
+            await library.UpdateChaptersAsync(
+                manga,
+                new List<Chapter> { new() { Url = "/c1", Name = "Ch 1", ChapterNumber = 1f } },
+                isInitialLoad: true);
+
+            using (var seed = new MangaDbContext(dbPath))
+            {
+                var dbManga = await seed.Mangas.Include(m => m.Chapters).SingleAsync();
+                dbManga.LastViewed = 1_700_000_000_000;
+                var ch = dbManga.Chapters.Single();
+                ch.Read = true;
+                ch.LastPageRead = 14;
+                seed.History.Add(new History
+                {
+                    MangaId = dbManga.Id,
+                    ChapterId = ch.Id,
+                    LastRead = 1_700_000_000_000,
+                    TimeRead = 120_000
+                });
+                await seed.SaveChangesAsync();
+            }
+
+            await library.ClearAllHistoryAndProgressAsync();
+
+            using (var verify = new MangaDbContext(dbPath))
+            {
+                var dbManga = await verify.Mangas.Include(m => m.Chapters).SingleAsync();
+                Assert.Equal(0, dbManga.LastViewed);
+                var ch = dbManga.Chapters.Single();
+                Assert.False(ch.Read);
+                Assert.Equal(0, ch.LastPageRead);
+                Assert.Empty(await verify.History.ToListAsync());
+            }
+        }
+        finally
+        {
+            CleanupTempDir(tempDir);
+        }
+    }
 }

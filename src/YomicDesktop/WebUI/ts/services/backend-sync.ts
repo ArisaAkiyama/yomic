@@ -38,6 +38,12 @@ export function bindBackendEvents(this: YomicApp): void {
     // Sync completed chapter downloads into in-memory mangaList so Library's "Downloaded" filter
     // and manga.downloadedCount stay fresh even when the user is not viewing Manga Detail.
     let libraryCountsChanged = false;
+    const completedCountByMangaId = new Map<string, number>();
+    for (const dl of queue) {
+      if (dl.status === 'completed' && dl.mangaId) {
+        completedCountByMangaId.set(dl.mangaId, (completedCountByMangaId.get(dl.mangaId) || 0) + 1);
+      }
+    }
     for (const dl of queue) {
       if (dl.status !== 'completed') continue;
       const manga = this.mangaList.find((m) => m.id === dl.mangaId);
@@ -58,9 +64,13 @@ export function bindBackendEvents(this: YomicApp): void {
           manga.downloadedCount = recomputed;
           mangaChanged = true;
         }
-      } else if ((manga.downloadedCount || 0) === 0) {
-        manga.downloadedCount = 1;
-        mangaChanged = true;
+      } else {
+        const completedInQueue = completedCountByMangaId.get(manga.id) || 1;
+        const nextCount = Math.max(manga.downloadedCount || 0, completedInQueue);
+        if (manga.downloadedCount !== nextCount) {
+          manga.downloadedCount = nextCount;
+          mangaChanged = true;
+        }
       }
       if (mangaChanged) libraryCountsChanged = true;
     }

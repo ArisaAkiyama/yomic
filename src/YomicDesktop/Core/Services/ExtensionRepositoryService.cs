@@ -275,7 +275,7 @@ namespace Yomic.Core.Services
                                 {
                                     if (!candidateIps.Contains(ip)) candidateIps.Add(ip);
                                 }
-                                if (aRes.Ok || aaaaRes.Ok) break;
+                                if (candidateIps.Count > 0 || (aRes.Ok && aaaaRes.Ok)) break;
                             }
 
                             if (candidateIps.Count > 0)
@@ -1197,52 +1197,127 @@ namespace Yomic.Core.Services
 
         }
 
-        public (bool Success, string Message) UninstallExtension(string idOrPkg)
-
+        private List<ExtensionEntryDto> LoadFallbackCatalogEntriesSync()
         {
-
+            List<ExtensionEntryDto> diskCached = new();
             try
-
             {
-
-                var entries = _cachedRepoEntries;
-
-                var entry = entries.FirstOrDefault(e =>
-
-                    string.Equals(e.Pkg, idOrPkg, StringComparison.OrdinalIgnoreCase) ||
-
-                    string.Equals(CleanExtensionName(e.Name), idOrPkg, StringComparison.OrdinalIgnoreCase));
-
-                string cleanTarget = entry != null ? CleanExtensionName(entry.Name) : idOrPkg;
-
-                var installedSrc = _sourceManager.GetSources().FirstOrDefault(s =>
-
-                    string.Equals(CleanExtensionName(s.Name), cleanTarget, StringComparison.OrdinalIgnoreCase) ||
-
-                    string.Equals($"local.{s.Id}", idOrPkg, StringComparison.OrdinalIgnoreCase) ||
-
-                    string.Equals(s.Id.ToString(), idOrPkg, StringComparison.OrdinalIgnoreCase));
-
-                if (installedSrc != null)
-
+                var cachePath = GetCacheFilePath();
+                if (File.Exists(cachePath))
                 {
+                    var parsed = JsonSerializer.Deserialize<List<ExtensionEntryDto>>(File.ReadAllText(cachePath));
+                    if (parsed != null) diskCached = parsed;
+                }
+            }
+            catch { }
 
-                    _sourceManager.RemoveSource(installedSrc.Id);
+            List<ExtensionEntryDto> bundled = new();
+            var bundledIndexCandidates = new[]
+            {
+                Path.Combine(GetBundledCatalogDir(), "index.min.json"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Plugins", "Catalog", "index.min.json"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Plugins", "index.min.json")
+            };
+            foreach (var bundledIndex in bundledIndexCandidates)
+            {
+                if (File.Exists(bundledIndex))
+                {
+                    try
+                    {
+                        var parsed = JsonSerializer.Deserialize<List<ExtensionEntryDto>>(File.ReadAllText(bundledIndex));
+                        if (parsed != null && parsed.Count > 0)
+                        {
+                            bundled = parsed;
+                            break;
+                        }
+                    }
+                    catch { }
+                }
+            }
 
+            return MergeCatalogEntries(bundled, diskCached);
+        }
+
+        public (bool Success, string Message) UninstallExtension(string idOrPkg)
+        {
+            try
+            {
+                bool isEnUninst = string.Equals(_settingsService.AppLanguage, "en", StringComparison.OrdinalIgnoreCase);
+                if (string.IsNullOrWhiteSpace(idOrPkg))
+                {
+                    return (false, isEnUninst ? "Invalid extension identifier." : "Pengenal ekstensi tidak valid.");
                 }
 
-                var pluginsDir = SourceManager.GetUserPluginsDirectory();
-
-                if (entry != null && !string.IsNullOrEmpty(entry.Apk))
+                var entries = _cachedRepoEntries;
+                if (entries.Count == 0)
                 {
-                    var apkPath = ResolveSafePluginChildPath(pluginsDir, entry.Apk);
-                    if (apkPath != null && File.Exists(apkPath))
+                    entries = LoadFallbackCatalogEntriesSync();
+                    if (entries.Count > 0)
                     {
-                        File.Delete(apkPath);
+                        _cachedRepoEntries = entries;
                     }
                 }
 
-                bool isEnUninst = string.Equals(_settingsService.AppLanguage, "en", StringComparison.OrdinalIgnoreCase);
+                string trimmedId = idOrPkg.Trim();
+                string pkgStem = trimmedId.Contains('.') ? trimmedId.Split('.').Last() : trimmedId;
+                string stemNoExt = pkgStem.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
+                    ? Path.GetFileNameWithoutExtension(pkgStem)
+                    : pkgStem;
+
+                var entry = entries.FirstOrDefault(e =>
+                    string.Equals(e.Pkg, trimmedId, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(e.Apk, trimmedId, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetFileNameWithoutExtension(e.Apk), trimmedId, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetFileNameWithoutExtension(e.Apk), stemNoExt, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(CleanExtensionName(e.Name), trimmedId, StringComparison.OrdinalIgnoreCase));
+
+                string cleanTarget = entry != null ? CleanExtensionName(entry.Name) : trimmedId;
+                string? entryApkStem = entry != null && !string.IsNullOrWhiteSpace(entry.Apk)
+                    ? Path.GetFileNameWithoutExtension(entry.Apk)
+                    : null;
+
+                var installedSrc = _sourceManager.GetSources().FirstOrDefault(s =>
+                {
+                    string srcCleanName = CleanExtensionName(s.Name);
+                    string? srcPath = _sourceManager.GetSourcePath(s.Id);
+                    string? srcFileStem = !string.IsNullOrWhiteSpace(srcPath) ? Path.GetFileNameWithoutExtension(srcPath) : null;
+
+                    return string.Equals(srcCleanName, cleanTarget, StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals($"local.{s.Id}", trimmedId, StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(s.Id.ToString(), trimmedId, StringComparison.OrdinalIgnoreCase) ||
+                           (!string.IsNullOrWhiteSpace(entryApkStem) && string.Equals(srcFileStem, entryApkStem, StringComparison.OrdinalIgnoreCase)) ||
+                           (!string.IsNullOrWhiteSpace(srcFileStem) && string.Equals(srcFileStem, stemNoExt, StringComparison.OrdinalIgnoreCase));
+                });
+
+                bool removedAny = false;
+                if (installedSrc != null)
+                {
+                    _sourceManager.RemoveSource(installedSrc.Id);
+                    removedAny = true;
+                }
+
+                var pluginsDir = _sourceManager.UserPluginsDirectory;
+                string? candidateFile = !string.IsNullOrWhiteSpace(entry?.Apk)
+                    ? entry.Apk
+                    : (!string.IsNullOrWhiteSpace(stemNoExt) ? $"{stemNoExt}.js" : null);
+
+                if (!string.IsNullOrWhiteSpace(candidateFile))
+                {
+                    var apkPath = ResolveSafePluginChildPath(pluginsDir, candidateFile);
+                    if (apkPath != null && File.Exists(apkPath))
+                    {
+                        File.Delete(apkPath);
+                        removedAny = true;
+                    }
+                }
+
+                if (!removedAny)
+                {
+                    return (false, isEnUninst
+                        ? $"Extension {cleanTarget} is not installed."
+                        : $"Ekstensi {cleanTarget} tidak terpasang.");
+                }
+
                 return (true, isEnUninst ? $"Extension {cleanTarget} uninstalled." : $"Ekstensi {cleanTarget} berhasil dicopot.");
             }
             catch (Exception ex)
@@ -1251,7 +1326,6 @@ namespace Yomic.Core.Services
                 bool isEnUninstErr = string.Equals(_settingsService.AppLanguage, "en", StringComparison.OrdinalIgnoreCase);
                 return (false, isEnUninstErr ? $"Failed to uninstall extension: {ex.Message}" : $"Gagal mencopot ekstensi: {ex.Message}");
             }
-
         }
 
         private static string? ResolveSafePluginChildPath(string baseDir, string? rawFileName)

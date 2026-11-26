@@ -212,6 +212,14 @@ namespace YomicDesktop.IPC
                 (!string.IsNullOrEmpty(chapterUrl) && string.Equals(r.Chapter.Url, chapterUrl, StringComparison.OrdinalIgnoreCase)));
             if (req != null)
             {
+                bool wasActive = req.Status == "Downloading" || req.Status.StartsWith("Retrying", StringComparison.OrdinalIgnoreCase);
+                // Cancel active/queued download FIRST so file handles are released and worker cannot overwrite IsDownloaded = true
+                DownloadService.Cancel(req);
+                if (wasActive)
+                {
+                    await DownloadService.WaitForActiveDownloadsToStopAsync(TimeSpan.FromSeconds(3));
+                }
+
                 if (req.Status == "Completed" || (req.Manga != null && req.Chapter != null && DownloadPathService.IsChapterDownloaded(req.Manga, req.Chapter)))
                 {
                     try
@@ -231,7 +239,6 @@ namespace YomicDesktop.IPC
                         }
                     }
                 }
-                DownloadService.Cancel(req);
             }
             return GetDownloadsQueueList();
         }
@@ -255,17 +262,24 @@ namespace YomicDesktop.IPC
                     Math.Abs(c.ChapterNumber - chapterNumber) < 0.01f);
                 if (ch != null)
                 {
-                    DownloadPathService.DeleteDownloadedChapter(manga, ch);
-                    ch.IsDownloaded = false;
-                    await LibraryService.UpdateChapterDownloadStatusByUrlAsync(ch.Url, false, manga.Id);
-                    // Sinkronisasi dengan antrean DownloadService agar hilang dari daftar unduhan
-                    var matchReq = DownloadService.AllDownloads.FirstOrDefault(r =>
+                    // Cancel active/queued download for this chapter FIRST so file handles close before deleting on disk
+                    var matchReqs = DownloadService.AllDownloads.Where(r =>
                         (r.Manga?.Source == manga.Source && string.Equals(r.Chapter.Url, ch.Url, StringComparison.OrdinalIgnoreCase)) ||
-                        (r.Manga?.Id == manga.Id && Math.Abs(r.Chapter.ChapterNumber - ch.ChapterNumber) < 0.01f));
-                    if (matchReq != null)
+                        (r.Manga?.Id == manga.Id && Math.Abs(r.Chapter.ChapterNumber - ch.ChapterNumber) < 0.01f))
+                        .ToList();
+                    bool anyWasActive = matchReqs.Any(r => r.Status == "Downloading" || r.Status.StartsWith("Retrying", StringComparison.OrdinalIgnoreCase));
+                    foreach (var matchReq in matchReqs)
                     {
                         DownloadService.Cancel(matchReq);
                     }
+                    if (anyWasActive)
+                    {
+                        await DownloadService.WaitForActiveDownloadsToStopAsync(TimeSpan.FromSeconds(3));
+                    }
+
+                    DownloadPathService.DeleteDownloadedChapter(manga, ch);
+                    ch.IsDownloaded = false;
+                    await LibraryService.UpdateChapterDownloadStatusByUrlAsync(ch.Url, false, manga.Id);
                 }
             }
             return new { ok = true, downloads = GetDownloadsQueueList() };

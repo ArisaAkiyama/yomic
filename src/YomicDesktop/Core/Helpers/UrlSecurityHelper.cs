@@ -312,88 +312,183 @@ namespace Yomic.Core.Helpers
         }
 
         private static readonly HttpClient _dnsGuardClient = new() { Timeout = TimeSpan.FromSeconds(3) };
-        private static readonly ConcurrentDictionary<string, (bool IsSafe, DateTime ExpiresUtc)> _resolvedHostSafetyCache =
+        private static readonly ConcurrentDictionary<string, (IPAddress[] Ips, bool IsSafe, DateTime ExpiresUtc)> _resolvedHostSafetyCache =
             new(StringComparer.OrdinalIgnoreCase);
 
-        public static async Task<bool> IsSafeResolvedPublicUrlAsync(string? rawUrl, CancellationToken cancellationToken = default)
+        // Internal seams for deterministic unit testing of split-horizon DNS & DNS-rebinding guards
+        internal static Func<string, CancellationToken, Task<IPAddress[]>>? SystemDnsResolverOverride { get; set; }
+        internal static Func<string, int, CancellationToken, Task<IPAddress[]>>? DoHResolverOverride { get; set; }
+
+        internal static void ClearResolvedHostSafetyCache() => _resolvedHostSafetyCache.Clear();
+
+        private static string[] GetDoHGuardTemplates(int dohProvider) => dohProvider switch
+        {
+            1 => new[] { "https://1.1.1.1/dns-query?name={0}&type={1}", "https://cloudflare-dns.com/dns-query?name={0}&type={1}" },
+            3 => new[] { "https://dns.adguard-dns.com/resolve?name={0}&type={1}", "https://94.140.14.14/resolve?name={0}&type={1}" },
+            _ => new[] { "https://8.8.8.8/resolve?name={0}&type={1}", "https://dns.google/resolve?name={0}&type={1}", "https://1.1.1.1/dns-query?name={0}&type={1}" }
+        };
+
+        private static async Task<IPAddress[]> ResolveViaConfiguredDoHAsync(string host, int dohProvider, CancellationToken cancellationToken)
+        {
+            if (DoHResolverOverride != null)
+            {
+                return await DoHResolverOverride(host, dohProvider, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (dohProvider == 0 || Yomic.Core.Sources.HttpSource.IsOfflineModeProvider?.Invoke() == true)
+            {
+                return Array.Empty<IPAddress>();
+            }
+
+            var resolved = new List<IPAddress>();
+            var templates = GetDoHGuardTemplates(dohProvider);
+
+            foreach (var template in templates)
+            {
+                async Task<(List<IPAddress> Found, bool Ok)> QueryDoHAsync(string qType, int recType)
+                {
+                    var found = new List<IPAddress>();
+                    try
+                    {
+                        using var req = new HttpRequestMessage(
+                            HttpMethod.Get,
+                            string.Format(template, Uri.EscapeDataString(host), qType));
+                        req.Headers.TryAddWithoutValidation("Accept", "application/dns-json");
+                        using var res = await _dnsGuardClient.SendAsync(req, cancellationToken).ConfigureAwait(false);
+                        if (!res.IsSuccessStatusCode) return (found, false);
+                        var bytes = await ReadContentBoundedAsync(res.Content, 256 * 1024, cancellationToken).ConfigureAwait(false);
+                        using var doc = JsonDocument.Parse(bytes);
+                        if (doc.RootElement.TryGetProperty("Answer", out var answers))
+                        {
+                            foreach (var ans in answers.EnumerateArray())
+                            {
+                                if (ans.TryGetProperty("type", out var t) && t.GetInt32() == recType &&
+                                    ans.TryGetProperty("data", out var d) &&
+                                    IPAddress.TryParse(d.GetString(), out var ip) &&
+                                    !found.Contains(ip))
+                                {
+                                    found.Add(ip);
+                                }
+                            }
+                        }
+                        return (found, true);
+                    }
+                    catch
+                    {
+                        return (found, false);
+                    }
+                }
+
+                var aTask = QueryDoHAsync("A", 1);
+                var aaaaTask = QueryDoHAsync("AAAA", 28);
+                await Task.WhenAll(aTask, aaaaTask).ConfigureAwait(false);
+                var aRes = await aTask.ConfigureAwait(false);
+                var aaaaRes = await aaaaTask.ConfigureAwait(false);
+
+                foreach (var ip in aRes.Found.Concat(aaaaRes.Found))
+                {
+                    if (!resolved.Contains(ip)) resolved.Add(ip);
+                }
+
+                if (resolved.Count > 0 || (aRes.Ok && aaaaRes.Ok))
+                {
+                    break;
+                }
+            }
+
+            return resolved.ToArray();
+        }
+
+        private static async Task<IPAddress[]> ResolveViaSystemDnsAsync(string host, CancellationToken cancellationToken)
+        {
+            if (SystemDnsResolverOverride != null)
+            {
+                return await SystemDnsResolverOverride(host, cancellationToken).ConfigureAwait(false);
+            }
+
+            try
+            {
+                return await Dns.GetHostAddressesAsync(host, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                return Array.Empty<IPAddress>();
+            }
+        }
+
+        /// <summary>
+        /// Resolves <paramref name="host"/> against BOTH System DNS (used by WebView2/Chromium) AND the user's configured DoH
+        /// provider in parallel. Returns <c>IsSafe = false</c> if ANY IP from EITHER resolver is private/loopback/link-local,
+        /// defeating split-horizon DNS and hosts-file SSRF bypasses.
+        /// </summary>
+        public static async Task<(IPAddress[] Ips, bool IsSafe)> ResolveAndValidateHostForBrowserAsync(
+            string host,
+            bool bypassCache = false,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                return (Array.Empty<IPAddress>(), false);
+            }
+
+            host = host.Trim().TrimEnd('.').Trim('[', ']');
+            if (IPAddress.TryParse(host, out var literalIp))
+            {
+                return (new[] { literalIp }, !IsPrivateOrLoopbackIp(literalIp));
+            }
+
+            if (Yomic.Core.Sources.HttpSource.IsOfflineModeProvider?.Invoke() == true)
+            {
+                return (Array.Empty<IPAddress>(), false);
+            }
+
+            int dohProvider = Yomic.Core.Sources.HttpSource.DnsOverHttpsProviderGetter?.Invoke() ?? 2;
+            string cacheKey = $"{dohProvider}:{host}";
+
+            if (!bypassCache &&
+                _resolvedHostSafetyCache.TryGetValue(cacheKey, out var cached) &&
+                cached.ExpiresUtc > DateTime.UtcNow)
+            {
+                return (cached.Ips, cached.IsSafe);
+            }
+
+            // Always query System DNS (what WebView2 & Chromium actually connect through) in parallel with DoH
+            var sysTask = ResolveViaSystemDnsAsync(host, cancellationToken);
+            var dohTask = ResolveViaConfiguredDoHAsync(host, dohProvider, cancellationToken);
+            await Task.WhenAll(sysTask, dohTask).ConfigureAwait(false);
+
+            var sysIps = await sysTask.ConfigureAwait(false);
+            var dohIps = await dohTask.ConfigureAwait(false);
+
+            var combined = new List<IPAddress>(sysIps.Length + dohIps.Length);
+            foreach (var ip in sysIps.Concat(dohIps))
+            {
+                if (!combined.Contains(ip)) combined.Add(ip);
+            }
+
+            // Strict split-horizon defense: ANY private/loopback IP from EITHER System DNS OR DoH immediately fails closed!
+            bool anyPrivate = combined.Any(IsPrivateOrLoopbackIp);
+            bool isSafe = combined.Count > 0 && !anyPrivate;
+            var ipArray = combined.ToArray();
+
+            if (_resolvedHostSafetyCache.Count >= 512) _resolvedHostSafetyCache.Clear();
+            // Short 5s cache minimizes DNS-rebinding exposure while avoiding redundant lookups during burst subresource loads
+            _resolvedHostSafetyCache[cacheKey] = (ipArray, isSafe, DateTime.UtcNow.AddSeconds(5));
+            return (ipArray, isSafe);
+        }
+
+        public static async Task<bool> IsSafeResolvedPublicUrlAsync(
+            string? rawUrl,
+            bool bypassCache = false,
+            CancellationToken cancellationToken = default)
         {
             if (!IsSafePublicHttpUrl(rawUrl, out var uri) || uri == null)
                 return false;
 
-            string host = uri.IdnHost.TrimEnd('.').Trim('[', ']');
-            if (IPAddress.TryParse(host, out var literalIp))
-            {
-                return !IsPrivateOrLoopbackIp(literalIp);
-            }
-
-            if (_resolvedHostSafetyCache.TryGetValue(host, out var cached) && cached.ExpiresUtc > DateTime.UtcNow)
-            {
-                return cached.IsSafe;
-            }
-
-            var ips = new List<IPAddress>();
-            async Task<(List<IPAddress> Found, bool Ok)> QueryDoHAsync(string qType, int recType)
-            {
-                var found = new List<IPAddress>();
-                try
-                {
-                    using var req = new HttpRequestMessage(
-                        HttpMethod.Get,
-                        $"https://1.1.1.1/dns-query?name={Uri.EscapeDataString(host)}&type={qType}");
-                    req.Headers.TryAddWithoutValidation("Accept", "application/dns-json");
-                    using var res = await _dnsGuardClient.SendAsync(req, cancellationToken).ConfigureAwait(false);
-                    if (!res.IsSuccessStatusCode) return (found, false);
-                    var bytes = await ReadContentBoundedAsync(res.Content, 256 * 1024, cancellationToken).ConfigureAwait(false);
-                    using var doc = JsonDocument.Parse(bytes);
-                    if (doc.RootElement.TryGetProperty("Answer", out var answers))
-                    {
-                        foreach (var ans in answers.EnumerateArray())
-                        {
-                            if (ans.TryGetProperty("type", out var t) && t.GetInt32() == recType &&
-                                ans.TryGetProperty("data", out var d) &&
-                                IPAddress.TryParse(d.GetString(), out var ip))
-                            {
-                                found.Add(ip);
-                            }
-                        }
-                    }
-                    return (found, true);
-                }
-                catch
-                {
-                    return (found, false);
-                }
-            }
-
-            var aTask = QueryDoHAsync("A", 1);
-            var aaaaTask = QueryDoHAsync("AAAA", 28);
-            await Task.WhenAll(aTask, aaaaTask).ConfigureAwait(false);
-            var aRes = await aTask.ConfigureAwait(false);
-            var aaaaRes = await aaaaTask.ConfigureAwait(false);
-
-            foreach (var ip in aRes.Found.Concat(aaaaRes.Found))
-            {
-                if (!ips.Contains(ip)) ips.Add(ip);
-            }
-
-            // If DoH failed for either record type or returned nothing, also verify against system DNS
-            if (!aRes.Ok || !aaaaRes.Ok || ips.Count == 0)
-            {
-                try
-                {
-                    var sysIps = await Dns.GetHostAddressesAsync(host, cancellationToken).ConfigureAwait(false);
-                    foreach (var ip in sysIps)
-                    {
-                        if (!ips.Contains(ip)) ips.Add(ip);
-                    }
-                }
-                catch { }
-            }
-
-            bool isSafe = ips.Count > 0 && ips.All(ip => !IsPrivateOrLoopbackIp(ip));
-            if (_resolvedHostSafetyCache.Count >= 512) _resolvedHostSafetyCache.Clear();
-            // Short 60s cache balances fast subresource loading with tight DNS-rebinding resistance
-            _resolvedHostSafetyCache[host] = (isSafe, DateTime.UtcNow.AddSeconds(isSafe ? 60 : 15));
+            var (_, isSafe) = await ResolveAndValidateHostForBrowserAsync(
+                uri.IdnHost.TrimEnd('.').Trim('[', ']'),
+                bypassCache,
+                cancellationToken).ConfigureAwait(false);
             return isSafe;
         }
     }

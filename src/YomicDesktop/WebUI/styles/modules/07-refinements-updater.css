@@ -1861,7 +1861,7 @@ body.dark-mode .reader-display-sheet .v1-reader-image-row {
  * ========================================================================= */
 .reader-overlay.paged-mode .reader-canvas-scroll {
   padding: 12px 16px !important;
-  justify-content: center;
+  justify-content: safe center;
 }
 
 .reader-pages-container.mode-dual {
