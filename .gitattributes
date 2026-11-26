@@ -26,3 +26,7 @@ yomic-website/** linguist-detectable=false
 *.svelte linguist-vendored=true
 *.vue linguist-vendored=true
 *.mdx linguist-documentation=true
+
+# Pin deterministic LF line endings for bundled JS extensions & manifest so SHA-256 digests match across local Windows, CI runners, and GitHub raw/CDN
+src/YomicDesktop/Plugins/Catalog/*.js text eol=lf
+src/YomicDesktop/Plugins/Catalog/index.min.json text eol=lf
