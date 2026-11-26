@@ -43,15 +43,31 @@
   --status-rose: #BE123C;
   --status-rose-bg: #FFE4E6;
 
-  /* Auto Carbon Dark Reader Palette (Neutral Carbon Black) */
-  --reader-bg: #0A0A0A;
-  --reader-surface: #141414;
-  --reader-surface-hover: #1E1E1E;
-  --reader-border: #242424;
-  --reader-hud: #121212;
-  --reader-ink: #F4F4F5;
-  --reader-ink-muted: #A1A1AA;
-  --reader-accent: #F4F4F5;
+  /* Reader Palette (Crisp White / Light Mode) */
+  --reader-bg: #FAFAFA;
+  --reader-surface: #FFFFFF;
+  --reader-surface-hover: #F4F4F5;
+  --reader-surface-active: #ECECEE;
+  --reader-border: rgba(24, 24, 27, 0.10);
+  --reader-border-subtle: rgba(24, 24, 27, 0.07);
+  --reader-hud: rgba(255, 255, 255, 0.92);
+  --reader-hud-strong: rgba(255, 255, 255, 0.96);
+  --reader-hud-hover: rgba(24, 24, 27, 0.07);
+  --reader-hud-active: rgba(24, 24, 27, 0.11);
+  --reader-hud-disabled-bg: rgba(255, 255, 255, 0.86);
+  --reader-hud-disabled-ink: rgba(24, 24, 27, 0.28);
+  --reader-shadow: 0 8px 24px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --reader-shadow-lg: 0 20px 44px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.08);
+  --reader-ink: #09090B;
+  --reader-ink-secondary: #3F3F46;
+  --reader-ink-muted: #71717A;
+  --reader-accent: #18181B;
+  --reader-accent-ink: #FFFFFF;
+  --reader-track: rgba(24, 24, 27, 0.14);
+  --reader-thumb-bg: #18181B;
+  --reader-thumb-shadow: 0 2px 6px rgba(15, 23, 42, 0.26);
+  --reader-toggle-off: #D4D4D8;
+  --reader-page-border: #E4E4E7;
 
   /* Typography */
   --font-display: 'Plus Jakarta Sans', 'Segoe UI Variable Display', 'Segoe UI', -apple-system, sans-serif;
@@ -127,12 +143,28 @@ body.dark-mode {
   --status-rose-bg: rgba(244, 63, 94, 0.12);
 
   /* Reader Palette (Carbon Dark) */
-  --reader-bg: #0A0A0A;
-  --reader-surface: #141414;
-  --reader-surface-hover: #1E1E1E;
-  --reader-border: #242424;
-  --reader-hud: #121212;
+  --reader-bg: #000000;
+  --reader-surface: #161618;
+  --reader-surface-hover: rgba(255, 255, 255, 0.08);
+  --reader-surface-active: #242429;
+  --reader-border: rgba(255, 255, 255, 0.08);
+  --reader-border-subtle: rgba(255, 255, 255, 0.06);
+  --reader-hud: rgba(14, 14, 16, 0.90);
+  --reader-hud-strong: rgba(22, 22, 25, 0.94);
+  --reader-hud-hover: rgba(255, 255, 255, 0.10);
+  --reader-hud-active: rgba(255, 255, 255, 0.12);
+  --reader-hud-disabled-bg: rgba(22, 22, 25, 0.88);
+  --reader-hud-disabled-ink: rgba(255, 255, 255, 0.28);
+  --reader-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --reader-shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.65);
   --reader-ink: #F4F4F5;
+  --reader-ink-secondary: #D4D4D8;
   --reader-ink-muted: #A1A1AA;
-  --reader-accent: #F4F4F5;
+  --reader-accent: #FFFFFF;
+  --reader-accent-ink: #09090B;
+  --reader-track: rgba(255, 255, 255, 0.16);
+  --reader-thumb-bg: #FFFFFF;
+  --reader-thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.50);
+  --reader-toggle-off: #3F3F46;
+  --reader-page-border: #18181B;
 }

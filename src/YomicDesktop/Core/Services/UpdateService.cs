@@ -224,7 +224,7 @@ namespace Yomic.Core.Services
             {
                 var ver = Assembly.GetExecutingAssembly().GetName().Version;
                 if (ver == null || (ver.Major == 1 && ver.Minor == 0 && ver.Build == 0))
-                    return "2.6.0";
+                    return "2.6.1";
                 return ver.ToString(3);
             }
         }

@@ -663,4 +663,21 @@ describe('i18n & Static WebUI Integrity', () => {
     assert.ok(readerTs.includes('Math.min(3.0,'), 'getDualPageImgStyle must allow zooming up to 300%');
     assert.ok(downloadsTs.includes('dl.chapterNumber >= 0'), 'downloads.ts must preserve Chapter 0');
   });
+
+  it('Reader HUD and overlay adapt cleanly to Light/White Mode via CSS tokens while preserving Dark Mode', () => {
+    const tokensCss = fs.readFileSync(path.join(webUiRoot, 'styles', 'tokens.css'), 'utf8');
+    const readerCss = fs.readFileSync(path.join(webUiRoot, 'styles', 'modules', '05-reader.css'), 'utf8');
+    const refineCss = fs.readFileSync(path.join(webUiRoot, 'styles', 'modules', '07-refinements-updater.css'), 'utf8');
+
+    const darkSplit = tokensCss.split(':root[data-theme="dark"]');
+    assert.equal(darkSplit.length, 2, 'tokens.css must define both light (:root) and dark theme palettes');
+    assert.ok(darkSplit[0].includes('--reader-bg: #FAFAFA;'), 'Light mode --reader-bg must be bright white/off-white');
+    assert.ok(darkSplit[0].includes('--reader-hud: rgba(255, 255, 255,'), 'Light mode --reader-hud must be white glass');
+    assert.ok(darkSplit[1].includes('--reader-bg: #000000;'), 'Dark mode --reader-bg must stay pitch black');
+    assert.ok(darkSplit[1].includes('--reader-hud: rgba(14, 14, 16,'), 'Dark mode --reader-hud must stay dark glass');
+    assert.ok(readerCss.includes('background: var(--reader-bg,'), '.reader-overlay must use --reader-bg token');
+    assert.ok(refineCss.includes('background: var(--reader-hud) !important;'), '.reader-topbar must use --reader-hud token');
+    assert.ok(refineCss.includes('background: var(--reader-hud-strong);'), 'Floating scrubber pill & dock must use --reader-hud-strong token');
+    assert.ok(refineCss.includes('background: var(--reader-surface) !important;'), 'Reader dock sheets must use --reader-surface token');
+  });
 });

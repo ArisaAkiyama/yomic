@@ -2,6 +2,15 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [2.6.1] - 2026-11-27
+
+Update Details：
+◆ Add full theme-aware Reader design token palette in tokens.css defining complete Crisp White / Light Mode tokens (--reader-bg: #FAFAFA, --reader-surface: #FFFFFF, --reader-hud: rgba(255,255,255,0.92), --reader-hud-strong, --reader-surface-hover/active, --reader-ink, --reader-ink-secondary/muted, --reader-accent/accent-ink, --reader-track, --reader-thumb-bg/shadow, --reader-toggle-off, --reader-page-border, --reader-shadow/shadow-lg) alongside Carbon Dark Mode tokens (--reader-bg: #000000, --reader-surface: #161618, --reader-hud: rgba(14,14,16,0.90)).
+◆ Add automated Light/Dark Reader theme regression test in tests/WebUI.Tests/webui.test.mjs verifying CSS token parity across tokens.css, 05-reader.css, and 07-refinements-updater.css.
+◆ Improve Reader Overlay, Top HUD Bar, Chapter Dropdown, Floating Scrubber Pill, Circular Prev/Next Navigation Buttons, Bottom Dock Sheets, Zoom Slider & Presets, and Display/Image-Processing Toggle Switches in 05-reader.css and 07-refinements-updater.css to adapt seamlessly to both Light Mode and Dark Mode via CSS variables with smooth background-color transitions.
+◆ Improve Reader interactive states in reader.ts (empty chapter dropdown, failed page retry card, and reload/action buttons) to use theme-aware CSS variables (--reader-surface, --reader-border, --reader-ink, --reader-ink-muted, --reader-accent, --reader-accent-ink) instead of hardcoded dark colors.
+◆ Fix Reader staying forced dark with mismatched hardcoded surfaces, borders, edge navigation hover zones, and toggle-switch OFF tracks when Light Mode is active by migrating all remaining Reader UI styles to semantic --reader-* tokens.
+
 ## [2.6.0] - 2026-11-26
 
 Update Details：

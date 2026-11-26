@@ -425,9 +425,9 @@ export function retryPageImg(this: YomicApp, pageNumber: number): void {
   if (img) {
     img.onerror = () => {
       wrap.innerHTML = `
-        <div class="reader-img-error" data-retry-page="${pageNumber}" style="width:${baseWidth}px;min-height:240px;background:#161616;border:1px dashed #2E2E2E;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#A1A1AA;gap:8px;cursor:pointer;margin:0 auto;">
+        <div class="reader-img-error" data-retry-page="${pageNumber}" style="width:${baseWidth}px;min-height:240px;background:var(--reader-surface,#FFFFFF);border:1px dashed var(--reader-border,#D4D4D8);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--reader-ink-muted,#71717A);gap:8px;cursor:pointer;margin:0 auto;">
           <span style="font-size:14px;color:#EF4444;">⚠️ ${this.l(`Gagal memuat Halaman ${pageNumber}`, `Failed to load Page ${pageNumber}`)}</span>
-          <span style="font-size:12px;color:#38BDF8;">${this.l('Klik untuk coba lagi', 'Click to retry')}</span>
+          <span style="font-size:12px;color:var(--reader-ink,#09090B);font-weight:600;">${this.l('Klik untuk coba lagi', 'Click to retry')}</span>
         </div>
       `;
     };
@@ -619,9 +619,9 @@ export function renderReaderPages(this: YomicApp): void {
   if (this.isReaderLoadingPages) {
     pagesContainer.innerHTML = `
       <div class="reader-loading-wrap" style="padding:120px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px;">
-        <div class="reader-spinner" style="width:40px;height:40px;border:3px solid rgba(56,189,248,0.2);border-top-color:#38BDF8;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
-        <div style="font-size:15px;font-weight:600;color:#F8FAFC;">${this.l(`Memuat Halaman Chapter ${this.readerChapterNumber}...`, `Loading Chapter ${this.readerChapterNumber} Pages...`)}</div>
-        <div style="font-size:12px;color:#94A3B8;">${this.l('Mengambil & memeriksa akses gambar komik dari sumber', 'Fetching & verifying comic image access from source')}</div>
+        <div class="reader-spinner" style="width:40px;height:40px;border:3px solid var(--reader-track,rgba(24,24,27,0.14));border-top-color:var(--reader-accent,#18181B);border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+        <div style="font-size:15px;font-weight:600;color:var(--reader-ink,#09090B);">${this.l(`Memuat Halaman Chapter ${this.readerChapterNumber}...`, `Loading Chapter ${this.readerChapterNumber} Pages...`)}</div>
+        <div style="font-size:12px;color:var(--reader-ink-muted,#71717A);">${this.l('Mengambil & memeriksa akses gambar komik dari sumber', 'Fetching & verifying comic image access from source')}</div>
       </div>
     `;
     return;
@@ -639,18 +639,18 @@ export function renderReaderPages(this: YomicApp): void {
     pagesContainer.innerHTML = `
       <div class="reader-error-wrap" style="min-height:calc(100vh - 140px);padding:48px 24px;text-align:center;max-width:480px;margin:0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;">
         <img src="assets/reader/no-data-rafiki.svg" alt="${escapeXml(this.l('Gambar Bab Belum Tersedia', 'Chapter Images Unavailable'))}" draggable="false" style="width:200px;height:auto;max-height:200px;object-fit:contain;user-select:none;margin-bottom:4px;" />
-        <h3 style="font-size:18px;font-weight:600;color:#F8FAFC;margin:0;">${this.l(
+        <h3 style="font-size:18px;font-weight:600;color:var(--reader-ink,#09090B);margin:0;">${this.l(
           this.readerRequiresVerification ? 'Verifikasi Keamanan Diperlukan' : 'Gambar Bab Belum Tersedia',
           this.readerRequiresVerification ? 'Security Verification Required' : 'Chapter Images Unavailable'
         )}</h3>
-        <p style="font-size:13px;color:#94A3B8;margin:0;line-height:1.5;">${errorMsg}</p>
+        <p style="font-size:13px;color:var(--reader-ink-muted,#71717A);margin:0;line-height:1.5;">${errorMsg}</p>
         <div style="display:flex;gap:10px;margin-top:8px;">
           ${
             this.readerRequiresVerification
               ? `<button id="btnVerifyReaderPages" class="reader-action-btn" style="background:#EA580C;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;">${this.l('Verifikasi di WebView', 'Verify in WebView')}</button>`
               : ''
           }
-          <button id="btnRetryReaderPages" class="reader-action-btn" style="background:var(--reader-accent,#F4F4F5);color:#09090B;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">${this.l('Muat Ulang', 'Reload')}</button>
+          <button id="btnRetryReaderPages" class="reader-action-btn" style="background:var(--reader-accent,#18181B);color:var(--reader-accent-ink,#FFFFFF);border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">${this.l('Muat Ulang', 'Reload')}</button>
         </div>
       </div>
     `;
@@ -770,9 +770,9 @@ export function renderReaderPages(this: YomicApp): void {
       if (parent) {
         parent.style.minHeight = '';
         parent.innerHTML = `
-          <div class="reader-img-error" data-retry-page="${pageNum}" style="width:${baseWidth}px;min-height:240px;background:#161616;border:1px dashed #2E2E2E;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#A1A1AA;gap:8px;cursor:pointer;margin:0 auto;">
+          <div class="reader-img-error" data-retry-page="${pageNum}" style="width:${baseWidth}px;min-height:240px;background:var(--reader-surface,#FFFFFF);border:1px dashed var(--reader-border,#D4D4D8);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--reader-ink-muted,#71717A);gap:8px;cursor:pointer;margin:0 auto;">
             <span style="font-size:14px;color:#EF4444;">⚠️ ${this.l(`Gagal memuat Halaman ${pageNum}`, `Failed to load Page ${pageNum}`)}</span>
-            <span style="font-size:12px;color:#38BDF8;">${this.l('Klik untuk coba lagi', 'Click to retry')}</span>
+            <span style="font-size:12px;color:var(--reader-ink,#09090B);font-weight:600;">${this.l('Klik untuk coba lagi', 'Click to retry')}</span>
           </div>
         `;
       }
@@ -1109,7 +1109,7 @@ export function renderReaderChapterDropdown(this: YomicApp): void {
   const manga = this.mangaList.find((m) => m.id === this.readerMangaId);
   if (!manga) return;
   if (!manga.chapters || manga.chapters.length === 0) {
-    const emptyHtml = `<div style="padding:14px 16px;text-align:center;color:#A1A1AA;font-size:12.5px;">${this.l('Daftar chapter belum dimuat', 'Chapter list not loaded yet')}</div>`;
+    const emptyHtml = `<div style="padding:14px 16px;text-align:center;color:var(--reader-ink-muted,#71717A);font-size:12.5px;">${this.l('Daftar chapter belum dimuat', 'Chapter list not loaded yet')}</div>`;
     targets.forEach((menu) => {
       menu.innerHTML = emptyHtml;
     });

@@ -12,9 +12,9 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>Yomic</AssemblyName>
     <RootNamespace>YomicDesktop</RootNamespace>
-    <Version>2.6.0</Version>
-    <FileVersion>2.6.0.0</FileVersion>
-    <AssemblyVersion>2.6.0.0</AssemblyVersion>
+    <Version>2.6.1</Version>
+    <FileVersion>2.6.1.0</FileVersion>
+    <AssemblyVersion>2.6.1.0</AssemblyVersion>
     <Title>Yomic v2</Title>
     <Company>ArisaAkiyama</Company>
     <Product>Yomic Desktop v2</Product>

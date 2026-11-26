@@ -4,14 +4,14 @@
 .reader-overlay {
   position: fixed;
   inset: 0;
-  background: #000000;
-  color: #F8FAFC;
+  background: var(--reader-bg, #FAFAFA);
+  color: var(--reader-ink, #09090B);
   z-index: var(--z-reader);
   display: flex;
   flex-direction: column;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.16s ease-out;
+  transition: opacity 0.16s ease-out, background-color 0.16s ease;
 }
 
 .reader-overlay.open {
@@ -612,7 +612,7 @@
 
 .reader-page-art {
   max-width: 100%;
-  border: 1px solid #18181B;
+  border: 1px solid var(--reader-page-border, #E4E4E7);
   display: block;
 }
 
@@ -626,7 +626,7 @@
   bottom: 68px;
   width: 72px;
   background: transparent;
-  color: #FFFFFF;
+  color: var(--reader-ink, #09090B);
   opacity: 0;
   display: none;
   align-items: center;
@@ -649,7 +649,7 @@
 
 .v1-reader-edge-nav:hover {
   opacity: 0.85;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--reader-hud-hover, rgba(24, 24, 27, 0.07));
 }
 
 /* Bottom HUD Bar: Translucent Glass Bar + High-Contrast Scrubber */

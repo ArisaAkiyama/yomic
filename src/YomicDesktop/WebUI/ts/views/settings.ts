@@ -756,7 +756,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Versi', 'Version')}</span>
               </div>
-              <span class="v1-setting-desc">Stable 2.6.0 (Windows Desktop)</span>
+              <span class="v1-setting-desc">Stable 2.6.1 (Windows Desktop)</span>
             </div>
           </div>
 
@@ -774,29 +774,21 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Catatan rilis', 'Release notes')}</span>
               </div>
-              <span class="v1-setting-desc">v2.6.0</span>
+              <span class="v1-setting-desc">v2.6.1</span>
             </div>
             <span id="aboutReleaseNotesChevron" class="v1-about-release-chevron">
               ${getIconSvg('alt-arrow-down-linear', { size: 18 })}
             </span>
           </button>
           <div id="aboutReleaseNotesPanel" class="v1-about-release-notes" style="display:none;">
-            <div class="v1-about-release-head">[2.6.0] - Major Update</div>
+            <div class="v1-about-release-head">[2.6.1] - Update</div>
             <div class="v1-about-release-subhead">Update Details:</div>
             <ul class="v1-about-release-list">
-              <li>Add shared DoH-first public IP resolver (UrlSecurityHelper.ResolvePublicIpsWithDoHAsync with 5-minute cache, parallel A+AAAA resolution, socket-level SSRF protection, and Offline Mode enforcement before literal IP fast-path) wired into UpdateService (CreateUpdateHttpClient) and unified DNS cache clearing across NetworkService, HttpSource, ExtensionRepositoryService, and UrlSecurityHelper.</li>
-              <li>Add bulk single-query chapter download status reset (LibraryService.MarkAllChaptersNotDownloadedAsync) invoked by BackendIpcController.Downloads.cs when deleting all downloaded chapters of a manga, and exclusive DB maintenance barrier protection during SQLite file reset/recreation in LibraryService.</li>
-              <li>Add expanded CI pipeline checks in .github/workflows/ci-desktop.yml enforcing 9-surface version parity (csproj Version/FileVersion/AssemblyVersion, app.manifest, Installer/Yomic.iss, UpdateService.cs, index.html, main.css, settings.ts, and compiled settings.js) plus automated Inno Setup 6 installer script compilation validation.</li>
-              <li>Add expanded regression test coverage across BehavioralServicesTests.cs, IntegrityAndCatalogTests.cs, and tests/WebUI.Tests/webui.test.mjs covering Chapter 0 preservation, DownloadService cancel-during-finalize &amp; resume-while-unwinding races, UpdateService DoH/Offline Mode, SQLite maintenance lease disposal, and dual-page zoom centering.</li>
-              <li>Improve UpdateService security and resilience with Offline Mode guard on update downloads, manual per-hop redirect validation on .sha256 sidecar fetches (TryFetchSidecarSha256Async), and unified DoH-protected Update HttpClient across API checks, installer downloads, and sidecar requests.</li>
-              <li>Improve MangaDbContext maintenance barrier lifecycle with explicit Dispose/DisposeAsync lease cleanup (SqlitePragmaInterceptor.ReleaseLeaseIfAttached), EF Core-managed connection opening (context.Database.OpenConnection) so raw connections never bypass the barrier, and internal bypassMaintenanceBarrier support for maintenance self-checks.</li>
-              <li>Improve NetworkService DNS resilience by adding Cloudflare 1.1.1.1 failover to Google DoH &amp; default profiles, immediately reflecting Offline Mode when toggled mid-probe, and re-checking IsOfflineMode after HTTP/ICMP probes complete so offline state is never overwritten by in-flight probes.</li>
-              <li>Improve Dual Page Reader zoom range and horizontal centering (getDualPageImgStyle supporting 25%-300% scale in reader.ts + safe center flex alignment with width: max-content in 07-refinements-updater.css) and clipped hover-unblur transitions on list/update thumbnails in 06-modals-dark-stats.css.</li>
-              <li>Fix Chapter 0 (Prologue / Ch. 0) being coerced into Chapter 1 across Downloads queue (BackendIpcController.Downloads.cs &amp; downloads.ts), Updates feed (BackendIpcController.LibraryAndHistory.cs), and Reader page progress caching (BackendIpcController.Reader.cs) by checking ChapterNumber &gt;= 0 instead of &gt; 0.</li>
-              <li>Fix DownloadService concurrency edge cases: prevent cancellation during CBZ packaging/directory move from leaving orphaned files (rolling back promoted files cleanly), preserve ResumeRequestedWhileUnwinding so resuming a still-unwinding paused chapter auto-queues cleanly, and clean up leftover .tmp folders when cancelling paused downloads in BackendIpcController.Downloads.cs.</li>
-              <li>Fix CloudflareBypassService interception race condition by attaching page.Request handler BEFORE calling SetRequestInterceptionAsync(true) and immediately closing unexpected JS-spawned popups (args.Target.Opener != null) to eliminate window.open SSRF races.</li>
-              <li>Fix SourceManager.GetSourceByName substring shadowing (preferring exact case-insensitive match first so "Komiku.com" never shadows "Komiku") and ExtensionRepositoryService custom .js stem extraction (stripping .js before splitting on '.' so "mycustom.js" resolves to "mycustom" instead of "js").</li>
-              <li>Fix bundled extensions (MaidManga v1.2.0, MangaDex v1.2.0, Mangalay v1.2.0, WeebCentral v1.2.0): fix pipe-header |Origin= delimiter, add WeebCentral lazy-load image priority &amp; placeholder filtering, and prevent duplicate infinite-scroll pages in Mangalay.</li>
+              <li>Add full theme-aware Reader design token palette in tokens.css defining complete Crisp White / Light Mode tokens (--reader-bg: #FAFAFA, --reader-surface: #FFFFFF, --reader-hud: rgba(255,255,255,0.92), --reader-hud-strong, --reader-surface-hover/active, --reader-ink, --reader-ink-secondary/muted, --reader-accent/accent-ink, --reader-track, --reader-thumb-bg/shadow, --reader-toggle-off, --reader-page-border, --reader-shadow/shadow-lg) alongside Carbon Dark Mode tokens (--reader-bg: #000000, --reader-surface: #161618, --reader-hud: rgba(14,14,16,0.90)).</li>
+              <li>Add automated Light/Dark Reader theme regression test in tests/WebUI.Tests/webui.test.mjs verifying CSS token parity across tokens.css, 05-reader.css, and 07-refinements-updater.css.</li>
+              <li>Improve Reader Overlay, Top HUD Bar, Chapter Dropdown, Floating Scrubber Pill, Circular Prev/Next Navigation Buttons, Bottom Dock Sheets, Zoom Slider &amp; Presets, and Display/Image-Processing Toggle Switches in 05-reader.css and 07-refinements-updater.css to adapt seamlessly to both Light Mode and Dark Mode via CSS variables with smooth background-color transitions.</li>
+              <li>Improve Reader interactive states in reader.ts (empty chapter dropdown, failed page retry card, and reload/action buttons) to use theme-aware CSS variables (--reader-surface, --reader-border, --reader-ink, --reader-ink-muted, --reader-accent, --reader-accent-ink) instead of hardcoded dark colors.</li>
+              <li>Fix Reader staying forced dark with mismatched hardcoded surfaces, borders, edge navigation hover zones, and toggle-switch OFF tracks when Light Mode is active by migrating all remaining Reader UI styles to semantic --reader-* tokens.</li>
             </ul>
           </div>
         </div>
@@ -2063,7 +2055,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
 
     // Immediately open the full-screen Updater UI when Check for Updates is clicked
     openAppUpdateOverlay({
-      version: '2.6.0',
+      version: '2.6.1',
       releaseNotes: '',
       isEn,
       mode: 'checking'
@@ -2072,7 +2064,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     if (!this.bridge.isWebViewHost) {
       window.setTimeout(() => {
         openAppUpdateOverlay({
-          version: '2.6.0',
+          version: '2.6.1',
           releaseNotes: '',
           isEn,
           mode: 'uptodate'
@@ -2094,7 +2086,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         if (btn) btn.disabled = false;
         // If user already dismissed the checking overlay, do not forcibly pop it back open
         if (!document.getElementById('appUpdateOverlay')?.classList.contains('open')) return;
-        const ver = info?.latestVersion || info?.currentVersion || '2.6.0';
+        const ver = info?.latestVersion || info?.currentVersion || '2.6.1';
         const notes = info?.releaseNotes || '';
         if (info?.isUpdateAvailable && info.downloadUrl) {
           openAppUpdateOverlay({
@@ -2117,7 +2109,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         if (btn) btn.disabled = false;
         if (!document.getElementById('appUpdateOverlay')?.classList.contains('open')) return;
         openAppUpdateOverlay({
-          version: '2.6.0',
+          version: '2.6.1',
           releaseNotes: '',
           isEn,
           mode: 'error'
@@ -2236,7 +2228,7 @@ export function openAppUpdateOverlay(opts: {
   const verEl = document.getElementById('appUpdateVersionText');
   const startBtn = document.getElementById('btnStartAppUpdateNow') as HTMLButtonElement | null;
   const closeBtn = document.getElementById('btnCloseAppUpdateOverlay') as HTMLButtonElement | null;
-  const cleanVer = (opts.version || '2.6.0').replace(/^v/i, '');
+  const cleanVer = (opts.version || '2.6.1').replace(/^v/i, '');
 
   if (barFill) {
     barFill.classList.toggle('indeterminate', mode === 'checking');
