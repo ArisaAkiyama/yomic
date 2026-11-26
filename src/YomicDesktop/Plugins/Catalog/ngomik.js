@@ -6,7 +6,7 @@ var source = {
     currentMirrorIndex: 0,
     mangaUrlDirectory: "/manga",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Manga dan Manhwa Bahasa Indonesia di Ngomik",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/ngomik/res/mipmap-xxhdpi/ic_launcher.png",

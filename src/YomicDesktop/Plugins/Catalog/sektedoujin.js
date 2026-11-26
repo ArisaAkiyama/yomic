@@ -6,7 +6,7 @@ var source = {
     currentMirrorIndex: 0,
     mangaUrlDirectory: "/manga",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Doujinshi dan Manga Hentai Bahasa Indonesia di Sekte Doujin",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/sektedoujin/res/mipmap-xxhdpi/ic_launcher.png",

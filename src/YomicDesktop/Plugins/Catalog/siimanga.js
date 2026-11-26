@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://siikomik.id",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/siimanga/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Siikomik Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#022c22",

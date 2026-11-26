@@ -9,14 +9,14 @@ var source = {
     baseUrl: "https://bacakomik.pics",
     apiUrl: "https://bacakomik.pics",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Online Bahasa Indonesia di BacaKomik.pics",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/bacakomikpics/res/mipmap-xxhdpi/ic_launcher.png",
     iconBackground: "#0f172a",
     iconForeground: "#38bdf8",
     isNsfw: true,
-    isHasMorePages: true,
+    isHasMorePages: false,
     pageSize: 20,
     genres: [],
     formats: [],
@@ -37,6 +37,7 @@ var source = {
     },
 
     getPopularManga: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let p = page || 1;
         let url = this.baseUrl + "/komik-populer/";
         let res = this.requestUrl(url);
@@ -61,12 +62,14 @@ var source = {
     },
 
     getLatestUpdates: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let p = page || 1;
         let url = this.baseUrl + "/wp-json/wp/v2/komik_series?per_page=20&page=" + p + "&_embed=wp:featuredmedia&orderby=modified&order=desc";
         return this.parseWpSeries(url, p);
     },
 
     getSearchManga: function(query, page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let p = page || 1;
         let url = this.baseUrl + "/wp-json/wp/v2/komik_series?per_page=20&page=" + p + "&_embed=wp:featuredmedia&search=" + encodeURIComponent(query || "");
         return this.parseWpSeries(url, p);
@@ -201,7 +204,7 @@ var source = {
         let seen = {};
 
         for (let img of imgs) {
-            let src = img.absUrl("src") || img.attr("src") || "";
+            let src = ((el) => { let cands = [img.absUrl("data-lazy-src") || img.attr("data-lazy-src"), img.absUrl("data-src") || img.attr("data-src"), img.absUrl("data-original") || img.attr("data-original"), img.absUrl("data-cfsrc") || img.attr("data-cfsrc"), img.absUrl("src") || img.attr("src")]; for (let c of cands) { if (!c) continue; let low = c.trim().toLowerCase(); if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue; return c.trim(); } return ""; })(img);
             if (src && !seen[src]) {
                 seen[src] = true;
                 pages.push(src);

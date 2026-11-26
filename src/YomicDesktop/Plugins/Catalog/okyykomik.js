@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://www.okyykomik.my.id",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/okyykomik/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.1",
+    version: "1.1.0",
     description: "OkyyKomik Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#0f172a",
@@ -338,7 +338,7 @@ var source = {
 
         for (let i = 0; i < images.length; i++) {
             let img = images[i];
-            let src = img.absUrl("src") || img.absUrl("data-src");
+            let src = ((el) => { let cands = [img.absUrl("data-lazy-src") || img.attr("data-lazy-src"), img.absUrl("data-src") || img.attr("data-src"), img.absUrl("data-original") || img.attr("data-original"), img.absUrl("data-cfsrc") || img.attr("data-cfsrc"), img.absUrl("src") || img.attr("src")]; for (let c of cands) { if (!c) continue; let low = c.trim().toLowerCase(); if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue; return c.trim(); } return ""; })(img);
             if (!src || seen[src]) continue;
 
             // Skip logo, icon, or banner images

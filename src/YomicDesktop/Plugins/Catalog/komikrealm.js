@@ -9,14 +9,14 @@ var source = {
     baseUrl: "https://komikrealm.org",
     apiUrl: "https://komikrealm.org",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manhwa, Manhua, Manga di KomikRealm",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/komikrealm/res/mipmap-xxhdpi/ic_launcher.png",
     iconBackground: "#0f172a",
     iconForeground: "#38bdf8",
     isNsfw: false,
-    isHasMorePages: true,
+    isHasMorePages: false,
     pageSize: 24,
     genres: [],
     formats: [],
@@ -85,6 +85,7 @@ var source = {
     },
 
     getPopularManga: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let url = this.baseUrl + "/popular/q-data.json";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
@@ -105,6 +106,7 @@ var source = {
     },
 
     getLatestUpdates: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let url = this.baseUrl + "/q-data.json";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
@@ -125,6 +127,7 @@ var source = {
     },
 
     getSearchManga: function(query, page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let cleanQ = (query || "").trim();
         if (!cleanQ) return this.getPopularManga(page);
         let url = this.baseUrl + "/search/" + encodeURIComponent(cleanQ) + "/q-data.json";

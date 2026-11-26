@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://www.mynimeku.com",
     apiUrl: "https://www.mynimeku.com",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manga, Manhwa, Manhua Lengkap di MyNimeku",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/mynimeku/res/mipmap-xxhdpi/ic_launcher.png",
@@ -198,7 +198,7 @@ var source = {
         let seen = {};
 
         for (let img of imgs) {
-            let src = img.absUrl("src") || img.attr("src") || "";
+            let src = ((el) => { let cands = [img.absUrl("data-lazy-src") || img.attr("data-lazy-src"), img.absUrl("data-src") || img.attr("data-src"), img.absUrl("data-original") || img.attr("data-original"), img.absUrl("data-cfsrc") || img.attr("data-cfsrc"), img.absUrl("src") || img.attr("src")]; for (let c of cands) { if (!c) continue; let low = c.trim().toLowerCase(); if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue; return c.trim(); } return ""; })(img);
             if (src && !seen[src]) {
                 seen[src] = true;
                 pages.push(src);

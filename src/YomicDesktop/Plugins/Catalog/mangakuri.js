@@ -4,7 +4,7 @@ var source = {
     apiUrl: "https://api.mangakuri.online/api",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/mangakuri/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Mangakuri Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#172554",

@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://01.komikzoid.id",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/komikzoid/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Komikzoid Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#1f2937",

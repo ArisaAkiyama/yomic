@@ -3,7 +3,7 @@ var source = {
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/en/weebcentral/res/mipmap-xxhdpi/ic_launcher.png",
     baseUrl: "https://weebcentral.com",
     language: "en",
-    version: "1.0.3",
+    version: "1.1.0",
     description: "WeebCentral English extension implemented in JavaScript using WeebCentral lightweight endpoints",
     author: "DesktopKomik",
     iconBackground: "#1f2937",

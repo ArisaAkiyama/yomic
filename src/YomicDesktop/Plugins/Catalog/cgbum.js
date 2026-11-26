@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://cgbum.com",
     apiUrl: "https://cgbum.com",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manga & Manhwa di CGBUM",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/cgbum/res/mipmap-xxhdpi/ic_launcher.png",

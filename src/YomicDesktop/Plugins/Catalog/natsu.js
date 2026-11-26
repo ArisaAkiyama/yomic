@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://natsu.one",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/natsu/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Natsu Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#064e3b",

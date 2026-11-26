@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://doujin.desu.xxx",
     apiUrl: "https://doujin.desu.xxx",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Manga & Doujinshi Hentai Terjemahan Bahasa Indonesia di Doujindesu",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/doujindesu/res/mipmap-xxhdpi/ic_launcher.png",

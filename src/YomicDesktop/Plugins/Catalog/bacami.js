@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://v1.bacami.site",
     apiUrl: "https://v1.bacami.site",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manga Online di Bacami",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/bacami/res/mipmap-xxhdpi/ic_launcher.png",

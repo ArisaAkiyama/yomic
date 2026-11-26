@@ -2,7 +2,7 @@ var source = {
     name: "NHentai.xxx",
     baseUrl: "https://nhentai.xxx",
     language: "en",
-    version: "1.0.2",
+    version: "1.1.0",
     description: "Read English and Japanese doujinshi from NHentai.xxx",
     author: "DesktopKomik",
     iconUrl: "https://www.google.com/s2/favicons?domain=nhentai.xxx&sz=128",

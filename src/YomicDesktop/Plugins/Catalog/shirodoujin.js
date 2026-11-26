@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://shirodoujin.com",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/shirodoujin/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Shiro Doujin Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#1e293b",

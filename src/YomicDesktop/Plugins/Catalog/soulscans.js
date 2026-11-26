@@ -4,7 +4,7 @@ var source = {
     apiUrl: "https://v1.soulscans.asia/api",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/soulscans/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Soul Scans Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#022c22",

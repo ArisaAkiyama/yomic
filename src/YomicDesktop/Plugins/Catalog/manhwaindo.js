@@ -3,7 +3,7 @@ var source = {
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/manhwaindo/res/mipmap-xxhdpi/ic_launcher.png",
     baseUrl: "https://www.manhwaindo.my",
     language: "id",
-    version: "1.1.4",
+    version: "1.2.0",
     description: "Baca Manhwa, Manga, dan Manhua Bahasa Indonesia dari ManhwaIndo (MangaThemesia)",
     author: "DesktopKomik",
     iconBackground: "#0d1b2a",
@@ -281,7 +281,7 @@ var source = {
         let seen = {};
         for (let i = 0; i < imgEls.length; i++) {
             let img = imgEls[i];
-            let src = img.absUrl("src") || img.attr("data-src") || img.attr("data-lazy-src") || "";
+            let src = ((el) => { let cands = [img.absUrl("data-lazy-src") || img.attr("data-lazy-src"), img.absUrl("data-src") || img.attr("data-src"), img.absUrl("data-original") || img.attr("data-original"), img.absUrl("data-cfsrc") || img.attr("data-cfsrc"), img.absUrl("src") || img.attr("src")]; for (let c of cands) { if (!c) continue; let low = c.trim().toLowerCase(); if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue; return c.trim(); } return ""; })(img);
             if (!src || seen[src]) continue;
             seen[src] = true;
             let imgUrl = this.toHttps(src.trim());

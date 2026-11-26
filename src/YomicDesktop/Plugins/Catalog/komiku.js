@@ -4,7 +4,7 @@ var source = {
     baseUrl: "https://komiku.org",
     apiUrl: "https://api.komiku.org",
     language: "id",
-    version: "1.0.1",
+    version: "1.1.0",
     description: "Komiku extension implemented in JavaScript using Jint Engine",
     author: "DesktopKomik",
     iconBackground: "#2E7D32",

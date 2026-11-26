@@ -9,14 +9,14 @@ var source = {
     baseUrl: "https://project.koronaxscan.my.id",
     apiUrl: "https://asw.koronaxscan.my.id",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Terjemahan KoronaxScan",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/koronaxscan/res/mipmap-xxhdpi/ic_launcher.png",
     iconBackground: "#0f172a",
     iconForeground: "#38bdf8",
     isNsfw: false,
-    isHasMorePages: true,
+    isHasMorePages: false,
     pageSize: 20,
     genres: [],
     formats: [],
@@ -50,6 +50,7 @@ var source = {
     },
 
     getPopularManga: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let list = this.fetchAllMangas();
         list.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
         let items = list.map(item => ({
@@ -62,6 +63,7 @@ var source = {
     },
 
     getLatestUpdates: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let list = this.fetchAllMangas();
         let items = list.map(item => ({
             title: item.title,
@@ -73,6 +75,7 @@ var source = {
     },
 
     getSearchManga: function(query, page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let list = this.fetchAllMangas();
         let q = (query || "").toLowerCase();
         let filtered = list.filter(item => {

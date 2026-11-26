@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://v2.komiknesiaku.com",
     apiUrl: "https://v2.komiknesiaku.com",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Manga & Manhwa Terjemahan Bahasa Indonesia di KomikNesia",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/komiknesia/res/mipmap-xxhdpi/ic_launcher.png",

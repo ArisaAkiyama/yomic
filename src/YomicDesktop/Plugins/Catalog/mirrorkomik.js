@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://mirrorkomik.info",
     apiUrl: "https://mirrorkomik.info",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manga, Manhwa, Manhua Subtitle Indonesia di MirrorKomik",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/mirrorkomik/res/mipmap-xxhdpi/ic_launcher.png",

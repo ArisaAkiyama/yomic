@@ -6,7 +6,7 @@ var source = {
     currentMirrorIndex: 0,
     mangaUrlDirectory: "/manga",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Isekai & Manga Bahasa Indonesia di IsekaiKomik",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/manhwalistorg/res/mipmap-xxhdpi/ic_launcher.png",

@@ -9,14 +9,14 @@ var source = {
     baseUrl: "https://omicaso.org",
     apiUrl: "https://omicaso.org",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manga di Omicaso",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/omicaso/res/mipmap-xxhdpi/ic_launcher.png",
     iconBackground: "#0f172a",
     iconForeground: "#38bdf8",
     isNsfw: false,
-    isHasMorePages: true,
+    isHasMorePages: false,
     pageSize: 20,
     genres: [],
     formats: [],
@@ -37,6 +37,7 @@ var source = {
     },
 
     getPopularManga: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let url = this.baseUrl + "/api/manga.php?page=1&limit=20&mode=all&sort=popular";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
@@ -52,6 +53,7 @@ var source = {
     },
 
     getLatestUpdates: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let p = page || 1;
         let url = this.baseUrl + "/api/manga.php?page=" + p + "&limit=20&mode=all&sort=updated";
         let res = this.requestUrl(url);
@@ -68,6 +70,7 @@ var source = {
     },
 
     getSearchManga: function(query, page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let p = page || 1;
         let url = this.baseUrl + "/api/manga.php?page=" + p + "&limit=20&mode=all&q=" + encodeURIComponent(query || "");
         let res = this.requestUrl(url);
@@ -174,7 +177,7 @@ var source = {
         let list = [];
 
         for (let img of imgs) {
-            let src = img.absUrl("src") || img.attr("src") || "";
+            let src = ((el) => { let cands = [img.absUrl("data-lazy-src") || img.attr("data-lazy-src"), img.absUrl("data-src") || img.attr("data-src"), img.absUrl("data-original") || img.attr("data-original"), img.absUrl("data-cfsrc") || img.attr("data-cfsrc"), img.absUrl("src") || img.attr("src")]; for (let c of cands) { if (!c) continue; let low = c.trim().toLowerCase(); if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue; return c.trim(); } return ""; })(img);
             if (src) list.push(src);
         }
         return list;

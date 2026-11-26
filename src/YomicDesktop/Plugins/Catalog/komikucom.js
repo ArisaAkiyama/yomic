@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://01.komiku.asia",
     apiUrl: "https://01.komiku.asia",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manga & Manhwa Terlengkap di Komiku.com",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/komikucom/res/mipmap-xxhdpi/ic_launcher.png",

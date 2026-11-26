@@ -4,7 +4,7 @@ var source = {
     baseUrl: "https://v7.kiryuu.to",
     apiUrl: "https://v7.kiryuu.to/wp-json/wp/v2",
     language: "id",
-    version: "1.0.3",
+    version: "1.1.0",
     description: "Baca komik Bahasa Indonesia dari Kiryuu",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/kiryuu/res/mipmap-xxhdpi/ic_launcher.png",
@@ -197,7 +197,7 @@ var source = {
         let pages = [];
         let seen = {};
         for (let i = 0; i < images.length; i++) {
-            let src = images[i].absUrl("src") || images[i].absUrl("data-src") || images[i].absUrl("data-lazy-src");
+            let src = ((el) => { let cands = [images[i].absUrl("data-lazy-src") || images[i].attr("data-lazy-src"), images[i].absUrl("data-src") || images[i].attr("data-src"), images[i].absUrl("data-original") || images[i].attr("data-original"), images[i].absUrl("data-cfsrc") || images[i].attr("data-cfsrc"), images[i].absUrl("src") || images[i].attr("src")]; for (let c of cands) { if (!c) continue; let low = c.trim().toLowerCase(); if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue; return c.trim(); } return ""; })(images[i]);
             if (!src) continue;
             
             let urlLower = src.toLowerCase();

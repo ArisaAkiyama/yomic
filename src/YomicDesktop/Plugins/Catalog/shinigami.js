@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://11.shinigami.asia",
     apiUrl: "https://11.shinigami.asia",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Manga, Manhwa, Manhua Bahasa Indonesia di Shinigami",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/shinigami/res/mipmap-xxhdpi/ic_launcher.png",

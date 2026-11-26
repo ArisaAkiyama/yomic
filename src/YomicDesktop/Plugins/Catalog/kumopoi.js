@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://beta.kumopoi.com",
     apiUrl: "https://api.kumopoi.com/api/v1",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Dewasa di KumoPoi",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/kumopoi/res/mipmap-xxhdpi/ic_launcher.png",

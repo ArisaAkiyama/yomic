@@ -6,7 +6,7 @@ var source = {
     currentMirrorIndex: 0,
     mangaUrlDirectory: "/manga",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Download Batch dan Baca Manga Bahasa Indonesia di Kombatch",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/kombatch/res/mipmap-xxhdpi/ic_launcher.png",

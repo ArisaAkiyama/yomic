@@ -4,7 +4,7 @@ var source = {
     apiUrl: "https://v4.luvyaa.co",
     iconUrl: "https://raw.githubusercontent.com/ArisaAkiyama/extension-yomic/main/icons/luvyaa.png",
     language: "id",
-    version: "1.0.1",
+    version: "1.1.0",
     description: "Baca komik Bahasa Indonesia dari Luvyaa",
     author: "DesktopKomik",
     iconBackground: "#d20f39",

@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://komiknextgonline.com",
     apiUrl: "https://komiknextgonline.com",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Anak di Komik Next G Online",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/komiknextgonline/res/mipmap-xxhdpi/ic_launcher.png",
@@ -153,7 +153,7 @@ var source = {
         let list = [];
 
         for (let img of imgs) {
-            let src = img.absUrl("src") || img.attr("src") || "";
+            let src = ((el) => { let cands = [img.absUrl("data-lazy-src") || img.attr("data-lazy-src"), img.absUrl("data-src") || img.attr("data-src"), img.absUrl("data-original") || img.attr("data-original"), img.absUrl("data-cfsrc") || img.attr("data-cfsrc"), img.absUrl("src") || img.attr("src")]; for (let c of cands) { if (!c) continue; let low = c.trim().toLowerCase(); if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue; return c.trim(); } return ""; })(img);
             if (src) list.push(src);
         }
         return list;

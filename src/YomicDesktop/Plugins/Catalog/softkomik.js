@@ -11,7 +11,7 @@ var source = {
     coverBaseUrl: "https://cover.softdevices.my.id/softkomik-cover",
     encKey: "nYTInq9MwR4pWa8yeXtu/2iO3t9nGP65WHpWEvqpEdU=",
     language: "id",
-    version: "1.11.2",
+    version: "1.12.0",
     description: "Softkomik Indonesian extension.",
     author: "DesktopKomik",
     iconBackground: "#111111",
@@ -329,7 +329,7 @@ var source = {
         var data = this.extractNextData(html);
 
         if (!data || !data.props || !data.props.pageProps) {
-            throw new Error("Gagal memuat halaman chapter dari Softkomik.");
+            return [];
         }
 
         var pageProps = data.props.pageProps;
@@ -350,7 +350,7 @@ var source = {
         }
 
         if (!imageSrc || imageSrc.length === 0) {
-            throw new Error("Gambar tidak tersedia untuk chapter ini di Softkomik.");
+            return [];
         }
 
         var cdnBase = (cData && cData.backBS3 === true)

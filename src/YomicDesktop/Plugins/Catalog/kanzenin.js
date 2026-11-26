@@ -6,7 +6,7 @@ var source = {
     currentMirrorIndex: 0,
     mangaUrlDirectory: "/manga",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manga Bahasa Indonesia di Kanzenin",
     author: "DesktopKomik",
     iconUrl: "https://www.google.com/s2/favicons?domain=kanzenin.info&sz=128",

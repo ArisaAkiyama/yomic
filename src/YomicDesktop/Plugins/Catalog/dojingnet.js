@@ -6,7 +6,7 @@ var source = {
     currentMirrorIndex: 0,
     mangaUrlDirectory: "/manga",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Doujinshi dan Manga Bahasa Indonesia terlengkap di Dojing.net",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/dojingnet/res/mipmap-xxhdpi/ic_launcher.png",

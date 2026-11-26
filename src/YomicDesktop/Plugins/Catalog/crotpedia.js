@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://crotpedia.net",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/crotpedia/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "CrotPedia Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#3f0a0a",

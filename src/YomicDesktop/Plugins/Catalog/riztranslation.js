@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://riztranslation.pages.dev",
     apiUrl: "https://uefnaojxivvxeamljskn.supabase.co/rest/v1",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Manga Terjemahan Riztranslation",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/riztranslation/res/mipmap-xxhdpi/ic_launcher.png",

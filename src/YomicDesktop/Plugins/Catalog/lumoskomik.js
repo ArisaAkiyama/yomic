@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://03.lumosgg.com",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/lumoskomik/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "LumosKomik Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#172554",

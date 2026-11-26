@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://04.cosmicscans.to",
     apiUrl: "https://cdncid.csmcscns.id/v1/manga",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manhwa & Manga di CosmicScans",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/cosmicscansid/res/mipmap-xxhdpi/ic_launcher.png",

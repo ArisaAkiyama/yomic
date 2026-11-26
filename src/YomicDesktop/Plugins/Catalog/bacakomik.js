@@ -9,7 +9,7 @@ var source = {
     baseUrl: "https://bacakomik.my",
     apiUrl: "https://bacakomik.my",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manga, Manhwa, Manhua Terlengkap di BacaKomik",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/bacakomik/res/mipmap-xxhdpi/ic_launcher.png",

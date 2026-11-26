@@ -4,7 +4,7 @@ var source = {
     iconUrl: "https://www.google.com/s2/favicons?domain=baca.ryzukomik.space&sz=128",
     apiUrl: "https://baca.ryzukomik.space",
     language: "id",
-    version: "2.0.8",
+    version: "2.1.0",
     description: "Ryzukomik Indonesian manga extension (new domain)",
     author: "DesktopKomik",
     iconBackground: "#0a0a0a",
@@ -295,7 +295,7 @@ var source = {
             if (readerDiv) {
                 let imgEls = readerDiv.querySelectorAll("img");
                 for (let img of imgEls) {
-                    let src = img.absUrl("src") || img.attr("src");
+                    let src = ((el) => { let cands = [img.absUrl("data-lazy-src") || img.attr("data-lazy-src"), img.absUrl("data-src") || img.attr("data-src"), img.absUrl("data-original") || img.attr("data-original"), img.absUrl("data-cfsrc") || img.attr("data-cfsrc"), img.absUrl("src") || img.attr("src")]; for (let c of cands) { if (!c) continue; let low = c.trim().toLowerCase(); if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue; return c.trim(); } return ""; })(img);
                     if (src) pages.push(src);
                 }
             }

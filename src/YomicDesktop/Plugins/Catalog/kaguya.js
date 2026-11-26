@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://02.kaguya.pro",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/kaguya/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Kaguya Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#1e1b4b",

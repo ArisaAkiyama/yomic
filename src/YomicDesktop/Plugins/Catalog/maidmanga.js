@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://www.maid.my.id",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/maidmanga/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.5",
+    version: "1.1.0",
     description: "MaidManga Indonesian extension implemented in JavaScript using ZManga/WordPress pages",
     author: "DesktopKomik",
     iconBackground: "#1f2937",

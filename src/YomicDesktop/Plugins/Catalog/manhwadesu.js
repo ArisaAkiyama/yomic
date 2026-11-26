@@ -6,7 +6,7 @@ var source = {
     currentMirrorIndex: 0,
     mangaUrlDirectory: "/komik",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Manhwa dan Komik Bahasa Indonesia terlengkap di ManhwaDesu",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/manhwadesu/res/mipmap-xxhdpi/ic_launcher.png",

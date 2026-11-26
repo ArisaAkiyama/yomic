@@ -4,7 +4,7 @@ var source = {
     apiUrl: "https://api.roseveil.my.id/api",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/roseveil/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Roseveil Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#831843",

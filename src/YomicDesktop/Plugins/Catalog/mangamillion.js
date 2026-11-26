@@ -4,7 +4,7 @@ var source = {
     iconUrl: "https://www.google.com/s2/favicons?domain=shueisha.co.jp&sz=128",
     apiUrl: "https://api.mangamillion.shueisha.co.jp",
     language: "en",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Official Shueisha MANGA MILLION - 400+ titles FREE in 100+ languages",
     author: "DesktopKomik",
     iconBackground: "#e60026",

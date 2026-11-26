@@ -6,7 +6,7 @@ var source = {
     mirrorUrls: ["https://v1.westmanga.my", "https://v1.westmanga.top"],
     currentMirrorIndex: 0,
     language: "id",
-    version: "1.2.0",
+    version: "1.3.0",
     description: "West Manga extension implemented in JavaScript using Jint Engine",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/westmanga/res/mipmap-xxhdpi/ic_launcher.png",

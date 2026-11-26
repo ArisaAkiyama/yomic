@@ -4,7 +4,7 @@ var source = {
     apiUrl: "https://www.lepoytl.my.id",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/lepoytl/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "LepoyTL Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#1e1e2f",
@@ -263,11 +263,22 @@ var source = {
 
         if (!label) return [];
 
-        let feedUrl = `${this.apiUrl}/feeds/posts/default/-/${encodeURIComponent(label)}?alt=json&max-results=500`;
-        let json = this.getJson(feedUrl);
-        if (!json || !json.feed) return [];
-
-        let entries = json.feed.entry || [];
+        let entries = [];
+        let seenEntryKeys = {};
+        const pageSize = 150;
+        for (let startIndex = 1; startIndex <= 1500; startIndex += pageSize) {
+            let feedUrl = `${this.apiUrl}/feeds/posts/default/-/${encodeURIComponent(label)}?alt=json&max-results=${pageSize}&start-index=${startIndex}`;
+            let json = this.getJson(feedUrl);
+            let batch = (json && json.feed && Array.isArray(json.feed.entry)) ? json.feed.entry : [];
+            if (batch.length === 0) break;
+            for (let e of batch) {
+                let k = (e.id && e.id.$t) || (e.title && e.title.$t) || "";
+                if (k && seenEntryKeys[k]) continue;
+                if (k) seenEntryKeys[k] = true;
+                entries.push(e);
+            }
+            if (batch.length < pageSize) break;
+        }
         let chapters = [];
         let chCat = this.chapterCategory || "Chapter";
 
@@ -328,7 +339,7 @@ var source = {
                 let subDoc = Html.parse(m[1], fullUrl);
                 let imgs = subDoc.querySelectorAll("img[src], img[data-src]");
                 for (let img of imgs) {
-                    let src = img.absUrl("src") || img.attr("src") || img.attr("data-src");
+                    let src = ((el) => { let cands = [img.absUrl("data-lazy-src") || img.attr("data-lazy-src"), img.absUrl("data-src") || img.attr("data-src"), img.absUrl("data-original") || img.attr("data-original"), img.absUrl("data-cfsrc") || img.attr("data-cfsrc"), img.absUrl("src") || img.attr("src")]; for (let c of cands) { if (!c) continue; let low = c.trim().toLowerCase(); if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue; return c.trim(); } return ""; })(img);
                     if (src) pages.push(src);
                 }
                 if (pages.length > 0) return this.cleanPageUrls(pages);
@@ -354,7 +365,7 @@ var source = {
         let imgEls = doc.querySelectorAll("div.check-box div.separator img, div.check-box center img, #reader img, .reader img, #post-body div.separator img, .post-body div.separator img, div.separator img, div.separator a[href*='googleusercontent.com'], div.separator a[href*='bp.blogspot.com']");
 
         for (let img of imgEls) {
-            let src = img.absUrl("src") || img.attr("src") || img.attr("data-src") || img.absUrl("href") || img.attr("href");
+            let src = ((el) => { let cands = [img.absUrl("data-lazy-src") || img.attr("data-lazy-src"), img.absUrl("data-src") || img.attr("data-src"), img.absUrl("data-original") || img.attr("data-original"), img.absUrl("data-cfsrc") || img.attr("data-cfsrc"), img.absUrl("src") || img.attr("src"), img.absUrl("href") || img.attr("href")]; for (let c of cands) { if (!c) continue; let low = c.trim().toLowerCase(); if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue; return c.trim(); } return ""; })(img);
             if (src && !src.includes("histats.com") && !src.includes("ads") && !src.includes("pixel.wp.com")) {
                 pages.push(src);
             }

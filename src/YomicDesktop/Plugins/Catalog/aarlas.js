@@ -4,7 +4,7 @@ var source = {
     baseUrl: "https://www.arlas.online",
     apiUrl: "https://www.arlas.online",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Aarlas extension implemented in JavaScript using Jint Engine",
     author: "DesktopKomik",
     iconBackground: "#ff0080",
@@ -186,13 +186,24 @@ var source = {
             label = match[1].trim();
         }
 
-        let feedUrl = `${this.apiUrl}/feeds/posts/default/-/${encodeURIComponent(label)}?alt=json&max-results=500`;
-        let feedResponse = fetch(feedUrl);
-        if (!feedResponse || feedResponse.status !== 200) return [];
-
-        let json = (() => { try { return JSON.parse(feedResponse.body) || {}; } catch (e) { return {}; } })();
-        if (!json || !json.feed) return [];
-        let entries = json.feed.entry || [];
+        let entries = [];
+        let seenEntryKeys = {};
+        const pageSize = 150;
+        for (let startIndex = 1; startIndex <= 1500; startIndex += pageSize) {
+            let feedUrl = `${this.apiUrl}/feeds/posts/default/-/${encodeURIComponent(label)}?alt=json&max-results=${pageSize}&start-index=${startIndex}`;
+            let feedResponse = fetch(feedUrl);
+            if (!feedResponse || feedResponse.status !== 200) break;
+            let json = (() => { try { return JSON.parse(feedResponse.body) || {}; } catch (e) { return {}; } })();
+            let batch = (json && json.feed && Array.isArray(json.feed.entry)) ? json.feed.entry : [];
+            if (batch.length === 0) break;
+            for (let e of batch) {
+                let k = (e.id && e.id.$t) || (e.title && e.title.$t) || "";
+                if (k && seenEntryKeys[k]) continue;
+                if (k) seenEntryKeys[k] = true;
+                entries.push(e);
+            }
+            if (batch.length < pageSize) break;
+        }
         
         let chapters = [];
         for (let entry of entries) {

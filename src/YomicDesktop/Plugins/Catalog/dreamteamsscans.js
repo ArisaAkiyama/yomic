@@ -4,7 +4,7 @@ var source = {
     apiUrl: "https://api.dreamteams.space/api",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/dreamteamsscans/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "DreamTeams Scans Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#3b0764",

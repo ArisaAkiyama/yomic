@@ -9,14 +9,14 @@ var source = {
     baseUrl: "https://v3.comicaso.pro",
     apiUrl: "https://v3.comicaso.pro",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Komik Manga & Manhwa di Comicaso",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/comicaso/res/mipmap-xxhdpi/ic_launcher.png",
     iconBackground: "#0f172a",
     iconForeground: "#38bdf8",
     isNsfw: false,
-    isHasMorePages: true,
+    isHasMorePages: false,
     pageSize: 20,
     genres: [],
     formats: [],
@@ -40,6 +40,7 @@ var source = {
     },
 
     getPopularManga: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let url = this.baseUrl + "/api/trending.php?period=all&limit=60";
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return { items: [], totalPages: 1 };
@@ -55,6 +56,7 @@ var source = {
     },
 
     getLatestUpdates: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let p = page || 1;
         let offset = (p - 1) * 60;
         let url = this.baseUrl + "/api/home.php?source=all&q=&mode=update&type=all&limit=60&offset=" + offset;
@@ -72,6 +74,7 @@ var source = {
     },
 
     getSearchManga: function(query, page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let p = page || 1;
         let offset = (p - 1) * 60;
         let url = this.baseUrl + "/api/home.php?source=all&q=" + encodeURIComponent(query || "") + "&mode=update&type=all&limit=60&offset=" + offset;

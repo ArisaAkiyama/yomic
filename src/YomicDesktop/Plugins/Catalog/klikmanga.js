@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://klikmanga.org",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/klikmanga/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "KlikManga Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#0f172a",

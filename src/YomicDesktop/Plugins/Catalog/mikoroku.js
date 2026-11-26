@@ -9,14 +9,14 @@ var source = {
     baseUrl: "https://mikoroku.com",
     apiUrl: "https://raw.githubusercontent.com/moemaomao/mymangadata/main/all-manga.json",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Baca Manga Bahasa Indonesia di MikoRoku",
     author: "DesktopKomik",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/mikoroku/res/mipmap-xxhdpi/ic_launcher.png",
     iconBackground: "#0f172a",
     iconForeground: "#38bdf8",
     isNsfw: false,
-    isHasMorePages: true,
+    isHasMorePages: false,
     pageSize: 20,
     genres: [],
     formats: [],
@@ -43,7 +43,8 @@ var source = {
         try {
             let res = this.requestUrl(this.apiUrl);
             if (!res || res.status !== 200 || !res.body) return [];
-            this.cachedCatalog = JSON.parse(res.body) || [];
+            let parsed = JSON.parse(res.body);
+            this.cachedCatalog = Array.isArray(parsed) ? parsed : [];
             return this.cachedCatalog;
         } catch (e) {
             return [];
@@ -51,6 +52,7 @@ var source = {
     },
 
     getPopularManga: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let list = this.fetchCatalog();
         let sorted = list.slice().sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
         let items = sorted.map(item => ({
@@ -63,6 +65,7 @@ var source = {
     },
 
     getLatestUpdates: function(page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let list = this.fetchCatalog();
         let items = list.map(item => ({
             title: item.title,
@@ -74,6 +77,7 @@ var source = {
     },
 
     getSearchManga: function(query, page) {
+        if ((page || 1) > 1) return { items: [], totalPages: 1 };
         let list = this.fetchCatalog();
         let q = (query || "").toLowerCase();
         let filtered = list.filter(item => {
@@ -132,12 +136,16 @@ var source = {
         if (!item) return [];
 
         let chs = [];
+        let seenUrls = {};
         try {
-            let feedUrl = "https://www.mikodrive.my.id/feeds/posts/default?alt=json&max-results=50&q=" + encodeURIComponent(item.title);
-            let res = this.requestUrl(feedUrl);
-            if (res && res.status === 200 && res.body) {
+            const pageSize = 150;
+            for (let startIndex = 1; startIndex <= 1500; startIndex += pageSize) {
+                let feedUrl = "https://www.mikodrive.my.id/feeds/posts/default?alt=json&max-results=" + pageSize + "&start-index=" + startIndex + "&q=" + encodeURIComponent(item.title);
+                let res = this.requestUrl(feedUrl);
+                if (!res || res.status !== 200 || !res.body) break;
                 let json = JSON.parse(res.body);
-                let entries = (json.feed && json.feed.entry) ? json.feed.entry : [];
+                let entries = (json && json.feed && Array.isArray(json.feed.entry)) ? json.feed.entry : [];
+                if (entries.length === 0) break;
                 for (let entry of entries) {
                     let title = entry.title && entry.title.$t ? entry.title.$t : "";
                     let links = entry.link || [];
@@ -148,7 +156,8 @@ var source = {
                             break;
                         }
                     }
-                    if (chUrl) {
+                    if (chUrl && !seenUrls[chUrl]) {
+                        seenUrls[chUrl] = true;
                         chs.push({
                             name: title,
                             url: chUrl,
@@ -156,21 +165,15 @@ var source = {
                         });
                     }
                 }
+                if (entries.length < pageSize) break;
             }
         } catch (e) {}
 
-        if (chs.length === 0) {
-            chs.push({
-                name: "Chapter 1",
-                url: "/detail.html?slug=" + slug,
-                uploadDate: ""
-            });
-        }
         return chs;
     },
 
     getPageList: function(url) {
-        if (!url.startsWith("http")) return [];
+        if (!url || !url.startsWith("http")) return [];
         let res = this.requestUrl(url);
         if (!res || res.status !== 200 || !res.body) return [];
         let doc = Html.parse(res.body, url);
@@ -178,7 +181,16 @@ var source = {
         let list = [];
         let seen = {};
         for (let img of imgs) {
-            let src = img.absUrl("src") || img.absUrl("data-src") || "";
+            let src = ((el) => {
+                let cands = [el.absUrl("data-lazy-src") || el.attr("data-lazy-src"), el.absUrl("data-src") || el.attr("data-src"), el.absUrl("data-original") || el.attr("data-original"), el.absUrl("data-cfsrc") || el.attr("data-cfsrc"), el.absUrl("src") || el.attr("src")];
+                for (let c of cands) {
+                    if (!c) continue;
+                    let low = c.trim().toLowerCase();
+                    if (!low || low.startsWith("data:") || low.includes("loading.gif") || low.includes("loader.gif") || low.includes("placeholder") || low.includes("blank.gif") || low.includes("spacer.gif")) continue;
+                    return c.trim();
+                }
+                return "";
+            })(img);
             if (src && !seen[src] && !src.includes("icon") && !src.includes("banner")) {
                 seen[src] = true;
                 list.push(src);

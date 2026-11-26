@@ -3,7 +3,7 @@ var source = {
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/en/mangabat/res/mipmap-xxhdpi/ic_launcher.png",
     baseUrl: "https://www.mangabats.com",
     language: "en",
-    version: "1.0.4",
+    version: "1.1.0",
     description: "Mangabat English extension implemented in JavaScript using HTML parsing and MangaBox endpoints",
     author: "DesktopKomik",
     iconBackground: "#111827",

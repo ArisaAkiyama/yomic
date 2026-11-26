@@ -3,7 +3,7 @@ var source = {
     baseUrl: "https://hentaicrot.com",
     iconUrl: "https://raw.githubusercontent.com/keiyoushi/extensions-source/main/src/id/hentaicrot/res/mipmap-xxhdpi/ic_launcher.png",
     language: "id",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Hentai Crot Indonesian extension implemented in JavaScript.",
     author: "DesktopKomik",
     iconBackground: "#4c0519",
