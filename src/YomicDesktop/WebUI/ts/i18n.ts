@@ -28,6 +28,9 @@ export type TranslationKey =
   | 'reader.displayDockLabel'
   | 'reader.modeDockAria'
   | 'reader.displayDockTitle'
+  | 'reader.moreDockLabel'
+  | 'reader.moreDockTitle'
+  | 'reader.bookmarkChapterLabel'
   | 'reader.refreshTitle'
   | 'reader.refreshAria'
   | 'reader.fullscreenTitle'
@@ -465,6 +468,9 @@ const ID_DICT: Record<TranslationKey, string> = {
   'reader.displayDockLabel': 'Tampilan',
   'reader.modeDockAria': 'Mode Baca',
   'reader.displayDockTitle': 'Tampilan & Kualitas Gambar',
+  'reader.moreDockLabel': 'Lain-lain',
+  'reader.moreDockTitle': 'Opsi Lainnya',
+  'reader.bookmarkChapterLabel': 'Tandai Chapter',
   'reader.refreshTitle': 'Muat Ulang Halaman',
   'reader.refreshAria': 'Muat Ulang Halaman',
   'reader.fullscreenTitle': 'Layar Penuh (F11)',
@@ -898,6 +904,9 @@ const EN_DICT: Record<TranslationKey, string> = {
   'reader.displayDockLabel': 'Display',
   'reader.modeDockAria': 'Reading Mode',
   'reader.displayDockTitle': 'Display & Image Quality',
+  'reader.moreDockLabel': 'More',
+  'reader.moreDockTitle': 'More Options',
+  'reader.bookmarkChapterLabel': 'Bookmark Chapter',
   'reader.refreshTitle': 'Reload Pages',
   'reader.refreshAria': 'Reload Pages',
   'reader.fullscreenTitle': 'Fullscreen (F11)',

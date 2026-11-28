@@ -283,10 +283,21 @@ export function openReader(this: YomicApp, mangaId: string, chapterNumber: numbe
   if (bookmarkBtn) {
     const isBookmarked = Boolean(chObj?.isBookmarked);
     bookmarkBtn.classList.toggle('is-bookmarked', isBookmarked);
-    bookmarkBtn.innerHTML = getIconSvg(isBookmarked ? 'bookmark-fill' : 'bookmark-line', { size: 19 });
-    bookmarkBtn.title = isBookmarked
+    const bookmarkIconSlot = document.getElementById('readerBookmarkIconSlot');
+    const bookmarkLabel = document.getElementById('readerBookmarkLabel');
+    const labelText = isBookmarked
       ? this.l('Hapus Tanda Chapter', 'Remove Chapter Bookmark')
       : this.l('Tandai Chapter', 'Bookmark Chapter');
+    if (bookmarkIconSlot) {
+      bookmarkIconSlot.innerHTML = getIconSvg(isBookmarked ? 'bookmark-fill' : 'bookmark-line', { size: 17 });
+    } else {
+      bookmarkBtn.innerHTML = getIconSvg(isBookmarked ? 'bookmark-fill' : 'bookmark-line', { size: 17 });
+    }
+    if (bookmarkLabel) {
+      bookmarkLabel.textContent = labelText;
+    }
+    bookmarkBtn.title = labelText;
+    bookmarkBtn.setAttribute('aria-label', labelText);
   }
 
   // Dynamically update HUD button tooltips with effective hotkeys
@@ -309,6 +320,8 @@ export function openReader(this: YomicApp, mangaId: string, chapterNumber: numbe
   document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
   document.getElementById('readerImageFlyoutMenu')?.classList.remove('open');
   document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
+  document.getElementById('readerMoreFlyoutMenu')?.classList.remove('open');
+  document.getElementById('btnReaderMoreFlyout')?.classList.remove('active');
   this.applyTheme(this.settings.isDarkMode, `${manga.title} (Ch. ${chapterNumber})`);
   const cacheKey = `${manga.id}_${chapterNumber}`;
   const cachedPages = !forceRefresh ? this.chapterPagesCache?.get(cacheKey) : undefined;
@@ -555,6 +568,8 @@ export function closeReader(this: YomicApp): void {
   document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
   document.getElementById('readerImageFlyoutMenu')?.classList.remove('open');
   document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
+  document.getElementById('readerMoreFlyoutMenu')?.classList.remove('open');
+  document.getElementById('btnReaderMoreFlyout')?.classList.remove('active');
   const overlay = document.getElementById('readerOverlay');
   overlay?.classList.remove('open');
   overlay?.setAttribute('aria-hidden', 'true');
@@ -1042,7 +1057,8 @@ export function isReaderFlyoutOpen(this: YomicApp): boolean {
     document.getElementById('readerChapterSheetMenu')?.classList.contains('open') ||
     document.getElementById('readerModeFlyoutMenu')?.classList.contains('open') ||
     document.getElementById('readerZoomFlyoutMenu')?.classList.contains('open') ||
-    document.getElementById('readerImageFlyoutMenu')?.classList.contains('open')
+    document.getElementById('readerImageFlyoutMenu')?.classList.contains('open') ||
+    document.getElementById('readerMoreFlyoutMenu')?.classList.contains('open')
   );
 }
 
@@ -1068,7 +1084,8 @@ export function hideReaderHud(this: YomicApp): void {
   document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
   document.getElementById('readerImageFlyoutMenu')?.classList.remove('open');
   document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
-  document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
+  document.getElementById('readerMoreFlyoutMenu')?.classList.remove('open');
+  document.getElementById('btnReaderMoreFlyout')?.classList.remove('active');
 }
 
 export function toggleReaderHud(this: YomicApp): void {
@@ -1089,6 +1106,8 @@ export function toggleReaderHud(this: YomicApp): void {
     document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
     document.getElementById('readerImageFlyoutMenu')?.classList.remove('open');
     document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
+    document.getElementById('readerMoreFlyoutMenu')?.classList.remove('open');
+    document.getElementById('btnReaderMoreFlyout')?.classList.remove('active');
   } else {
     if (this.readerHudAutoHideTimer) {
       clearTimeout(this.readerHudAutoHideTimer);
@@ -1204,6 +1223,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
     }
   });
   document.getElementById('btnReaderRefresh')?.addEventListener('click', () => {
+    document.getElementById('readerMoreFlyoutMenu')?.classList.remove('open');
+    document.getElementById('btnReaderMoreFlyout')?.classList.remove('active');
     if (!this.readerMangaId || this.readerChapterNumber < 0) return;
     this.showToast(this.l('Memuat ulang halaman komik dari sumber...', 'Reloading comic pages from source...'), 'refresh');
     this.openReader(this.readerMangaId, this.readerChapterNumber, true);
@@ -1217,10 +1238,21 @@ export function bindReaderShellEvents(this: YomicApp): void {
     const bookmarkBtn = document.getElementById('btnReaderBookmarkChapter');
     if (bookmarkBtn) {
       bookmarkBtn.classList.toggle('is-bookmarked', chObj.isBookmarked);
-      bookmarkBtn.innerHTML = getIconSvg(chObj.isBookmarked ? 'bookmark-fill' : 'bookmark-line', { size: 19 });
-      bookmarkBtn.title = chObj.isBookmarked
+      const bookmarkIconSlot = document.getElementById('readerBookmarkIconSlot');
+      const bookmarkLabel = document.getElementById('readerBookmarkLabel');
+      const labelText = chObj.isBookmarked
         ? this.l('Hapus Tanda Chapter', 'Remove Chapter Bookmark')
         : this.l('Tandai Chapter', 'Bookmark Chapter');
+      if (bookmarkIconSlot) {
+        bookmarkIconSlot.innerHTML = getIconSvg(chObj.isBookmarked ? 'bookmark-fill' : 'bookmark-line', { size: 17 });
+      } else {
+        bookmarkBtn.innerHTML = getIconSvg(chObj.isBookmarked ? 'bookmark-fill' : 'bookmark-line', { size: 17 });
+      }
+      if (bookmarkLabel) {
+        bookmarkLabel.textContent = labelText;
+      }
+      bookmarkBtn.title = labelText;
+      bookmarkBtn.setAttribute('aria-label', labelText);
     }
     if (this.bridge.isWebViewHost) {
       void this.bridge
@@ -1250,6 +1282,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
     document.getElementById('btnReaderModeFlyout')?.classList.remove('active');
     document.getElementById('readerImageFlyoutMenu')?.classList.remove('open');
     document.getElementById('btnReaderImageFlyout')?.classList.remove('active');
+    document.getElementById('readerMoreFlyoutMenu')?.classList.remove('open');
+    document.getElementById('btnReaderMoreFlyout')?.classList.remove('active');
     const isOpen = chSheet?.classList.toggle('open') ?? false;
     chDockBtn?.classList.toggle('active', isOpen);
     if (isOpen) {
@@ -1258,6 +1292,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
   });
   document.getElementById('readerChapterSheetMenu')?.addEventListener('click', (ev) => ev.stopPropagation());
   document.getElementById('btnReaderFullscreen')?.addEventListener('click', () => {
+    document.getElementById('readerMoreFlyoutMenu')?.classList.remove('open');
+    document.getElementById('btnReaderMoreFlyout')?.classList.remove('active');
     this.bridge.toggleFullscreen();
   });
   const modeFlyoutBtn = document.getElementById('btnReaderModeFlyout');
@@ -1268,6 +1304,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
   const chDropdownMenu = document.getElementById('readerChapterDropdownMenu');
   const imgFlyoutBtn = document.getElementById('btnReaderImageFlyout');
   const imgFlyoutMenu = document.getElementById('readerImageFlyoutMenu');
+  const moreFlyoutBtn = document.getElementById('btnReaderMoreFlyout');
+  const moreFlyoutMenu = document.getElementById('readerMoreFlyoutMenu');
 
   const syncImageFlyoutToggles = () => {
     const cropVal = Boolean(this.settings.enableAutoCropBorders);
@@ -1298,6 +1336,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
     zoomFlyoutBtn?.classList.remove('active');
     imgFlyoutMenu?.classList.remove('open');
     imgFlyoutBtn?.classList.remove('active');
+    moreFlyoutMenu?.classList.remove('open');
+    moreFlyoutBtn?.classList.remove('active');
     const chSheet = document.getElementById('readerChapterSheetMenu');
     const chDockBtn = document.getElementById('btnReaderChapterListDock');
     const isOpen = chSheet?.classList.toggle('open') ?? false;
@@ -1317,6 +1357,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
     zoomFlyoutBtn?.classList.remove('active');
     imgFlyoutMenu?.classList.remove('open');
     imgFlyoutBtn?.classList.remove('active');
+    moreFlyoutMenu?.classList.remove('open');
+    moreFlyoutBtn?.classList.remove('active');
     const isOpen = modeFlyoutMenu?.classList.toggle('open') ?? false;
     modeFlyoutBtn.classList.toggle('active', isOpen);
   });
@@ -1329,6 +1371,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
     modeFlyoutBtn?.classList.remove('active');
     imgFlyoutMenu?.classList.remove('open');
     imgFlyoutBtn?.classList.remove('active');
+    moreFlyoutMenu?.classList.remove('open');
+    moreFlyoutBtn?.classList.remove('active');
     const isOpen = zoomFlyoutMenu?.classList.toggle('open') ?? false;
     zoomFlyoutBtn.classList.toggle('active', isOpen);
   });
@@ -1344,6 +1388,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
     modeFlyoutBtn?.classList.remove('active');
     zoomFlyoutMenu?.classList.remove('open');
     zoomFlyoutBtn?.classList.remove('active');
+    moreFlyoutMenu?.classList.remove('open');
+    moreFlyoutBtn?.classList.remove('active');
     const isOpen = imgFlyoutMenu?.classList.toggle('open') ?? false;
     imgFlyoutBtn.classList.toggle('active', isOpen);
     if (isOpen) {
@@ -1351,6 +1397,23 @@ export function bindReaderShellEvents(this: YomicApp): void {
     }
   });
   imgFlyoutMenu?.addEventListener('click', (ev) => ev.stopPropagation());
+
+  moreFlyoutBtn?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    chDropdownMenu?.classList.remove('open');
+    chDropdownBtn?.classList.remove('active');
+    document.getElementById('readerChapterSheetMenu')?.classList.remove('open');
+    document.getElementById('btnReaderChapterListDock')?.classList.remove('active');
+    modeFlyoutMenu?.classList.remove('open');
+    modeFlyoutBtn?.classList.remove('active');
+    zoomFlyoutMenu?.classList.remove('open');
+    zoomFlyoutBtn?.classList.remove('active');
+    imgFlyoutMenu?.classList.remove('open');
+    imgFlyoutBtn?.classList.remove('active');
+    const isOpen = moreFlyoutMenu?.classList.toggle('open') ?? false;
+    moreFlyoutBtn.classList.toggle('active', isOpen);
+  });
+  moreFlyoutMenu?.addEventListener('click', (ev) => ev.stopPropagation());
 
   const appendCacheBustParam = (rawUrl: string, timestamp: number): string => {
     if (!rawUrl) return rawUrl;
@@ -1515,6 +1578,8 @@ export function bindReaderShellEvents(this: YomicApp): void {
     zoomFlyoutBtn?.classList.remove('active');
     imgFlyoutMenu?.classList.remove('open');
     imgFlyoutBtn?.classList.remove('active');
+    moreFlyoutMenu?.classList.remove('open');
+    moreFlyoutBtn?.classList.remove('active');
     if (isCanvasDragging) {
       return;
     }

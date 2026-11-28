@@ -2,6 +2,16 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [2.6.3] - 2026-11-28
+
+Update Details：
+◆ Add a 6th More (Lain-lain) action button (#btnDetailMoreOptions, more-horizontal icon) next to Refresh in the Manga Detail hero action row (manga-detail.ts) opening #detailMoreOptionsMenu with manga-wide chapter actions: Mark All as Read (all-read) and Reset All Progress (Ch. N) (all-unread), complete with optimistic UI updates, localStorage yomic_ch_pos_* cleanup, backend MangaItem DTO reconciliation via upsertMangaItem, full snapshot rollback on sync errors, and outside-click/Escape dismissal.
+◆ Add a 4th More (Lain-lain) button (#btnReaderMoreFlyout) and floating popover sheet (#readerMoreFlyoutMenu) to the Reader Bottom Dock (index.html, 07-refinements-updater.css, reader.ts), expanding .v1-reader-dock-card to a balanced 4-column grid (Webtoon, Display, Chapter List, More) with full Light Mode and Dark Mode CSS token parity.
+◆ Add bilingual ID/EN translation keys (reader.moreDockLabel, reader.moreDockTitle, reader.bookmarkChapterLabel) in i18n.ts and expanded automated WebUI regression tests in tests/WebUI.Tests/webui.test.mjs verifying Manga Detail More menu actions and the 4-column Reader Bottom Dock More sheet.
+◆ Improve Reader Top HUD Bar minimalism by relocating the 3 top-right controls (Bookmark Chapter #btnReaderBookmarkChapter, Reload Pages #btnReaderRefresh, and Fullscreen #btnReaderFullscreen) from .reader-top-right into the new Reader Bottom Dock More sheet (#readerMoreFlyoutMenu), updating #readerBookmarkIconSlot and #readerBookmarkLabel independently so icon and localized text stay synchronized, auto-closing the sheet on Reload/Fullscreen, and wiring #readerMoreFlyoutMenu into isReaderFlyoutOpen, openReader, closeReader, hideReaderHud, toggleReaderHud, dock tab switching, and canvas clicks.
+◆ Improve per-chapter Opsi Bab context menu (showChapterMenu in manga-detail.ts) by moving manga-wide Reset All Progress out of individual chapter rows into the dedicated Manga Detail More menu, keeping per-chapter menus focused solely on single-chapter operations (Mark as Read, Mark as Unread / Reset Page Progress, Mark Previous Chapters as Read) with tighter viewport height calculation and mutual menu dismissal.
+◆ Fix bookmark icon updates inside #btnReaderBookmarkChapter previously replacing the entire button innerHTML, ensuring the new labeled menu item inside #readerMoreFlyoutMenu preserves its localized label text and active accent styling when toggling chapter bookmarks.
+
 ## [2.6.2] - 2026-11-28
 
 Update Details：

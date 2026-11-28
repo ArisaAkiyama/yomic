@@ -292,6 +292,11 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
               ${getIconSvg('refresh-line', { size: 24 })}
               <span>${this.t('common.refresh')}</span>
             </button>
+            <!-- 6. More / Chapter Options (Lain-lain) -->
+            <button id="btnDetailMoreOptions" class="v1-action-btn" title="${this.l('Opsi Bab & Lain-lain', 'Chapter & More Options')}" aria-haspopup="menu" aria-expanded="false">
+              ${getIconSvg('more-horizontal', { size: 24 })}
+              <span>${this.l('Lain-lain', 'More')}</span>
+            </button>
           </div>
           <!-- GENRES WrapPanel (Below Action Grid, Above Synopsis matching Image 2) -->
           <div class="v1-genres-wrap">
@@ -1517,12 +1522,21 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
       return;
     }
   });
-  // Chapter Context Menu & More Options (Tandai Sudah Dibaca / Reset Halaman / Belum Dibaca / Reset Semua Progres)
+  // Chapter Context Menu & Detail More Options (Lain-lain)
   const hideChapterMenu = () => {
     const existing = document.getElementById('chapterContextMenu');
     if (existing) {
       existing.remove();
     }
+  };
+
+  const hideDetailMoreMenu = () => {
+    const existing = document.getElementById('detailMoreOptionsMenu');
+    if (existing) {
+      existing.remove();
+    }
+    const trigger = document.getElementById('btnDetailMoreOptions');
+    trigger?.setAttribute('aria-expanded', 'false');
   };
 
   const clearLocalChapterPos = (chNum?: number) => {
@@ -1578,6 +1592,7 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
 
   const showChapterMenu = (chNum: number, clientX: number, clientY: number) => {
     hideChapterMenu();
+    hideDetailMoreMenu();
     const ch = manga.chapters.find((c) => Math.abs(c.number - chNum) < 0.01);
     if (!ch) return;
 
@@ -1598,11 +1613,6 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         }
       } catch {}
     }
-
-    const lowestChapterNumber =
-      manga.chapters.length > 0
-        ? manga.chapters.reduce((min, c) => (c.number < min ? c.number : min), manga.chapters[0].number)
-        : 1;
 
     menu.innerHTML = `
       ${
@@ -1629,18 +1639,13 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         ${getIconSvg('check-double-line', { size: 16 })}
         <span>${this.l('Tandai Bab Sebelumnya Sudah Dibaca', 'Mark Previous Chapters as Read')}</span>
       </button>
-      <div class="v1-ctx-divider" style="height:1px;background:var(--border-subtle);margin:4px 6px;"></div>
-      <button class="v1-ctx-item" data-action="reset-all-progress">
-        ${getIconSvg('refresh-line', { size: 16 })}
-        <span>${this.l(`Reset Semua Progres (Ch. ${lowestChapterNumber})`, `Reset All Progress (Ch. ${lowestChapterNumber})`)}</span>
-      </button>
     `;
 
     document.body.appendChild(menu);
 
     // Position menu safely within viewport bounds
     const menuWidth = 268;
-    const menuHeight = 164;
+    const menuHeight = 116;
     let posX = clientX;
     let posY = clientY;
     if (posX + menuWidth > window.innerWidth - 10) {
@@ -1784,6 +1789,106 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
           this.showToast(this.l(`Seluruh bab sebelum Chapter ${ch.number} ditandai sudah dibaca.`, `All chapters before Chapter ${ch.number} marked as read.`));
           this.updateSidebarCounters();
           this.renderCurrentWorkspace(true);
+        }
+      });
+    });
+  };
+
+  // Detail Hero "Lain-lain" / "More" Menu (Manga-wide Chapter Actions: Mark All Read / Reset All Progress)
+  const showDetailMoreMenu = (triggerBtn: HTMLElement) => {
+    const wasOpen = Boolean(document.getElementById('detailMoreOptionsMenu'));
+    hideChapterMenu();
+    hideDetailMoreMenu();
+    if (wasOpen) return;
+
+    const lowestChapterNumber =
+      manga.chapters.length > 0
+        ? manga.chapters.reduce((min, c) => (c.number < min ? c.number : min), manga.chapters[0].number)
+        : 1;
+
+    const menu = document.createElement('div');
+    menu.id = 'detailMoreOptionsMenu';
+    menu.className = 'v1-context-menu v1-chapter-ctx-menu open';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = `
+      <button class="v1-ctx-item" data-detail-more-action="mark-all-read" role="menuitem">
+        ${getIconSvg('check-double-line', { size: 16 })}
+        <span>${this.l('Tandai Semua Sudah Dibaca', 'Mark All as Read')}</span>
+      </button>
+      <div class="v1-ctx-divider" style="height:1px;background:var(--border-subtle);margin:4px 6px;"></div>
+      <button class="v1-ctx-item" data-action="reset-all-progress" data-detail-more-action="reset-all-progress" role="menuitem">
+        ${getIconSvg('refresh-line', { size: 16 })}
+        <span>${this.l(`Reset Semua Progres (Ch. ${lowestChapterNumber})`, `Reset All Progress (Ch. ${lowestChapterNumber})`)}</span>
+      </button>
+    `;
+
+    document.body.appendChild(menu);
+    triggerBtn.setAttribute('aria-expanded', 'true');
+
+    const rect = triggerBtn.getBoundingClientRect();
+    const menuWidth = 268;
+    const menuHeight = 104;
+    let posX = rect.left;
+    let posY = rect.bottom + 6;
+    if (posX + menuWidth > window.innerWidth - 10) {
+      posX = Math.max(10, rect.right - menuWidth);
+    }
+    if (posY + menuHeight > window.innerHeight - 10) {
+      posY = Math.max(10, rect.top - menuHeight - 6);
+    }
+    menu.style.left = `${posX}px`;
+    menu.style.top = `${posY}px`;
+
+    menu.querySelectorAll<HTMLButtonElement>('[data-detail-more-action]').forEach((actionBtn) => {
+      actionBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const action = actionBtn.dataset.detailMoreAction;
+        hideDetailMoreMenu();
+
+        if (action === 'mark-all-read') {
+          const prevStates = manga.chapters.map((c) => ({ isRead: c.isRead, lastPageRead: c.lastPageRead }));
+          const prevUnread = manga.unreadCount;
+          const prevLastReadCh = manga.lastReadChapter;
+          const prevLastViewed = manga.lastViewedEpoch;
+          manga.chapters.forEach((c) => {
+            c.isRead = true;
+          });
+          if (manga.chapters.length > 0) {
+            manga.lastViewedEpoch = Date.now();
+          }
+          recomputeMangaReadProgress();
+          this.readingStatsData = null;
+          if (this.bridge.isWebViewHost) {
+            void this.bridge
+              .invoke<MangaItem>('manga:mark-chapters', {
+                mangaId: manga.id,
+                mode: 'all-read',
+                mangaUrl: manga.url,
+                sourceId: manga.sourceId
+              })
+              .then((res) => {
+                if (res) {
+                  this.upsertMangaItem(res);
+                  if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+                }
+              })
+              .catch(() => {
+                manga.chapters.forEach((c, idx) => {
+                  if (idx < prevStates.length) {
+                    c.isRead = prevStates[idx].isRead;
+                    c.lastPageRead = prevStates[idx].lastPageRead;
+                  }
+                });
+                manga.unreadCount = prevUnread;
+                manga.lastReadChapter = prevLastReadCh;
+                manga.lastViewedEpoch = prevLastViewed;
+                this.showToast(this.l('Gagal menandai semua bab sudah dibaca.', 'Failed to mark all chapters as read.'), 'warning');
+                if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+              });
+          }
+          this.showToast(this.l(`Semua bab ${manga.title} ditandai sudah dibaca.`, `All chapters of ${manga.title} marked as read.`));
+          this.updateSidebarCounters();
+          this.renderCurrentWorkspace(true);
         } else if (action === 'reset-all-progress') {
           const prevStates = manga.chapters.map((c) => ({ isRead: c.isRead, lastPageRead: c.lastPageRead }));
           const prevUnread = manga.unreadCount;
@@ -1841,18 +1946,30 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     });
   };
 
-  // Close context menu on outside clicks / escape with single active listener (capture phase prevents Escape from also closing Manga Detail)
+  document.getElementById('btnDetailMoreOptions')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    showDetailMoreMenu(ev.currentTarget as HTMLElement);
+  });
+
+  // Close context menus on outside clicks / escape with single active listener (capture phase prevents Escape from also closing Manga Detail)
   const onGlobalClick = (ev: MouseEvent) => {
+    const target = ev.target as Node;
     const menu = document.getElementById('chapterContextMenu');
-    if (menu && !menu.contains(ev.target as Node)) {
+    if (menu && !menu.contains(target)) {
       hideChapterMenu();
+    }
+    const moreMenu = document.getElementById('detailMoreOptionsMenu');
+    const moreBtn = document.getElementById('btnDetailMoreOptions');
+    if (moreMenu && !moreMenu.contains(target) && (!moreBtn || !moreBtn.contains(target))) {
+      hideDetailMoreMenu();
     }
   };
   const onGlobalKeyDown = (ev: KeyboardEvent) => {
-    if (ev.key === 'Escape' && document.getElementById('chapterContextMenu')) {
+    if (ev.key === 'Escape' && (document.getElementById('chapterContextMenu') || document.getElementById('detailMoreOptionsMenu'))) {
       ev.preventDefault();
       ev.stopPropagation();
       hideChapterMenu();
+      hideDetailMoreMenu();
     }
   };
   const win = window as unknown as { _onChapterCtxClick?: (ev: MouseEvent) => void; _onChapterCtxKey?: (ev: KeyboardEvent) => void };

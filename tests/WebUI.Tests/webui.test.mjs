@@ -681,14 +681,33 @@ describe('i18n & Static WebUI Integrity', () => {
     assert.ok(refineCss.includes('background: var(--reader-surface) !important;'), 'Reader dock sheets must use --reader-surface token');
   });
 
-  it('Chapter unread & reset-all-progress clear localStorage page progress and restore lowest chapter resume button', () => {
+  it('Chapter unread & Detail More (Lain-lain) reset-all-progress clear localStorage page progress and restore lowest chapter resume button', () => {
     const detailTs = fs.readFileSync(path.join(webUiRoot, 'ts', 'views', 'manga-detail.ts'), 'utf8');
     const libraryTs = fs.readFileSync(path.join(webUiRoot, 'ts', 'views', 'library.ts'), 'utf8');
 
-    assert.ok(detailTs.includes('data-action="reset-all-progress"'), 'manga-detail.ts must expose Reset All Progress option in chapter menu');
+    assert.ok(detailTs.includes('id="btnDetailMoreOptions"'), 'manga-detail.ts must render Lain-lain / More action button next to Refresh');
+    assert.ok(detailTs.includes('detailMoreOptionsMenu'), 'manga-detail.ts must open detailMoreOptionsMenu for manga-wide chapter actions');
+    assert.ok(detailTs.includes('data-action="reset-all-progress"'), 'manga-detail.ts must expose Reset All Progress inside Lain-lain / More menu');
+    assert.ok(detailTs.includes('data-detail-more-action="mark-all-read"'), 'manga-detail.ts must expose Mark All as Read inside Lain-lain / More menu');
     assert.ok(detailTs.includes('isRead || hasPageProgress'), 'manga-detail.ts must show reset/unread option for partially-read chapters');
     assert.ok(detailTs.includes('clearLocalChapterPos'), 'manga-detail.ts must clear yomic_ch_pos_ localStorage entries on reset');
     assert.ok(detailTs.includes('recomputeMangaReadProgress'), 'manga-detail.ts must recompute lastReadChapter immediately after reset');
     assert.ok(libraryTs.includes('yomic_ch_pos_${targetManga.id}_'), 'library.ts ctxMarkUnread must clear yomic_ch_pos_ localStorage entries');
+  });
+
+  it('Reader Bottom Dock includes 4th Lain-lain/More button hosting Bookmark, Reload, and Fullscreen actions', () => {
+    const html = fs.readFileSync(path.join(webUiRoot, 'index.html'), 'utf8');
+    const refineCss = fs.readFileSync(path.join(webUiRoot, 'styles', 'modules', '07-refinements-updater.css'), 'utf8');
+    const readerTs = fs.readFileSync(path.join(webUiRoot, 'ts', 'views', 'reader.ts'), 'utf8');
+
+    assert.ok(!html.includes('class="reader-top-right"'), 'Reader top-right bar must not retain moved icon cluster');
+    assert.ok(html.includes('id="btnReaderMoreFlyout"'), 'Reader bottom dock must render Lain-lain/More button');
+    assert.ok(html.includes('id="readerMoreFlyoutMenu"'), 'Reader bottom dock must render readerMoreFlyoutMenu sheet');
+    const moreSheet = html.split('id="readerMoreFlyoutMenu"')[1]?.split('<!-- Row 1:')[0] || '';
+    assert.ok(moreSheet.includes('id="btnReaderBookmarkChapter"'), 'More sheet must contain Bookmark Chapter button');
+    assert.ok(moreSheet.includes('id="btnReaderRefresh"'), 'More sheet must contain Reload Pages button');
+    assert.ok(moreSheet.includes('id="btnReaderFullscreen"'), 'More sheet must contain Fullscreen button');
+    assert.ok(refineCss.includes('grid-template-columns: repeat(4, 1fr);'), 'Reader bottom dock grid must have 4 columns');
+    assert.ok(readerTs.includes("document.getElementById('readerMoreFlyoutMenu')"), 'reader.ts must wire readerMoreFlyoutMenu lifecycle');
   });
 });

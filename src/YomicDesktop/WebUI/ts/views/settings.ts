@@ -756,7 +756,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Versi', 'Version')}</span>
               </div>
-              <span class="v1-setting-desc">Stable 2.6.2 (Windows Desktop)</span>
+              <span class="v1-setting-desc">Stable 2.6.3 (Windows Desktop)</span>
             </div>
           </div>
 
@@ -774,23 +774,21 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Catatan rilis', 'Release notes')}</span>
               </div>
-              <span class="v1-setting-desc">v2.6.2</span>
+              <span class="v1-setting-desc">v2.6.3</span>
             </div>
             <span id="aboutReleaseNotesChevron" class="v1-about-release-chevron">
               ${getIconSvg('alt-arrow-down-linear', { size: 18 })}
             </span>
           </button>
           <div id="aboutReleaseNotesPanel" class="v1-about-release-notes" style="display:none;">
-            <div class="v1-about-release-head">[2.6.2] - Update</div>
+            <div class="v1-about-release-head">[2.6.3] - Update</div>
             <div class="v1-about-release-subhead">Update Details:</div>
             <ul class="v1-about-release-list">
-              <li>Add one-click Reset All Progress (Ch. N) action (data-action="reset-all-progress") in the Manga Detail chapter context menu to clear read flags, saved page positions, localStorage chapter checkpoints, and LastViewed timestamps across every chapter with optimistic UI sync and rollback on error.</li>
-              <li>Add contextual Reset Page Progress action in the chapter context menu whenever an unread chapter has partial page progress (lastPageRead &gt; 0 or saved localStorage page &gt; 1), paired with centralized clearLocalChapterPos and recomputeMangaReadProgress helpers in manga-detail.ts.</li>
-              <li>Add targeted backend page-cache eviction helpers (ClearChapterLastPageCacheForChapter and ClearChapterLastPageCacheForManga) in BackendIpcController.MangaDetail.cs to purge stale _chapterLastPageReadCache entries across all key formats on single-unread and all-unread actions.</li>
-              <li>Add automated C# xUnit and Node.js WebUI regression tests in BehavioralServicesTests.cs and webui.test.mjs covering single-chapter and manga-wide LastPageRead/LastViewed resets, localStorage yomic_ch_pos_ cleanup, and Start/Resume button restoration.</li>
-              <li>Improve Manga Detail floating Resume/Start CTA and last-read row highlighting (hasAnyProgress &amp; getSavedLocalChapterPage) plus Library context menu Mark Unread (ctxMarkUnread in library.ts) so resetting progress immediately restores Start Ch. &lt;lowest&gt; and purges client-side page checkpoints.</li>
-              <li>Fix marking a chapter or manga as unread failing to zero out chapter.LastPageRead in SQLite (LibraryService.SetChapterReadStatusAsync &amp; MarkChaptersAsUnreadAsync), leaving partial page progress badges and LastViewed timestamps behind when sibling chapters had partial progress.</li>
-              <li>Fix Chapter 0 (ChapterNumber == 0) and zero-chapter manga fallback coercion in BackendIpcController.BootstrapAndMapping.cs (MapMangaToDto checking ChapterNumber &gt;= 0 and returning 0 when totalCh == 0).</li>
+              <li>Add a 6th More (Lain-lain) action button (#btnDetailMoreOptions) next to Refresh in the Manga Detail hero action row (manga-detail.ts) opening #detailMoreOptionsMenu for manga-wide chapter actions: Mark All as Read (all-read) and Reset All Progress (Ch. N) (all-unread), complete with optimistic UI updates, localStorage yomic_ch_pos_* cleanup, backend DTO reconciliation via upsertMangaItem, full error rollback, and outside-click/Escape dismissal.</li>
+              <li>Add a 4th More (Lain-lain) button (#btnReaderMoreFlyout) and floating popover sheet (#readerMoreFlyoutMenu) to the Reader Bottom Dock (index.html, 07-refinements-updater.css, reader.ts), upgrading .v1-reader-dock-card to a balanced 4-column grid (Webtoon, Display, Chapter List, More) with full Light Mode and Dark Mode theme-token parity.</li>
+              <li>Add bilingual ID/EN translation keys (reader.moreDockLabel, reader.moreDockTitle, reader.bookmarkChapterLabel) in i18n.ts and expanded WebUI automated regression tests in tests/WebUI.Tests/webui.test.mjs covering Manga Detail More menu actions and the 4-column Reader Bottom Dock sheet.</li>
+              <li>Improve Reader Top HUD Bar cleanliness by relocating the 3 top-right controls (Bookmark Chapter #btnReaderBookmarkChapter, Reload Pages #btnReaderRefresh, and Fullscreen #btnReaderFullscreen) into the new Reader Bottom Dock More sheet (#readerMoreFlyoutMenu), with independent icon/label updates (#readerBookmarkIconSlot &amp; #readerBookmarkLabel), auto-closing on Reload/Fullscreen, and full integration with isReaderFlyoutOpen, hideReaderHud, toggleReaderHud, and canvas click handling.</li>
+              <li>Improve per-chapter Opsi Bab context menu (showChapterMenu in manga-detail.ts) by moving Reset All Progress into the dedicated Manga Detail More menu so per-chapter menus stay focused solely on single-chapter operations (Mark as Read, Mark as Unread / Reset Page Progress, Mark Previous Chapters as Read) with mutual menu dismissal.</li>
             </ul>
           </div>
         </div>
@@ -2057,7 +2055,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
 
     // Immediately open the full-screen Updater UI when Check for Updates is clicked
     openAppUpdateOverlay({
-      version: '2.6.2',
+      version: '2.6.3',
       releaseNotes: '',
       isEn,
       mode: 'checking'
@@ -2066,7 +2064,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     if (!this.bridge.isWebViewHost) {
       window.setTimeout(() => {
         openAppUpdateOverlay({
-          version: '2.6.2',
+          version: '2.6.3',
           releaseNotes: '',
           isEn,
           mode: 'uptodate'
@@ -2088,7 +2086,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         if (btn) btn.disabled = false;
         // If user already dismissed the checking overlay, do not forcibly pop it back open
         if (!document.getElementById('appUpdateOverlay')?.classList.contains('open')) return;
-        const ver = info?.latestVersion || info?.currentVersion || '2.6.2';
+        const ver = info?.latestVersion || info?.currentVersion || '2.6.3';
         const notes = info?.releaseNotes || '';
         if (info?.isUpdateAvailable && info.downloadUrl) {
           openAppUpdateOverlay({
@@ -2111,7 +2109,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         if (btn) btn.disabled = false;
         if (!document.getElementById('appUpdateOverlay')?.classList.contains('open')) return;
         openAppUpdateOverlay({
-          version: '2.6.2',
+          version: '2.6.3',
           releaseNotes: '',
           isEn,
           mode: 'error'
@@ -2230,7 +2228,7 @@ export function openAppUpdateOverlay(opts: {
   const verEl = document.getElementById('appUpdateVersionText');
   const startBtn = document.getElementById('btnStartAppUpdateNow') as HTMLButtonElement | null;
   const closeBtn = document.getElementById('btnCloseAppUpdateOverlay') as HTMLButtonElement | null;
-  const cleanVer = (opts.version || '2.6.2').replace(/^v/i, '');
+  const cleanVer = (opts.version || '2.6.3').replace(/^v/i, '');
 
   if (barFill) {
     barFill.classList.toggle('indeterminate', mode === 'checking');

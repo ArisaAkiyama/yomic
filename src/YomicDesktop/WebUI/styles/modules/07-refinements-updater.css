@@ -1318,7 +1318,7 @@ body.dark-mode .v1-filter-modal-dialog .v1-flyout-genre-chip.active {
   -webkit-backdrop-filter: blur(14px);
   box-shadow: var(--reader-shadow);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 
@@ -1405,6 +1405,21 @@ body.dark-mode .v1-filter-modal-dialog .v1-flyout-genre-chip.active {
 
 .v1-reader-dock-sheet .v1-mode-check {
   stroke: var(--reader-accent) !important;
+}
+
+.v1-reader-more-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.v1-reader-dock-sheet .v1-reader-mode-item.is-bookmarked {
+  color: var(--reader-ink) !important;
+}
+
+.v1-reader-dock-sheet .v1-reader-mode-item.is-bookmarked .v1-reader-more-icon {
+  color: var(--reader-accent);
 }
 
 
