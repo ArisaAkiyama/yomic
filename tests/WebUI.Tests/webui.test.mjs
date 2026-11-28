@@ -680,4 +680,15 @@ describe('i18n & Static WebUI Integrity', () => {
     assert.ok(refineCss.includes('background: var(--reader-hud-strong);'), 'Floating scrubber pill & dock must use --reader-hud-strong token');
     assert.ok(refineCss.includes('background: var(--reader-surface) !important;'), 'Reader dock sheets must use --reader-surface token');
   });
+
+  it('Chapter unread & reset-all-progress clear localStorage page progress and restore lowest chapter resume button', () => {
+    const detailTs = fs.readFileSync(path.join(webUiRoot, 'ts', 'views', 'manga-detail.ts'), 'utf8');
+    const libraryTs = fs.readFileSync(path.join(webUiRoot, 'ts', 'views', 'library.ts'), 'utf8');
+
+    assert.ok(detailTs.includes('data-action="reset-all-progress"'), 'manga-detail.ts must expose Reset All Progress option in chapter menu');
+    assert.ok(detailTs.includes('isRead || hasPageProgress'), 'manga-detail.ts must show reset/unread option for partially-read chapters');
+    assert.ok(detailTs.includes('clearLocalChapterPos'), 'manga-detail.ts must clear yomic_ch_pos_ localStorage entries on reset');
+    assert.ok(detailTs.includes('recomputeMangaReadProgress'), 'manga-detail.ts must recompute lastReadChapter immediately after reset');
+    assert.ok(libraryTs.includes('yomic_ch_pos_${targetManga.id}_'), 'library.ts ctxMarkUnread must clear yomic_ch_pos_ localStorage entries');
+  });
 });

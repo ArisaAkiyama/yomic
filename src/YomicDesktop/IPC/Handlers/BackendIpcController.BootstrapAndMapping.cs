@@ -256,9 +256,9 @@ namespace YomicDesktop.IPC
             }
             var lastReadChObj = sortedChapters.FirstOrDefault(c => c.Read || c.LastPageRead > 0)
                                 ?? sortedChapters.LastOrDefault();
-            float lastReadChNum = lastReadChObj != null && lastReadChObj.ChapterNumber > 0
+            float lastReadChNum = lastReadChObj != null && lastReadChObj.ChapterNumber >= 0
                 ? lastReadChObj.ChapterNumber
-                : (totalCh > 0 ? 1 : 1);
+                : (totalCh > 0 ? 1 : 0);
             int lastReadTotalPages = 0;
             if (lastReadChObj != null && !string.IsNullOrEmpty(lastReadChObj.Url) && _chapterTotalPagesCache.TryGetValue(MakeChapterCacheKey(m.Source, lastReadChObj.Url), out int cachedPages))
             {

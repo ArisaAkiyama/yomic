@@ -764,12 +764,36 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
       const targetManga = ctxManga;
       const prevUnread = targetManga.unreadCount;
       const prevLastViewed = targetManga.lastViewedEpoch;
-      const prevReadFlags = targetManga.chapters.map((c) => c.isRead);
+      const prevLastReadCh = targetManga.lastReadChapter;
+      const prevLastReadPage = targetManga.lastReadPage;
+      const prevLastReadTotal = targetManga.lastReadTotalPages;
+      const prevChapterStates = targetManga.chapters.map((c) => ({ isRead: c.isRead, lastPageRead: c.lastPageRead }));
+      const lowestChNum =
+        targetManga.chapters.length > 0
+          ? targetManga.chapters.reduce((min, c) => (c.number < min ? c.number : min), targetManga.chapters[0].number)
+          : 1;
       targetManga.unreadCount = targetManga.totalChapters;
       targetManga.lastViewedEpoch = 0;
+      targetManga.lastReadChapter = lowestChNum;
+      targetManga.lastReadPage = 1;
+      targetManga.lastReadTotalPages = 0;
       targetManga.chapters.forEach((c) => {
         c.isRead = false;
+        c.lastPageRead = 0;
       });
+      try {
+        const prefixes = [`yomic_ch_pos_${targetManga.id}_`];
+        if (targetManga.dbId && targetManga.dbId > 0) {
+          const dbPrefix = `yomic_ch_pos_db-${targetManga.dbId}_`;
+          if (!prefixes.includes(dbPrefix)) prefixes.push(dbPrefix);
+        }
+        const toRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && prefixes.some((p) => k.startsWith(p))) toRemove.push(k);
+        }
+        toRemove.forEach((k) => localStorage.removeItem(k));
+      } catch {}
       this.readingStatsData = null;
       if (this.bridge.isWebViewHost) {
         void this.bridge
@@ -786,14 +810,20 @@ export function renderLibraryView(this: YomicApp, container: HTMLElement): void 
           .catch(() => {
             targetManga.unreadCount = prevUnread;
             targetManga.lastViewedEpoch = prevLastViewed;
+            targetManga.lastReadChapter = prevLastReadCh;
+            targetManga.lastReadPage = prevLastReadPage;
+            targetManga.lastReadTotalPages = prevLastReadTotal;
             targetManga.chapters.forEach((c, idx) => {
-              if (idx < prevReadFlags.length) c.isRead = prevReadFlags[idx];
+              if (idx < prevChapterStates.length) {
+                c.isRead = prevChapterStates[idx].isRead;
+                c.lastPageRead = prevChapterStates[idx].lastPageRead;
+              }
             });
             this.showToast(this.l('Gagal menyinkronkan status belum dibaca ke database.', 'Failed to sync unread status to database.'), 'warning');
             if (this.currentTab === 'library' && !this.activeDetailMangaId) this.renderLibraryView(container);
           });
       }
-      this.showToast(this.l(`${targetManga.title} ditandai belum dibaca.`, `${targetManga.title} marked as unread.`));
+      this.showToast(this.l(`${targetManga.title} ditandai belum dibaca & progres halaman direset.`, `${targetManga.title} marked as unread & page progress reset.`));
     }
     this.contextMenuMangaId = null;
     this.renderLibraryView(container);

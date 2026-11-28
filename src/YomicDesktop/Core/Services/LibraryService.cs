@@ -854,6 +854,7 @@ namespace Yomic.Core.Services
                         }
                         else
                         {
+                            chapter.LastPageRead = 0;
                             var existingHist = await context.History.Where(h => h.ChapterId == chapter.Id).ToListAsync();
                             if (existingHist.Count > 0)
                             {
@@ -868,7 +869,7 @@ namespace Yomic.Core.Services
                             {
                                 manga.LastViewed = nowMs;
                             }
-                            else if (manga.Chapters != null && !manga.Chapters.Any(c => c.Id != chapter.Id && c.Read))
+                            else if (manga.Chapters != null && !manga.Chapters.Any(c => c.Id != chapter.Id && (c.Read || c.LastPageRead > 0)))
                             {
                                 manga.LastViewed = 0;
                             }
@@ -1169,6 +1170,7 @@ namespace Yomic.Core.Services
                     foreach (var ch in existing.Chapters)
                     {
                         ch.Read = false;
+                        ch.LastPageRead = 0;
                     }
                     existing.LastViewed = 0;
                     await context.SaveChangesAsync();

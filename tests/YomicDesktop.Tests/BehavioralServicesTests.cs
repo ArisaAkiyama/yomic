@@ -549,9 +549,27 @@ var source = {{
             var readCheck = await library.GetMangaAsync(manga.Id);
             Assert.True(readCheck!.Chapters.Single().Read);
 
+            await library.SaveLastPageReadAsync(readCheck.Chapters.Single().Url, 31, manga.Id, 1f);
             await library.MarkChaptersAsUnreadAsync(manga);
             var unreadCheck = await library.GetMangaAsync(manga.Id);
             Assert.False(unreadCheck!.Chapters.Single().Read);
+            Assert.Equal(0, unreadCheck.Chapters.Single().LastPageRead);
+            Assert.Equal(0, unreadCheck.LastViewed);
+
+            // Also verify single-chapter unread resets partial page progress (e.g. Hal. 31/33 when Read is still false)
+            await library.SaveLastPageReadAsync(unreadCheck.Chapters.Single().Url, 31, manga.Id, 1f);
+            Assert.Equal(31L, await library.GetLastPageReadRawAsync(unreadCheck.Chapters.Single().Url, manga.Id, 1f));
+            await library.SetChapterReadStatusAsync(
+                unreadCheck.Chapters.Single().Url,
+                isRead: false,
+                sourceId: manga.Source,
+                mangaUrl: manga.Url,
+                chapterTitle: "Ch 1",
+                chapterNumber: 1f);
+            var singleResetCheck = await library.GetMangaAsync(manga.Id);
+            Assert.False(singleResetCheck!.Chapters.Single().Read);
+            Assert.Equal(0, singleResetCheck.Chapters.Single().LastPageRead);
+            Assert.Equal(0, singleResetCheck.LastViewed);
 
             await library.RemoveFromLibraryAsync(manga, deleteFiles: false);
             Assert.Equal(0, await library.GetLibraryCountAsync());

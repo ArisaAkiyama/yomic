@@ -756,7 +756,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Versi', 'Version')}</span>
               </div>
-              <span class="v1-setting-desc">Stable 2.6.1 (Windows Desktop)</span>
+              <span class="v1-setting-desc">Stable 2.6.2 (Windows Desktop)</span>
             </div>
           </div>
 
@@ -774,21 +774,23 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
               <div class="v1-setting-title-row">
                 <span class="v1-setting-title">${this.l('Catatan rilis', 'Release notes')}</span>
               </div>
-              <span class="v1-setting-desc">v2.6.1</span>
+              <span class="v1-setting-desc">v2.6.2</span>
             </div>
             <span id="aboutReleaseNotesChevron" class="v1-about-release-chevron">
               ${getIconSvg('alt-arrow-down-linear', { size: 18 })}
             </span>
           </button>
           <div id="aboutReleaseNotesPanel" class="v1-about-release-notes" style="display:none;">
-            <div class="v1-about-release-head">[2.6.1] - Update</div>
+            <div class="v1-about-release-head">[2.6.2] - Update</div>
             <div class="v1-about-release-subhead">Update Details:</div>
             <ul class="v1-about-release-list">
-              <li>Add full theme-aware Reader design token palette in tokens.css defining complete Crisp White / Light Mode tokens (--reader-bg: #FAFAFA, --reader-surface: #FFFFFF, --reader-hud: rgba(255,255,255,0.92), --reader-hud-strong, --reader-surface-hover/active, --reader-ink, --reader-ink-secondary/muted, --reader-accent/accent-ink, --reader-track, --reader-thumb-bg/shadow, --reader-toggle-off, --reader-page-border, --reader-shadow/shadow-lg) alongside Carbon Dark Mode tokens (--reader-bg: #000000, --reader-surface: #161618, --reader-hud: rgba(14,14,16,0.90)).</li>
-              <li>Add automated Light/Dark Reader theme regression test in tests/WebUI.Tests/webui.test.mjs verifying CSS token parity across tokens.css, 05-reader.css, and 07-refinements-updater.css.</li>
-              <li>Improve Reader Overlay, Top HUD Bar, Chapter Dropdown, Floating Scrubber Pill, Circular Prev/Next Navigation Buttons, Bottom Dock Sheets, Zoom Slider &amp; Presets, and Display/Image-Processing Toggle Switches in 05-reader.css and 07-refinements-updater.css to adapt seamlessly to both Light Mode and Dark Mode via CSS variables with smooth background-color transitions.</li>
-              <li>Improve Reader interactive states in reader.ts (empty chapter dropdown, failed page retry card, and reload/action buttons) to use theme-aware CSS variables (--reader-surface, --reader-border, --reader-ink, --reader-ink-muted, --reader-accent, --reader-accent-ink) instead of hardcoded dark colors.</li>
-              <li>Fix Reader staying forced dark with mismatched hardcoded surfaces, borders, edge navigation hover zones, and toggle-switch OFF tracks when Light Mode is active by migrating all remaining Reader UI styles to semantic --reader-* tokens.</li>
+              <li>Add one-click Reset All Progress (Ch. N) action (data-action="reset-all-progress") in the Manga Detail chapter context menu to clear read flags, saved page positions, localStorage chapter checkpoints, and LastViewed timestamps across every chapter with optimistic UI sync and rollback on error.</li>
+              <li>Add contextual Reset Page Progress action in the chapter context menu whenever an unread chapter has partial page progress (lastPageRead &gt; 0 or saved localStorage page &gt; 1), paired with centralized clearLocalChapterPos and recomputeMangaReadProgress helpers in manga-detail.ts.</li>
+              <li>Add targeted backend page-cache eviction helpers (ClearChapterLastPageCacheForChapter and ClearChapterLastPageCacheForManga) in BackendIpcController.MangaDetail.cs to purge stale _chapterLastPageReadCache entries across all key formats on single-unread and all-unread actions.</li>
+              <li>Add automated C# xUnit and Node.js WebUI regression tests in BehavioralServicesTests.cs and webui.test.mjs covering single-chapter and manga-wide LastPageRead/LastViewed resets, localStorage yomic_ch_pos_ cleanup, and Start/Resume button restoration.</li>
+              <li>Improve Manga Detail floating Resume/Start CTA and last-read row highlighting (hasAnyProgress &amp; getSavedLocalChapterPage) plus Library context menu Mark Unread (ctxMarkUnread in library.ts) so resetting progress immediately restores Start Ch. &lt;lowest&gt; and purges client-side page checkpoints.</li>
+              <li>Fix marking a chapter or manga as unread failing to zero out chapter.LastPageRead in SQLite (LibraryService.SetChapterReadStatusAsync &amp; MarkChaptersAsUnreadAsync), leaving partial page progress badges and LastViewed timestamps behind when sibling chapters had partial progress.</li>
+              <li>Fix Chapter 0 (ChapterNumber == 0) and zero-chapter manga fallback coercion in BackendIpcController.BootstrapAndMapping.cs (MapMangaToDto checking ChapterNumber &gt;= 0 and returning 0 when totalCh == 0).</li>
             </ul>
           </div>
         </div>
@@ -2055,7 +2057,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
 
     // Immediately open the full-screen Updater UI when Check for Updates is clicked
     openAppUpdateOverlay({
-      version: '2.6.1',
+      version: '2.6.2',
       releaseNotes: '',
       isEn,
       mode: 'checking'
@@ -2064,7 +2066,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
     if (!this.bridge.isWebViewHost) {
       window.setTimeout(() => {
         openAppUpdateOverlay({
-          version: '2.6.1',
+          version: '2.6.2',
           releaseNotes: '',
           isEn,
           mode: 'uptodate'
@@ -2086,7 +2088,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         if (btn) btn.disabled = false;
         // If user already dismissed the checking overlay, do not forcibly pop it back open
         if (!document.getElementById('appUpdateOverlay')?.classList.contains('open')) return;
-        const ver = info?.latestVersion || info?.currentVersion || '2.6.1';
+        const ver = info?.latestVersion || info?.currentVersion || '2.6.2';
         const notes = info?.releaseNotes || '';
         if (info?.isUpdateAvailable && info.downloadUrl) {
           openAppUpdateOverlay({
@@ -2109,7 +2111,7 @@ export function renderSettingsView(this: YomicApp, container: HTMLElement): void
         if (btn) btn.disabled = false;
         if (!document.getElementById('appUpdateOverlay')?.classList.contains('open')) return;
         openAppUpdateOverlay({
-          version: '2.6.1',
+          version: '2.6.2',
           releaseNotes: '',
           isEn,
           mode: 'error'
@@ -2228,7 +2230,7 @@ export function openAppUpdateOverlay(opts: {
   const verEl = document.getElementById('appUpdateVersionText');
   const startBtn = document.getElementById('btnStartAppUpdateNow') as HTMLButtonElement | null;
   const closeBtn = document.getElementById('btnCloseAppUpdateOverlay') as HTMLButtonElement | null;
-  const cleanVer = (opts.version || '2.6.1').replace(/^v/i, '');
+  const cleanVer = (opts.version || '2.6.2').replace(/^v/i, '');
 
   if (barFill) {
     barFill.classList.toggle('indeterminate', mode === 'checking');

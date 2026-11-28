@@ -183,11 +183,33 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
     manga.chapters.length > 0
       ? manga.chapters.reduce((min, c) => (c.number < min ? c.number : min), manga.chapters[0].number)
       : 1;
-  const resumeChapterNum = manga.lastReadChapter > 0 ? manga.lastReadChapter : lowestChapterNum;
-  const resumeFabLabel =
-    manga.lastReadChapter > 0
-      ? this.l(`Lanjut Ch. ${resumeChapterNum}`, `Resume Ch. ${resumeChapterNum}`)
-      : this.l(`Mulai Ch. ${resumeChapterNum}`, `Start Ch. ${resumeChapterNum}`);
+  const getSavedLocalChapterPage = (chNum: number): number => {
+    try {
+      const localRaw = localStorage.getItem(`yomic_ch_pos_${manga.id}_${chNum}`);
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw);
+        if (typeof parsed.page === 'number' && parsed.page > 0) {
+          return parsed.page;
+        }
+      }
+    } catch {}
+    return 0;
+  };
+  const hasAnyProgress =
+    manga.chapters.length > 0
+      ? manga.chapters.some(
+          (c) =>
+            c.isRead ||
+            (c.lastPageRead != null && c.lastPageRead > 0) ||
+            getSavedLocalChapterPage(c.number) > 1
+        )
+      : manga.lastReadChapter > 0 && (manga.lastViewedEpoch ?? 0) > 0;
+  const resumeChapterNum = hasAnyProgress
+    ? (manga.lastReadChapter >= 0 ? manga.lastReadChapter : lowestChapterNum)
+    : lowestChapterNum;
+  const resumeFabLabel = hasAnyProgress
+    ? this.l(`Lanjut Ch. ${resumeChapterNum}`, `Resume Ch. ${resumeChapterNum}`)
+    : this.l(`Mulai Ch. ${resumeChapterNum}`, `Start Ch. ${resumeChapterNum}`);
 
   // Bookmark / Saved Icon for Library Toggle: Solar Bold when in library, Linear outline when not
   const librarySvg = manga.inLibrary
@@ -329,7 +351,10 @@ export function buildMangaDetailHtml(this: YomicApp, manga: MangaItem): string {
               latestChapter != null &&
               (ch.id != null ? ch.id === latestChapter.id : ch.number === latestChapter.number) &&
               !ch.isRead;
-            const isLastRead = manga.lastReadChapter > 0 && ch.number === manga.lastReadChapter;
+            const isLastRead =
+              hasAnyProgress &&
+              manga.lastReadChapter >= 0 &&
+              Math.abs(ch.number - manga.lastReadChapter) < 0.01;
 
             // Compute saved page progress label ("Hal. 16/25") like Mobile Image 2
             let savedPage = 0;
@@ -1492,11 +1517,62 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
       return;
     }
   });
-  // Chapter Context Menu & More Options (Tandai Sudah Dibaca / Belum Dibaca / Bab Sebelumnya)
+  // Chapter Context Menu & More Options (Tandai Sudah Dibaca / Reset Halaman / Belum Dibaca / Reset Semua Progres)
   const hideChapterMenu = () => {
     const existing = document.getElementById('chapterContextMenu');
     if (existing) {
       existing.remove();
+    }
+  };
+
+  const clearLocalChapterPos = (chNum?: number) => {
+    try {
+      const prefixes = [`yomic_ch_pos_${manga.id}_`];
+      if (manga.dbId && manga.dbId > 0) {
+        const dbPrefix = `yomic_ch_pos_db-${manga.dbId}_`;
+        if (!prefixes.includes(dbPrefix)) prefixes.push(dbPrefix);
+      }
+      if (chNum !== undefined) {
+        prefixes.forEach((p) => localStorage.removeItem(`${p}${chNum}`));
+      } else {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && prefixes.some((p) => k.startsWith(p))) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+      }
+    } catch {}
+  };
+
+  const recomputeMangaReadProgress = () => {
+    const sortedDesc = [...manga.chapters].sort((a, b) => b.number - a.number);
+    const lowestNum = sortedDesc.length > 0 ? sortedDesc[sortedDesc.length - 1].number : 1;
+    const latestProgressed = sortedDesc.find((c) => {
+      if (c.isRead || (c.lastPageRead != null && c.lastPageRead > 0)) return true;
+      try {
+        const raw = localStorage.getItem(`yomic_ch_pos_${manga.id}_${c.number}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed.page === 'number' && parsed.page > 1) return true;
+        }
+      } catch {}
+      return false;
+    });
+    manga.unreadCount = manga.chapters.filter((c) => !c.isRead).length;
+    if (latestProgressed) {
+      manga.lastReadChapter = latestProgressed.number;
+      manga.lastReadPage =
+        latestProgressed.lastPageRead && latestProgressed.lastPageRead > 0 && latestProgressed.lastPageRead <= 1000
+          ? latestProgressed.lastPageRead
+          : 1;
+    } else {
+      manga.lastReadChapter = lowestNum;
+      manga.lastReadPage = 1;
+      manga.lastReadTotalPages = 0;
+      manga.lastViewedEpoch = 0;
     }
   };
 
@@ -1510,6 +1586,24 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
     menu.className = 'v1-context-menu v1-chapter-ctx-menu open';
 
     const isRead = !!ch.isRead;
+    let hasPageProgress = Boolean(ch.lastPageRead && ch.lastPageRead > 0);
+    if (!hasPageProgress) {
+      try {
+        const localRaw = localStorage.getItem(`yomic_ch_pos_${manga.id}_${ch.number}`);
+        if (localRaw) {
+          const parsed = JSON.parse(localRaw);
+          if (typeof parsed.page === 'number' && parsed.page > 1) {
+            hasPageProgress = true;
+          }
+        }
+      } catch {}
+    }
+
+    const lowestChapterNumber =
+      manga.chapters.length > 0
+        ? manga.chapters.reduce((min, c) => (c.number < min ? c.number : min), manga.chapters[0].number)
+        : 1;
+
     menu.innerHTML = `
       ${
         !isRead
@@ -1517,22 +1611,36 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
                ${getIconSvg('check-line', { size: 16 })}
                <span>${this.l('Tandai Sudah Dibaca', 'Mark as Read')}</span>
              </button>`
-          : `<button class="v1-ctx-item" data-action="mark-unread">
+          : ''
+      }
+      ${
+        isRead || hasPageProgress
+          ? `<button class="v1-ctx-item" data-action="mark-unread">
                ${getIconSvg('eye-off-line', { size: 16 })}
-               <span>${this.l('Tandai Belum Dibaca', 'Mark as Unread')}</span>
+               <span>${
+                 isRead
+                   ? this.l('Tandai Belum Dibaca', 'Mark as Unread')
+                   : this.l('Reset Progres Halaman', 'Reset Page Progress')
+               }</span>
              </button>`
+          : ''
       }
       <button class="v1-ctx-item" data-action="mark-before-read">
         ${getIconSvg('check-double-line', { size: 16 })}
         <span>${this.l('Tandai Bab Sebelumnya Sudah Dibaca', 'Mark Previous Chapters as Read')}</span>
+      </button>
+      <div class="v1-ctx-divider" style="height:1px;background:var(--border-subtle);margin:4px 6px;"></div>
+      <button class="v1-ctx-item" data-action="reset-all-progress">
+        ${getIconSvg('refresh-line', { size: 16 })}
+        <span>${this.l(`Reset Semua Progres (Ch. ${lowestChapterNumber})`, `Reset All Progress (Ch. ${lowestChapterNumber})`)}</span>
       </button>
     `;
 
     document.body.appendChild(menu);
 
     // Position menu safely within viewport bounds
-    const menuWidth = 250;
-    const menuHeight = 76;
+    const menuWidth = 268;
+    const menuHeight = 164;
     let posX = clientX;
     let posY = clientY;
     if (posX + menuWidth > window.innerWidth - 10) {
@@ -1553,17 +1661,15 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
         if (action === 'mark-read') {
           const prevRead = ch.isRead;
           const prevUnread = manga.unreadCount;
+          const prevLastReadCh = manga.lastReadChapter;
           const prevLastViewed = manga.lastViewedEpoch;
           ch.isRead = true;
-          manga.unreadCount = Math.max(0, manga.unreadCount - 1);
           manga.lastViewedEpoch = Date.now();
+          recomputeMangaReadProgress();
           this.readingStatsData = null;
-          const row = container.querySelector<HTMLElement>(`[data-read-ch="${ch.number}"]`);
-          row?.classList.add('is-read');
-          row?.querySelector('.v1-ch-new-pill')?.remove();
           if (this.bridge.isWebViewHost) {
             void this.bridge
-              .invoke('manga:mark-chapters', {
+              .invoke<MangaItem>('manga:mark-chapters', {
                 mangaId: manga.id,
                 mode: 'single-read',
                 chapterNumber: ch.number,
@@ -1571,9 +1677,16 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
                 mangaUrl: manga.url,
                 sourceId: manga.sourceId
               })
+              .then((res) => {
+                if (res) {
+                  this.upsertMangaItem(res);
+                  if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+                }
+              })
               .catch(() => {
                 ch.isRead = prevRead;
                 manga.unreadCount = prevUnread;
+                manga.lastReadChapter = prevLastReadCh;
                 manga.lastViewedEpoch = prevLastViewed;
                 this.showToast(this.l('Gagal memperbarui status baca bab.', 'Failed to update chapter read status.'), 'warning');
                 if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
@@ -1581,24 +1694,23 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
           }
           this.showToast(this.l(`Chapter ${ch.number} ditandai sudah dibaca.`, `Chapter ${ch.number} marked as read.`));
           this.updateSidebarCounters();
-          if (this.detailChapterFilter === 'unread') {
-            this.renderCurrentWorkspace(true);
-          }
+          this.renderCurrentWorkspace(true);
         } else if (action === 'mark-unread') {
           const prevRead = ch.isRead;
+          const prevLastPage = ch.lastPageRead;
           const prevUnread = manga.unreadCount;
+          const prevLastReadCh = manga.lastReadChapter;
+          const prevLastReadPage = manga.lastReadPage;
           const prevLastViewed = manga.lastViewedEpoch;
+          const wasRead = Boolean(ch.isRead);
           ch.isRead = false;
-          manga.unreadCount++;
-          if (manga.unreadCount >= Math.max(manga.totalChapters || 0, manga.chapters.length)) {
-            manga.lastViewedEpoch = 0;
-          }
+          ch.lastPageRead = 0;
+          clearLocalChapterPos(ch.number);
+          recomputeMangaReadProgress();
           this.readingStatsData = null;
-          const row = container.querySelector<HTMLElement>(`[data-read-ch="${ch.number}"]`);
-          row?.classList.remove('is-read');
           if (this.bridge.isWebViewHost) {
             void this.bridge
-              .invoke('manga:mark-chapters', {
+              .invoke<MangaItem>('manga:mark-chapters', {
                 mangaId: manga.id,
                 mode: 'single-unread',
                 chapterNumber: ch.number,
@@ -1606,48 +1718,64 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
                 mangaUrl: manga.url,
                 sourceId: manga.sourceId
               })
+              .then((res) => {
+                if (res) {
+                  this.upsertMangaItem(res);
+                  if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+                }
+              })
               .catch(() => {
                 ch.isRead = prevRead;
+                ch.lastPageRead = prevLastPage;
                 manga.unreadCount = prevUnread;
+                manga.lastReadChapter = prevLastReadCh;
+                manga.lastReadPage = prevLastReadPage;
                 manga.lastViewedEpoch = prevLastViewed;
-                this.showToast(this.l('Gagal memperbarui status belum dibaca bab.', 'Failed to update chapter unread status.'), 'warning');
+                this.showToast(this.l('Gagal mereset status baca bab.', 'Failed to reset chapter read status.'), 'warning');
                 if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
               });
           }
-          this.showToast(this.l(`Chapter ${ch.number} ditandai belum dibaca.`, `Chapter ${ch.number} marked as unread.`));
+          this.showToast(
+            wasRead
+              ? this.l(`Chapter ${ch.number} ditandai belum dibaca & halaman direset.`, `Chapter ${ch.number} marked as unread & page reset.`)
+              : this.l(`Progres halaman Chapter ${ch.number} berhasil direset.`, `Page progress for Chapter ${ch.number} reset.`)
+          );
           this.updateSidebarCounters();
-          if (this.detailChapterFilter === 'unread') {
-            this.renderCurrentWorkspace(true);
-          }
+          this.renderCurrentWorkspace(true);
         } else if (action === 'mark-before-read') {
           const prevChapters = manga.chapters.filter((c) => c.number < ch.number && !c.isRead);
           const prevUnread = manga.unreadCount;
+          const prevLastReadCh = manga.lastReadChapter;
           const prevLastViewed = manga.lastViewedEpoch;
           prevChapters.forEach((c) => {
             c.isRead = true;
-            const r = container.querySelector<HTMLElement>(`[data-read-ch="${c.number}"]`);
-            r?.classList.add('is-read');
-            r?.querySelector('.v1-ch-new-pill')?.remove();
           });
-          manga.unreadCount = manga.chapters.filter((c) => !c.isRead).length;
           if (prevChapters.length > 0) {
             manga.lastViewedEpoch = Date.now();
           }
+          recomputeMangaReadProgress();
           this.readingStatsData = null;
           if (this.bridge.isWebViewHost) {
             void this.bridge
-              .invoke('manga:mark-chapters', {
+              .invoke<MangaItem>('manga:mark-chapters', {
                 mangaId: manga.id,
                 mode: 'before-read',
                 chapterNumber: ch.number,
                 mangaUrl: manga.url,
                 sourceId: manga.sourceId
               })
+              .then((res) => {
+                if (res) {
+                  this.upsertMangaItem(res);
+                  if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+                }
+              })
               .catch(() => {
                 prevChapters.forEach((c) => {
                   c.isRead = false;
                 });
                 manga.unreadCount = prevUnread;
+                manga.lastReadChapter = prevLastReadCh;
                 manga.lastViewedEpoch = prevLastViewed;
                 this.showToast(this.l('Gagal memperbarui status baca bab sebelumnya.', 'Failed to update previous chapters read status.'), 'warning');
                 if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
@@ -1655,9 +1783,59 @@ export function bindMangaDetailEvents(this: YomicApp, manga: MangaItem): void {
           }
           this.showToast(this.l(`Seluruh bab sebelum Chapter ${ch.number} ditandai sudah dibaca.`, `All chapters before Chapter ${ch.number} marked as read.`));
           this.updateSidebarCounters();
-          if (this.detailChapterFilter === 'unread') {
-            this.renderCurrentWorkspace(true);
+          this.renderCurrentWorkspace(true);
+        } else if (action === 'reset-all-progress') {
+          const prevStates = manga.chapters.map((c) => ({ isRead: c.isRead, lastPageRead: c.lastPageRead }));
+          const prevUnread = manga.unreadCount;
+          const prevLastReadCh = manga.lastReadChapter;
+          const prevLastReadPage = manga.lastReadPage;
+          const prevLastReadTotal = manga.lastReadTotalPages;
+          const prevLastViewed = manga.lastViewedEpoch;
+          manga.chapters.forEach((c) => {
+            c.isRead = false;
+            c.lastPageRead = 0;
+          });
+          clearLocalChapterPos();
+          recomputeMangaReadProgress();
+          this.readingStatsData = null;
+          if (this.bridge.isWebViewHost) {
+            void this.bridge
+              .invoke<MangaItem>('manga:mark-chapters', {
+                mangaId: manga.id,
+                mode: 'all-unread',
+                mangaUrl: manga.url,
+                sourceId: manga.sourceId
+              })
+              .then((res) => {
+                if (res) {
+                  this.upsertMangaItem(res);
+                  if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+                }
+              })
+              .catch(() => {
+                manga.chapters.forEach((c, idx) => {
+                  if (idx < prevStates.length) {
+                    c.isRead = prevStates[idx].isRead;
+                    c.lastPageRead = prevStates[idx].lastPageRead;
+                  }
+                });
+                manga.unreadCount = prevUnread;
+                manga.lastReadChapter = prevLastReadCh;
+                manga.lastReadPage = prevLastReadPage;
+                manga.lastReadTotalPages = prevLastReadTotal;
+                manga.lastViewedEpoch = prevLastViewed;
+                this.showToast(this.l('Gagal mereset seluruh progres baca.', 'Failed to reset all reading progress.'), 'warning');
+                if (this.activeDetailMangaId === manga.id) this.renderCurrentWorkspace(true);
+              });
           }
+          this.showToast(
+            this.l(
+              `Semua progres baca ${manga.title} direset ke Chapter ${lowestChapterNumber}.`,
+              `All reading progress for ${manga.title} reset to Chapter ${lowestChapterNumber}.`
+            )
+          );
+          this.updateSidebarCounters();
+          this.renderCurrentWorkspace(true);
         }
       });
     });

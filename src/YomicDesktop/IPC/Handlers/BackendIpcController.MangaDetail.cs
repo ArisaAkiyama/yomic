@@ -381,6 +381,7 @@ namespace YomicDesktop.IPC
             else if (mode == "all-unread")
             {
                 await LibraryService.MarkChaptersAsUnreadAsync(manga);
+                ClearChapterLastPageCacheForManga(manga, mangaId);
             }
             else if (mode == "before-read")
             {
@@ -405,9 +406,59 @@ namespace YomicDesktop.IPC
                         $"Chapter {chapterNumber}",
                         chapterNumber);
                 }
+                if (!isRead)
+                {
+                    ClearChapterLastPageCacheForChapter(manga, mangaId, chUrl, chapterNumber);
+                }
             }
             var refreshed = await ResolveMangaAsync($"db-{manga.Id}", manga.Url, manga.Source) ?? manga;
             return MapMangaToDto(refreshed, includeChapters: true);
+        }
+
+        private void ClearChapterLastPageCacheForChapter(Manga manga, string rawMangaId, string chapterUrl, float chapterNumber)
+        {
+            if (!string.IsNullOrEmpty(chapterUrl))
+            {
+                _chapterLastPageReadCache.TryRemove(MakeChapterCacheKey(manga.Source, chapterUrl), out _);
+            }
+            if (chapterNumber >= 0)
+            {
+                if (!string.IsNullOrEmpty(rawMangaId))
+                {
+                    _chapterLastPageReadCache.TryRemove($"{rawMangaId}_{chapterNumber}", out _);
+                }
+                if (manga.Id > 0)
+                {
+                    _chapterLastPageReadCache.TryRemove($"db-{manga.Id}_{chapterNumber}", out _);
+                }
+                if (!string.IsNullOrEmpty(manga.Url))
+                {
+                    _chapterLastPageReadCache.TryRemove($"{manga.Source}|{manga.Url}_{chapterNumber}", out _);
+                }
+            }
+        }
+
+        private void ClearChapterLastPageCacheForManga(Manga manga, string rawMangaId)
+        {
+            if (manga.Chapters != null)
+            {
+                foreach (var ch in manga.Chapters)
+                {
+                    ClearChapterLastPageCacheForChapter(manga, rawMangaId, ch.Url ?? string.Empty, ch.ChapterNumber);
+                }
+            }
+            string dbPrefix = manga.Id > 0 ? $"db-{manga.Id}_" : string.Empty;
+            string rawPrefix = !string.IsNullOrEmpty(rawMangaId) ? $"{rawMangaId}_" : string.Empty;
+            string urlPrefix = !string.IsNullOrEmpty(manga.Url) ? $"{manga.Source}|{manga.Url}_" : string.Empty;
+            foreach (var key in _chapterLastPageReadCache.Keys)
+            {
+                if ((!string.IsNullOrEmpty(dbPrefix) && key.StartsWith(dbPrefix, StringComparison.Ordinal)) ||
+                    (!string.IsNullOrEmpty(rawPrefix) && key.StartsWith(rawPrefix, StringComparison.Ordinal)) ||
+                    (!string.IsNullOrEmpty(urlPrefix) && key.StartsWith(urlPrefix, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _chapterLastPageReadCache.TryRemove(key, out _);
+                }
+            }
         }
     }
 }

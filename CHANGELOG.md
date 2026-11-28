@@ -2,6 +2,19 @@
 
 All notable changes to **Yomic** will be documented in this file.
 
+## [2.6.2] - 2026-11-28
+
+Update Details：
+◆ Add one-click Reset All Progress (Ch. N) action (data-action="reset-all-progress") in the Manga Detail chapter context menu (manga-detail.ts) to clear every chapter's read flag, saved page position (lastPageRead = 0), localStorage chapter checkpoints (yomic_ch_pos_*), and LastViewed timestamp back to the lowest chapter with optimistic UI sync and snapshot rollback on backend errors.
+◆ Add contextual Reset Page Progress action in the chapter context menu whenever an unread chapter still holds partial page progress (lastPageRead > 0 or saved localStorage page > 1), paired with centralized clearLocalChapterPos and recomputeMangaReadProgress helpers in manga-detail.ts.
+◆ Add targeted backend page-cache eviction helpers (ClearChapterLastPageCacheForChapter and ClearChapterLastPageCacheForManga) in BackendIpcController.MangaDetail.cs to purge stale _chapterLastPageReadCache entries across all cache key formats (source|chapterUrl, rawMangaId_ch, db-id_ch, and source|mangaUrl_ch) on single-unread and all-unread actions.
+◆ Add automated C# xUnit and Node.js WebUI regression tests in BehavioralServicesTests.cs and tests/WebUI.Tests/webui.test.mjs verifying single-chapter and manga-wide LastPageRead/LastViewed SQLite resets, localStorage yomic_ch_pos_ cleanup, partial-progress detection, and Start/Resume button restoration.
+◆ Improve Manga Detail floating Resume/Start CTA and last-read chapter highlight (getSavedLocalChapterPage & hasAnyProgress) plus authoritative backend MangaItem DTO reconciliation (upsertMangaItem) across mark-read, mark-unread, mark-before-read, and reset-all-progress actions so progress resets immediately restore Start Ch. <lowest> without stale highlights.
+◆ Improve Library context menu Mark Unread (ctxMarkUnread in library.ts) to reset every chapter's lastPageRead to 0, restore lastReadChapter to the lowest chapter, clear all matching yomic_ch_pos_* localStorage entries (both id and db-{dbId} prefixes), and preserve complete rollback on sync failure.
+◆ Improve README.md visual documentation by refreshing all 8 high-resolution 1280x720 Dark Mode English screenshots in docs/screenshots/ reflecting the v2.6 interface.
+◆ Fix marking a chapter or manga as unread leaving partial page progress behind in SQLite (LibraryService.SetChapterReadStatusAsync & MarkChaptersAsUnreadAsync now zero chapter.LastPageRead = 0) and fix LastViewed reset detection to check sibling chapters for both Read and LastPageRead > 0.
+◆ Fix Chapter 0 (ChapterNumber == 0) and empty-chapter fallback coercion in BackendIpcController.BootstrapAndMapping.cs (MapMangaToDto checking ChapterNumber >= 0 instead of > 0 and returning 0 when totalCh == 0).
+
 ## [2.6.1] - 2026-11-27
 
 Update Details：
